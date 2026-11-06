@@ -1,3 +1,9 @@
+#[cfg(all(
+    any(target_os = "android", target_os = "ios"),
+    not(feature = "desktop")
+))]
+compile_error!("Mobile app builds require --features desktop");
+
 #[cfg(feature = "desktop")]
 mod commands;
 pub mod error;
