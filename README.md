@@ -2,7 +2,7 @@
 
 A speech app and Docker inference server built on [Irodori-TTS](https://github.com/Aratako/Irodori-TTS).
 Both include [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) and its codec (about 3.44 GB).
-The app runs offline and targets Windows, macOS, Linux, iOS, and Android.
+The app runs offline and targets Windows, macOS (Apple Silicon), Linux, iOS, and Android.
 
 ## App development
 

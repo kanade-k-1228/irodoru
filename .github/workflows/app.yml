@@ -46,12 +46,6 @@ jobs:
             target: aarch64-apple-darwin
             bundles: dmg
             artifact: target/aarch64-apple-darwin/release/bundle/
-          - platform: macos-x64
-            family: desktop
-            os: macos-latest
-            target: x86_64-apple-darwin
-            bundles: dmg
-            artifact: target/x86_64-apple-darwin/release/bundle/
           - platform: linux
             family: desktop
             os: ubuntu-24.04
