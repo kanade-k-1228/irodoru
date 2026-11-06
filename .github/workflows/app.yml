@@ -1,0 +1,207 @@
+name: app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    uses: ./.github/workflows/verify.yml
+
+  models:
+    uses: ./.github/workflows/models.yml
+
+  build:
+    name: build (${{ matrix.platform }})
+    needs: models
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            family: desktop
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: target/x86_64-pc-windows-msvc/release/bundle/
+          - platform: macos-arm64
+            family: desktop
+            os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artifact: target/aarch64-apple-darwin/release/bundle/
+          - platform: linux
+            family: desktop
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+            artifact: target/x86_64-unknown-linux-gnu/release/bundle/
+          - platform: android
+            family: mobile
+            os: ubuntu-24.04
+            target: aarch64-linux-android
+            artifact: pkgs/app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          - platform: ios
+            family: mobile
+            os: macos-latest
+            target: aarch64-apple-ios-sim
+            artifact: irodoru-ios-simulator.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt,clippy
+      - name: Linux desktop dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        if: matrix.platform == 'android'
+        with:
+          packages: platform-tools
+      - name: Android NDK
+        if: matrix.platform == 'android'
+        run: |
+          sdkmanager 'ndk;27.2.12479018'
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-models
+          path: pkgs/app/src-tauri/resources/models
+      - run: pnpm install --frozen-lockfile
+      - name: Check desktop native code
+        if: matrix.family == 'desktop'
+        run: |
+          cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
+          cargo test --locked -p irodoru-desktop
+      - name: Set release version
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: node scripts/release.mts version "$RELEASE_TAG"
+      - name: Build desktop
+        if: matrix.family == 'desktop' && matrix.platform != 'windows'
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+        run: pnpm build:app --target "$TARGET" --bundles "$BUNDLES"
+      - name: Build Windows portable ZIP
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          pnpm build:app --target $env:TARGET --no-bundle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $release = Join-Path $PWD "target/$env:TARGET/release"
+          $stage = Join-Path $env:RUNNER_TEMP "portable/irodoru"
+          $bundle = Join-Path $release "bundle/portable"
+          New-Item -ItemType Directory -Force $stage, $bundle | Out-Null
+          Copy-Item "$release/irodoru-desktop.exe" "$stage/irodoru.exe"
+          Get-ChildItem "$release/*.dll" | Copy-Item -Destination $stage
+          Copy-Item "pkgs/app/src-tauri/resources/models" $stage -Recurse
+          $version = (Get-Content "pkgs/app/src-tauri/tauri.conf.json" | ConvertFrom-Json).version
+          Push-Location (Split-Path $stage)
+          & "$env:ProgramFiles/7-Zip/7z.exe" a -tzip -mx=0 "$bundle/irodoru_$($version)_windows.zip" irodoru
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+      - name: Build Android debug APK
+        if: matrix.platform == 'android'
+        run: |
+          pnpm android:init --ci
+          pnpm android:build --debug --apk
+      - name: Build iOS simulator app
+        if: matrix.platform == 'ios'
+        run: |
+          pnpm ios:init --ci
+          pnpm ios:build --debug --target aarch64-sim
+      - name: Preserve simulator app permissions and symlinks
+        if: matrix.platform == 'ios'
+        run: |
+          app=$(find pkgs/app/src-tauri/gen/apple/build -name '*.app' -type d -print -quit)
+          test -n "$app"
+          ditto -c -k --sequesterRsrc --keepParent "$app" irodoru-ios-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: irodoru-${{ matrix.family }}-${{ matrix.target }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+          compression-level: 0
+
+  required:
+    if: always()
+    needs: [check, models, build]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that all jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for result in $RESULTS; do
+            [[ "$result" == success ]] || { echo "::error::some CI jobs did not succeed"; exit 1; }
+          done
+
+  release:
+    if: github.event_name == 'release'
+    needs: required
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: irodoru-desktop-*
+          path: artifacts
+      - name: Attach app packages after all checks and builds succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for artifact in artifacts/irodoru-desktop-*; do
+            target=${artifact##*/irodoru-desktop-}
+            mkdir -p "target/$target/release"
+            mv "$artifact" "target/$target/release/bundle"
+            node scripts/release.mts app "$RELEASE_TAG" "$target"
+          done

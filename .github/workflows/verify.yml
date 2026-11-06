@@ -1,18 +1,25 @@
 name: verify
 
 on:
-  push:
-  pull_request:
+  workflow_call:
 
-concurrency:
-  group: verify-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   verify:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check workflow syntax and shell scripts
+        run: >-
+          docker run --rm
+          -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -24,6 +31,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
       - run: cargo test --locked -p irodoru-engine
