@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Check workflow syntax and shell scripts
@@ -20,8 +20,8 @@ jobs:
           -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
           rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
           -color
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -36,5 +36,5 @@ jobs:
       - run: pnpm verify
       - run: cargo test --locked -p irodoru-engine
       - run: docker compose --profile local --profile wsl-gpu config --quiet
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: pnpm verify:export
