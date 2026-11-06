@@ -25,7 +25,7 @@ it("writes characters locally and copies imported WAV bytes", async () => {
   const input = { name: "さくら", color: null, sample_text: null, description: "低め", voice: null };
   vi.mocked(invoke).mockResolvedValue({ id: "id", ...input });
   await saveCharacter(input, "id");
-  expect(invoke).toHaveBeenCalledWith("save_character", { input, id: "id" });
+  expect(invoke).toHaveBeenCalledWith("save_character", { input, id: "id", preview: null });
   await uploadVoice("reference", new Blob([new Uint8Array([82, 73, 70, 70])]));
   expect(invoke).toHaveBeenLastCalledWith("upload_voice", { name: "reference", wav: [82, 73, 70, 70] });
 });
@@ -61,4 +61,29 @@ it("reports preview audio read failures", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
   await expect(fetchPreviewAudio("id")).rejects.toThrow("サンプル音声を読み込めませんでした");
   expect(invoke).toHaveBeenCalledWith("preview_audio_path", { id: "id" });
+});
+
+it("waits for editor writes before preparing generation and recovers after a failed save", async () => {
+  const { saveEditor } = await import("./api.ts");
+  const { DEFAULT_PREFERENCES } = await import("./script.ts");
+  const editor = { rows: [], preferences: DEFAULT_PREFERENCES, activeCharacter: "" };
+  let finish!: () => void;
+  vi.mocked(invoke).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const saving = saveEditor(editor);
+  const preparing = prepareGeneration([]);
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+  expect(invoke).toHaveBeenLastCalledWith("save_editor", { editor });
+  finish();
+  await saving;
+  await preparing;
+  expect(invoke).toHaveBeenLastCalledWith("prepare_generation", { requests: [] });
+  vi.mocked(invoke).mockRejectedValueOnce("disk full");
+  await expect(saveEditor(editor)).rejects.toThrow("disk full");
+  vi.mocked(invoke).mockResolvedValueOnce(undefined);
+  await expect(saveEditor(editor)).resolves.toBeUndefined();
 });

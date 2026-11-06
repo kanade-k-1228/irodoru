@@ -9,6 +9,7 @@ mod commands;
 pub mod error;
 pub mod generation;
 pub mod library;
+pub mod project;
 pub mod types;
 
 pub mod inference;

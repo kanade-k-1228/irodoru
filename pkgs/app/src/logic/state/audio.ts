@@ -39,7 +39,7 @@ export const generateRowsAtom = atom(null, async (get, set, rows: ScriptRow[]) =
         set(generationErrorsAtom, (all) => ({ ...all, [id]: "" }));
       },
       onTake: (take) => {
-        set(takesAtom, (all) => [take, ...all]);
+        set(takesAtom, (all) => [take, ...all.filter((previous) => previous.row_id !== take.row_id)]);
         set(updateRowAtom, take.row_id, { takeId: take.id });
       },
       onError: (id, error) => set(generationErrorsAtom, (all) => ({ ...all, [id]: error.message })),
@@ -70,17 +70,6 @@ export const stopGenerationAtom = atom(null, (get, set) => {
   if (get(runningRowAtom)) set(stoppingAtom, true);
 });
 
-export const historyFilterAtom = atom("");
-export const takeNumbersAtom = atom((get) => {
-  const numbers = new Map<string, number>();
-  const counters = new Map<string, number>();
-  for (const take of [...get(takesAtom)].reverse()) {
-    const n = (counters.get(take.row_id) ?? 0) + 1;
-    counters.set(take.row_id, n);
-    numbers.set(take.id, n);
-  }
-  return numbers;
-});
 export const deletingTakeAtom = atom<string | null>(null);
 export const deleteTakeAtom = atom(null, async (get, set, id: string) => {
   if (get(deletingTakeAtom)) return;
@@ -88,6 +77,7 @@ export const deleteTakeAtom = atom(null, async (get, set, id: string) => {
   try {
     await removeTake(id);
     set(takesAtom, (all) => all.filter((take) => take.id !== id));
+    set(rowsAtom, (rows) => rows.map((row) => (row.takeId === id ? { ...row, takeId: undefined } : row)));
   } catch (error) {
     set(errorAtom, (error as Error).message);
   } finally {

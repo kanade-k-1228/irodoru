@@ -7,6 +7,8 @@ import { AudioPlayer } from "@/view/common/AudioPlayer.tsx";
 import { AdvancedSpeechSettings, SpeechSettings } from "@/view/common/SpeechSettings.tsx";
 
 export type CharacterPreviewProps = {
+  characterId?: string;
+  onGenerated: (id: string) => void;
   text: string;
   onTextChange: (text: string) => void;
   description: string;
@@ -52,7 +54,9 @@ export const CharacterPreview = (props: CharacterPreviewProps) => {
       </button>
       {sample && (
         <div>
-          <span className="label">サンプル音声{sample.settings !== currentSettings && "（変更前）"}</span>
+          <span className="label">
+            サンプル音声{!sample.stored && sample.settings !== currentSettings && "（変更前）"}
+          </span>
           <AudioPlayer
             key={source}
             source={source}

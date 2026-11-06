@@ -15,6 +15,7 @@ fn main() {
         SynthesisInput::decl(),
         TakeRequest::decl(),
         InferenceStatus::decl(),
+        irodoru_desktop::project::ProjectStatus::decl(),
     ] {
         let declaration = declaration
             .lines()
