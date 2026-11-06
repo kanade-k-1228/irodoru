@@ -1,0 +1,39 @@
+{
+  "name": "irodoru",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "dev": "pnpm --filter @irodoru/app exec tauri dev",
+    "build:web": "pnpm --filter @irodoru/app build",
+    "build:app": "pnpm --filter @irodoru/app exec tauri build",
+    "build:server": "cargo build --locked --release -p irodori-server",
+    "android:init": "pnpm --filter @irodoru/app exec tauri android init",
+    "android:build": "pnpm --filter @irodoru/app exec tauri android build --target aarch64",
+    "ios:init": "pnpm --filter @irodoru/app exec tauri ios init",
+    "ios:build": "pnpm --filter @irodoru/app exec tauri ios build",
+    "models:export": "uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime",
+    "models:prepare": "node scripts/models.mts prepare",
+    "models:check": "node scripts/models.mts check",
+    "generate": "node scripts/generate.mts",
+    "generate:check": "node scripts/generate.mts --check",
+    "check": "biome check .",
+    "fix": "biome check --fix .",
+    "typecheck": "tsc -p scripts/tsconfig.json && pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "verify:web": "pnpm check && pnpm test && pnpm build:web",
+    "verify:rust": "cargo fmt --all -- --check && cargo clippy --locked --workspace --all-targets -- -D warnings && cargo test --locked --workspace",
+    "verify:app": "cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings",
+    "verify:export": "uv run --project pkgs/engine/script python -m unittest discover -s pkgs/engine/script -p 'test_*.py'",
+    "verify:scripts": "tsc -p scripts/tsconfig.json && node --test scripts/*.test.mts",
+    "verify": "pnpm verify:web && pnpm verify:rust && pnpm verify:scripts && pnpm generate:check"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^26.2.0",
+    "typescript": "~7.0.2"
+  },
+  "engines": {
+    "node": "26.x"
+  }
+}

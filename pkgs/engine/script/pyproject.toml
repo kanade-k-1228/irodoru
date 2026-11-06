@@ -1,0 +1,28 @@
+[project]
+name = "irodori-onnx-export"
+version = "0.1.0"
+description = "Export Irodori-TTS to ONNX for the Rust CPU inference server"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "irodori-tts[cpu]",
+    "onnx>=1.17",
+    "onnxscript>=0.3",
+    "onnxruntime>=1.20",
+    "numpy",
+    "onnxruntime-extensions>=0.15.2",
+]
+
+[tool.uv]
+package = false
+override-dependencies = ["protobuf>=5.29", "torchcodec>=0.10.0,<0.11.0; platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+irodori-tts = { git = "https://github.com/Aratako/Irodori-TTS", rev = "7ed4374eaf49355279db51307e8141984f900836" }
+dacvae = { git = "https://github.com/facebookresearch/dacvae" }
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

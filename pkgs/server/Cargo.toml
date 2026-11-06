@@ -1,0 +1,26 @@
+[package]
+name = "irodori-server"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[features]
+default = ["openvino"]
+openvino = ["irodoru-engine/openvino"]
+
+[dependencies]
+irodoru-engine = { path = "../engine" }
+anyhow = "1"
+base64 = "0.22"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+utoipa = { version = "6", features = ["axum_extras"] }
+utoipa-axum = "0.3"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

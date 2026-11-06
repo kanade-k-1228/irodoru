@@ -1,0 +1,245 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "utoipa-axum",
+    "description": "Utoipa's axum bindings for seamless integration for the two",
+    "contact": {
+      "name": "Juha Kukkonen",
+      "email": "juha7kukkonen@gmail.com"
+    },
+    "license": {
+      "name": "MIT OR Apache-2.0",
+      "identifier": "MIT OR Apache-2.0"
+    },
+    "version": "0.3.0"
+  },
+  "paths": {
+    "/": {
+      "post": {
+        "summary": "Generate one WAV (48 kHz, mono, 16-bit PCM).",
+        "description": "The resolved generation conditions (model, seed, steps and the other parameters)\nare embedded as JSON in the WAV's LIST/INFO ICMT chunk.",
+        "operationId": "tts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TTSRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "headers": {
+              "content-disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Filename is SHA-256 of the embedded generation conditions"
+              }
+            },
+            "content": {
+              "audio/wav": {
+                "schema": {
+                  "$ref": "#/components/schemas/Wav"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Expected application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid JSON fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorBody": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Schedule": {
+        "type": "string",
+        "enum": [
+          "linear",
+          "sway"
+        ]
+      },
+      "TTSRequest": {
+        "type": "object",
+        "description": "The JSON body. Omitted fields take the defaults applied in `TTSJob::try_from`.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "caption": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Voice-design caption describing the speaker/style."
+          },
+          "cfg_max_t": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "cfg_min_t": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "cfg_scale_caption": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "cfg_scale_speaker": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "cfg_scale_text": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "duration_scale": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "num_steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "reference_audio_base64": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base64-encoded reference WAV; omit for no reference."
+          },
+          "seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "sway_coeff": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "t_schedule": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schedule",
+                "description": "\"linear\" (default) or \"sway\""
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1
+          },
+          "trim_tail": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Wav": {
+        "type": "string",
+        "format": "binary"
+      }
+    }
+  }
+}

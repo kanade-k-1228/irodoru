@@ -1,0 +1,33 @@
+name: app-models
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  anime:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/cache@v4
+        id: models
+        with:
+          path: models
+          key: anime-onnx-${{ hashFiles('pkgs/engine/script/**') }}
+      - if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          uv sync --project pkgs/engine/script --frozen
+          uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: node scripts/models.mts prepare
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-models
+          path: pkgs/app/src-tauri/resources/models/
+          compression-level: 0
+          retention-days: 1

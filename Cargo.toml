@@ -1,0 +1,7 @@
+[workspace]
+members = ["pkgs/engine", "pkgs/server", "pkgs/app/src-tauri"]
+resolver = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

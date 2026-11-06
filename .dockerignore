@@ -1,0 +1,13 @@
+**/node_modules/
+**/dist/
+**/__pycache__/
+models/
+voices/
+library/
+target/
+.runtime/
+pkgs/engine/script/.venv/
+pkgs/engine/script/*.log
+.git/
+pkgs/app/src-tauri/resources/
+pkgs/app/src-tauri/gen/

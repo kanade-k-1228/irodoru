@@ -1,0 +1,46 @@
+# docker compose up --build -d [local|wsl-gpu]; stop with docker compose down [local|wsl-gpu].
+# Run one service at a time: they publish the same port.
+name: irodoru
+
+x-server: &server
+  ports:
+    - "${IRODORI_BIND:-127.0.0.1}:${IRODORI_PORT:-8080}:8080"
+  restart: unless-stopped
+
+services:
+  # Exports anime during the build and bakes it into the image.
+  backend:
+    <<: *server
+    build:
+      context: .
+      target: backend
+    image: irodoru:local
+
+  # Mounts models already exported to ./models; skips the export build.
+  local:
+    <<: *server
+    profiles: [local]
+    build:
+      context: .
+      target: backend-runtime
+    image: irodoru-backend:local
+    command: ["serve", "--threads", "2"]
+    volumes:
+      - ./models/${IRODORI_MODEL:-anime}:/models/model:ro
+      - ./models/codec:/models/codec:ro
+
+  # `local` on the Intel GPU in WSL2. Requires the Windows GPU driver and /dev/dxg.
+  wsl-gpu:
+    <<: *server
+    profiles: [wsl-gpu]
+    build:
+      context: .
+      target: backend-gpu-runtime
+    image: irodoru-backend:local-gpu
+    command: ["serve", "--threads", "2"]
+    devices:
+      - /dev/dxg:/dev/dxg
+    volumes:
+      - ./models/${IRODORI_MODEL:-anime}:/models/model:ro
+      - ./models/codec:/models/codec:ro
+      - /usr/lib/wsl:/usr/lib/wsl:ro
