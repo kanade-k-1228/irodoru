@@ -11,7 +11,7 @@ openvino = ["dep:openvino", "dep:openvino-sys"]
 
 [dependencies]
 anyhow = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 hound = "3.5"
 ndarray = "0.17"
 openvino = { version = "=0.11.1", optional = true, features = ["runtime-linking"] }
@@ -22,6 +22,6 @@ rand_distr = "0.6"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
 tracing = "0.1"
 unicode-normalization = "0.1"

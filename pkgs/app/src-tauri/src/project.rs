@@ -347,7 +347,7 @@ fn extract(file: File, root: &Path) -> Result<()> {
     let mut total = 0u64;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
-        let name = entry.name().to_owned();
+        let name = entry.name()?.into_owned();
         let path = Path::new(&name);
         if name.contains(['\\', ':'])
             || path
@@ -477,8 +477,11 @@ mod tests {
                 .is_empty()
         );
         let zip = ZipArchive::new(File::open(moved).unwrap()).unwrap();
-        let names: Vec<_> = zip.file_names().collect();
-        assert!(names.contains(&"project.yaml"));
+        let names: Vec<_> = zip
+            .file_names()
+            .collect::<zip::result::ZipResult<_>>()
+            .unwrap();
+        assert!(names.iter().any(|name| name == "project.yaml"));
         assert!(names.iter().any(|name| name.ends_with("/character.yaml")));
         assert!(names.iter().all(|name| !name.starts_with('.')));
     }

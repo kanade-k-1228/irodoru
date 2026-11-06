@@ -1,4 +1,5 @@
 use anyhow::{Result, ensure};
+use irodoru_engine::output::sha256;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -28,7 +29,7 @@ pub fn materialize(
         bundle.model == "anime" && !bundle.files.is_empty(),
         "invalid bundled model"
     );
-    let version = format!("{:x}", Sha256::digest(index));
+    let version = sha256(index);
     let destination = root.join(version);
     for entry in &bundle.files {
         let path = Path::new(&entry.path);
@@ -72,8 +73,13 @@ pub fn materialize(
             hash.update(&buffer[..n]);
             output.write_all(&buffer[..n])?;
         }
+        let checksum: String = hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
         ensure!(
-            size == entry.size && format!("{:x}", hash.finalize()) == entry.sha256,
+            size == entry.size && checksum == entry.sha256,
             "model resource checksum mismatch: {}",
             entry.path
         );
@@ -93,8 +99,9 @@ mod tests {
         let source = root.path().join("source");
         std::fs::write(&source, b"model").unwrap();
         let index = serde_json::to_vec(&serde_json::json!({"model":"anime", "files":[{
-            "path":"anime/backbone.onnx", "size":5, "sha256":format!("{:x}",Sha256::digest(b"model"))
-        }]})).unwrap();
+            "path":"anime/backbone.onnx", "size":5, "sha256":sha256(b"model")
+        }]}))
+        .unwrap();
         let destination = materialize(&index, &root.path().join("models"), |_| {
             Ok(std::fs::File::open(&source)?)
         })
