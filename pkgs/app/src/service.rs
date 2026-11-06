@@ -445,7 +445,10 @@ mod tests {
             })
             .is_err()
         );
-        assert_eq!(w.read(|s| Ok(s.path.clone())).unwrap(), old);
+        assert_eq!(
+            w.read(|s| Ok(s.path.clone())).unwrap(),
+            old.canonicalize().unwrap()
+        );
     }
 }
 

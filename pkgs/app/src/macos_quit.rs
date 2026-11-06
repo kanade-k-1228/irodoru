@@ -53,7 +53,7 @@ pub fn install(cx: &App) {
             .expect("register application termination guard");
         subclass.add_method(
             sel!(applicationShouldTerminate:),
-            should_terminate as extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject) -> usize,
+            should_terminate as extern "C-unwind" fn(_, Sel, *mut AnyObject) -> usize,
         );
         AnyObject::set_class(delegate, subclass.register());
         // Refresh Cocoa's cached optional delegate selectors after adding the guard.
