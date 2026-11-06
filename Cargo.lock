@@ -3691,6 +3691,7 @@ dependencies = [
  "hound",
  "image",
  "irodoru-engine",
+ "objc2 0.6.5",
  "rand 0.10.3",
  "resvg 0.45.1",
  "rfd",

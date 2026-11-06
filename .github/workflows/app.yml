@@ -19,6 +19,11 @@ defaults:
   run:
     shell: bash
 
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
 jobs:
   check:
     uses: ./.github/workflows/verify.yml
@@ -43,13 +48,11 @@ jobs:
             family: desktop
             os: macos-latest
             target: aarch64-apple-darwin
-            bundles: dmg
             artifact: target/aarch64-apple-darwin/release/bundle/
           - platform: linux
             family: desktop
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
             artifact: target/x86_64-unknown-linux-gnu/release/bundle/
     runs-on: ${{ matrix.os }}
     steps:
@@ -76,7 +79,6 @@ jobs:
         env:
           IRODORU_TEST_MODELS: ${{ github.workspace }}/pkgs/app/resources/models
           MACOSX_DEPLOYMENT_TARGET: "15.0"
-        if: matrix.family == 'desktop'
         run: |
           cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
           cargo test --locked -p irodoru-desktop
@@ -93,6 +95,10 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: cargo xtask package --target "$TARGET"
+      - name: Verify offline synthesis from extracted packages
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/smoke-package.sh "$TARGET"
       - uses: actions/upload-artifact@v7
         with:
           name: irodoru-${{ matrix.family }}-${{ matrix.target }}
