@@ -3,6 +3,7 @@ dist/
 __pycache__/
 models/
 library/
+!pkgs/app/src/library/
 target/
 .runtime/
 pkgs/engine/script/.venv/

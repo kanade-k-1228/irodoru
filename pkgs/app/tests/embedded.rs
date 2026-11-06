@@ -1,8 +1,9 @@
 use irodoru_desktop::{
-    generation::{self, PreparedBatch},
-    inference::Inference,
-    library::{CharacterInput, Library},
-    types::{InferenceStatus, SynthesisInput, TakeRequest},
+    domain::CharacterInput,
+    domain::{InferenceStatus, SynthesisInput, TakeRequest},
+    library::Library,
+    synthesis::Inference,
+    synthesis::generation::{self, PreparedBatch},
 };
 use irodoru_engine::{EngineConfig, SynthesisRequest};
 use std::time::{Duration, Instant};

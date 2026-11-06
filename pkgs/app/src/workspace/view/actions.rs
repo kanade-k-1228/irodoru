@@ -1,0 +1,12 @@
+gpui_kit::actions!(
+    irodoru,
+    [
+        Quit,
+        NewWindow,
+        NewProject,
+        OpenProject,
+        SaveProject,
+        Preferences,
+        CloseWindow
+    ]
+);

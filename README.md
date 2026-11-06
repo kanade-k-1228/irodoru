@@ -45,6 +45,8 @@ filesystem path; document-provider URLs such as Android `content://` are not sup
 
 ## App development
 
+See [the app architecture guide](pkgs/app/README.md) for module boundaries, state flow and extension points.
+
 The app and development tasks use Cargo; Node.js and pnpm are not required. Requires stable Rust and the [GPUI Kit native prerequisites](https://gpui-kit.com/docs/installation/).
 Linux needs a graphical Wayland or X11 session with Vulkan, plus ALSA, fontconfig and XKB development libraries.
 Native file dialogs require `xdg-desktop-portal` and a portal backend for the desktop (GTK, GNOME or KDE).

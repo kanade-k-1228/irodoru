@@ -1,14 +1,14 @@
-pub mod editor;
-pub mod error;
-pub mod generation;
-pub mod inference;
+//! Desktop application capabilities; core services also compile without a GUI.
+pub mod audio;
+pub mod domain;
+mod files;
 pub mod library;
-pub mod media;
-pub mod model_resources;
+pub mod preferences;
 pub mod project;
-pub mod resources;
-pub mod service;
-pub mod settings;
-pub mod types;
+pub mod synthesis;
+pub mod workspace;
 
-mod window_projects;
+#[cfg(feature = "desktop")]
+extern crate gpui_kit as gpui;
+#[cfg(feature = "desktop")]
+pub mod desktop;
