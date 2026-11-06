@@ -4,6 +4,7 @@ import type {
   CharacterInput,
   EditorState,
   InferenceStatus,
+  ProjectStatus,
   SynthesisInput,
   Take,
   TakeRequest,
@@ -21,8 +22,8 @@ async function command<T>(name: string, args?: Record<string, unknown>): Promise
 export const fetchCharacters = () => command<Character[]>("fetch_characters");
 export const isMobile = () => command<boolean>("is_mobile");
 export const inferenceStatus = () => command<InferenceStatus>("inference_status");
-export const saveCharacter = (input: CharacterInput, id?: string) =>
-  command<Character>("save_character", { input, id: id ?? null });
+export const saveCharacter = (input: CharacterInput, id?: string, preview?: string) =>
+  command<Character>("save_character", { input, id: id ?? null, preview: preview ?? null });
 export const removeCharacter = (id: string) => command<void>("remove_character", { id });
 export const fetchVoices = () => command<string[]>("fetch_voices");
 export async function uploadVoice(name: string, wav: Blob): Promise<void> {
@@ -30,11 +31,21 @@ export async function uploadVoice(name: string, wav: Blob): Promise<void> {
 }
 export const fetchTakes = () => command<Take[]>("fetch_takes");
 export const removeTake = (id: string) => command<void>("remove_take", { id });
-export const prepareGeneration = (requests: TakeRequest[]) => command<string>("prepare_generation", { requests });
+export const prepareGeneration = async (requests: TakeRequest[]) => {
+  await pendingEditor;
+  return command<string>("prepare_generation", { requests });
+};
 export const generateTake = (batch: string, index: number) => command<Take>("generate_take", { batch, index });
 export const finishGeneration = (batch: string) => command<void>("finish_generation", { batch });
 export const loadEditor = () => command<EditorState>("load_editor");
-export const saveEditor = (editor: EditorState) => command<void>("save_editor", { editor });
+let pendingEditor: Promise<void> = Promise.resolve();
+export const saveEditor = (editor: EditorState) => {
+  pendingEditor = pendingEditor.catch(() => {}).then(() => command<void>("save_editor", { editor }));
+  return pendingEditor;
+};
+export const projectStatus = () => command<ProjectStatus>("project_status");
+export const chooseProject = (create: boolean) => command<boolean>("choose_project", { create });
+export const flushProject = () => command<void>("flush_project");
 export const exportTake = (id: string) => command<void>("export_take", { id });
 async function fetchWav(path: string, error: string, signal?: AbortSignal): Promise<Blob> {
   const response = await fetch(convertFileSrc(path), { signal });
@@ -50,3 +61,5 @@ export const removePreview = (id: string) => command<void>("remove_preview", { i
 export const exportPreview = (id: string) => command<void>("export_preview", { id });
 export const fetchPreviewAudio = async (id: string) =>
   fetchWav(await command<string>("preview_audio_path", { id }), "サンプル音声を読み込めませんでした");
+
+export const characterPreview = (id: string) => command<string | null>("character_preview", { id });

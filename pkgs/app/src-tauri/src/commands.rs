@@ -1,16 +1,22 @@
 use crate::{
     generation::{self, PreparedBatch},
     library::{Character, CharacterInput, Library, Take},
+    project::{self, ProjectStatus, Saver, Session, SharedProject},
     types::{EditorState, SynthesisInput, TakeRequest},
 };
-use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_fs::FsExt;
 
 struct Desktop {
-    library: Mutex<Library>,
-    previews: Mutex<Library>,
+    project: SharedProject,
+    saver: Saver,
+    switching: AtomicBool,
+    previews_running: AtomicUsize,
     batch: Mutex<Option<PreparedBatch>>,
     inference: Arc<crate::inference::Inference>,
 }
@@ -18,96 +24,196 @@ type CommandResult<T> = Result<T, String>;
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
-
+impl Desktop {
+    fn read<T>(&self, read: impl FnOnce(&Session) -> anyhow::Result<T>) -> CommandResult<T> {
+        let guard = self.project.lock().map_err(err)?;
+        if self.switching.load(Ordering::SeqCst) {
+            return Err("プロジェクトを切り替え中です".into());
+        }
+        read(
+            guard
+                .as_ref()
+                .ok_or("プロジェクトを作成または開いてください")?,
+        )
+        .map_err(err)
+    }
+    fn change<T>(
+        &self,
+        change: impl FnOnce(&Library) -> Result<T, crate::error::AppError>,
+    ) -> CommandResult<T> {
+        self.change_session(|session| change(&session.library))
+    }
+    fn change_session<T>(
+        &self,
+        change: impl FnOnce(&Session) -> Result<T, crate::error::AppError>,
+    ) -> CommandResult<T> {
+        let mut guard = self.project.lock().map_err(err)?;
+        if self.switching.load(Ordering::SeqCst) {
+            return Err("プロジェクトを切り替え中です".into());
+        }
+        let session = guard
+            .as_mut()
+            .ok_or("プロジェクトを作成または開いてください")?;
+        let result = change(session).map_err(err)?;
+        session.changed();
+        self.saver.changed().map_err(err)?;
+        Ok(result)
+    }
+}
 #[tauri::command]
 fn is_mobile() -> bool {
     cfg!(mobile)
 }
-
 #[tauri::command]
 fn inference_status(state: State<Desktop>) -> crate::types::InferenceStatus {
     state.inference.status()
 }
 #[tauri::command]
+fn project_status(state: State<Desktop>) -> CommandResult<ProjectStatus> {
+    project::status(&state.project).map_err(err)
+}
+
+#[tauri::command]
+async fn flush_project(state: State<'_, Desktop>) -> CommandResult<()> {
+    let receiver = state.saver.flush_sender().map_err(err)?;
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().map_err(err).and_then(|r| r))
+        .await
+        .map_err(err)?
+}
+
+#[tauri::command]
+async fn choose_project(
+    app: tauri::AppHandle,
+    state: State<'_, Desktop>,
+    create: bool,
+) -> CommandResult<bool> {
+    if state.switching.swap(true, Ordering::SeqCst) {
+        return Err("プロジェクトを切り替え中です".into());
+    }
+    struct Reset<'a>(&'a AtomicBool);
+    impl Drop for Reset<'_> {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _reset = Reset(&state.switching);
+    if state.batch.lock().map_err(err)?.is_some()
+        || state.previews_running.load(Ordering::SeqCst) != 0
+    {
+        return Err("生成完了後にプロジェクトを切り替えてください".into());
+    }
+    flush_project(state.clone()).await?;
+    let dialog_app = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        let dialog = dialog_app
+            .dialog()
+            .file()
+            .add_filter("irodoru project", &["zip"]);
+        if create {
+            dialog.set_file_name("project.zip").blocking_save_file()
+        } else {
+            dialog.blocking_pick_file()
+        }
+    })
+    .await
+    .map_err(err)?;
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|_| {
+        "この保存先はローカルファイルとして開けません。端末上のフォルダを選んでください".to_string()
+    })?;
+    let session = tauri::async_runtime::spawn_blocking(move || {
+        if create {
+            Session::create(path)
+        } else {
+            Session::open(path)
+        }
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)?;
+    app.asset_protocol_scope()
+        .allow_directory(session.library.root(), true)
+        .map_err(err)?;
+    app.asset_protocol_scope()
+        .allow_directory(session.previews.root(), true)
+        .map_err(err)?;
+    {
+        let mut current = state.project.lock().map_err(err)?;
+        *current = Some(session);
+    }
+    if create {
+        state.saver.changed().map_err(err)?;
+    }
+    app.emit(
+        "project-status",
+        project::status(&state.project).map_err(err)?,
+    )
+    .map_err(err)?;
+    Ok(true)
+}
+
+#[tauri::command]
 fn fetch_characters(state: State<Desktop>) -> CommandResult<Vec<Character>> {
-    state.library.lock().map_err(err)?.characters().map_err(err)
+    state.read(|s| Ok(s.library.characters()?))
 }
 #[tauri::command]
 fn save_character(
     state: State<Desktop>,
     input: CharacterInput,
     id: Option<String>,
+    preview: Option<String>,
 ) -> CommandResult<Character> {
-    let library = state.library.lock().map_err(err)?;
-    match id {
-        Some(id) => library.update_character(id, input),
-        None => library.create_character(input),
-    }
-    .map_err(err)
+    state.change_session(|session| {
+        let character = match id {
+            Some(id) => session.library.update_character(id, input)?,
+            None => session.library.create_character(input)?,
+        };
+        if let Some(preview) = preview {
+            session
+                .library
+                .save_character_preview(&character.id, &session.previews, &preview)?;
+        }
+        Ok(character)
+    })
 }
 #[tauri::command]
 fn remove_character(state: State<Desktop>, id: String) -> CommandResult<()> {
-    state
-        .library
-        .lock()
-        .map_err(err)?
-        .delete_character(&id)
-        .map_err(err)
+    state.change(|library| library.delete_character(&id))
 }
 #[tauri::command]
 fn fetch_voices(state: State<Desktop>) -> CommandResult<Vec<String>> {
-    state.library.lock().map_err(err)?.voices().map_err(err)
+    state.read(|s| Ok(s.library.voices()?))
 }
 #[tauri::command]
 fn upload_voice(state: State<Desktop>, name: String, wav: Vec<u8>) -> CommandResult<()> {
-    state
-        .library
-        .lock()
-        .map_err(err)?
-        .save_voice(&name, &wav)
-        .map_err(err)
+    state.change(|library| library.save_voice(&name, &wav))
 }
 #[tauri::command]
 fn fetch_takes(state: State<Desktop>) -> CommandResult<Vec<Take>> {
-    state.library.lock().map_err(err)?.takes().map_err(err)
+    state.read(|s| Ok(s.library.takes()?))
 }
 #[tauri::command]
 fn remove_take(state: State<Desktop>, id: String) -> CommandResult<()> {
-    state
-        .library
-        .lock()
-        .map_err(err)?
-        .delete_take(&id)
-        .map_err(err)
+    state.change(|library| library.delete_take(&id))
 }
 #[tauri::command]
 fn take_audio_path(state: State<Desktop>, id: String) -> CommandResult<String> {
-    Ok(state
-        .library
-        .lock()
-        .map_err(err)?
-        .audio_path(&id)
-        .map_err(err)?
-        .to_string_lossy()
-        .into_owned())
+    state.read(|s| Ok(s.library.audio_path(&id)?.to_string_lossy().into_owned()))
 }
 #[tauri::command]
 fn load_editor(state: State<Desktop>) -> CommandResult<EditorState> {
-    state.library.lock().map_err(err)?.editor().map_err(err)
+    state.read(|s| Ok(s.library.editor()?))
 }
 #[tauri::command]
 fn save_editor(state: State<Desktop>, editor: EditorState) -> CommandResult<()> {
-    state
-        .library
-        .lock()
-        .map_err(err)?
-        .save_editor(&editor)
-        .map_err(err)
+    state.change(|library| library.save_editor(&editor))
 }
 #[tauri::command]
 fn prepare_generation(state: State<Desktop>, requests: Vec<TakeRequest>) -> CommandResult<String> {
     let mut batch = state.batch.lock().map_err(err)?;
-    PreparedBatch::prepare(&mut batch, &*state.library.lock().map_err(err)?, requests).map_err(err)
+    state.read(|s| PreparedBatch::prepare(&mut batch, &s.library, requests))
 }
 #[tauri::command]
 async fn generate_take(
@@ -130,12 +236,7 @@ async fn generate_take(
     .await
     .map_err(err)?
     .map_err(err)?;
-    state
-        .library
-        .lock()
-        .map_err(err)?
-        .save_take(&take, &wav)
-        .map_err(err)?;
+    state.change(|library| library.save_take(&take, &wav))?;
     Ok(take)
 }
 #[tauri::command]
@@ -149,16 +250,10 @@ async fn export_take(
     state: State<'_, Desktop>,
     id: String,
 ) -> CommandResult<()> {
-    let (wav, filename) = {
-        let library = state.library.lock().map_err(err)?;
-        (
-            library.audio(&id).map_err(err)?,
-            library.export_filename(&id).map_err(err)?,
-        )
-    };
+    let (wav, filename) =
+        state.read(|s| Ok((s.library.audio(&id)?, s.library.export_filename(&id)?)))?;
     save_wav(app, wav, filename).await
 }
-
 async fn save_wav(app: tauri::AppHandle, wav: Vec<u8>, filename: String) -> CommandResult<()> {
     let dialog_app = app.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
@@ -196,13 +291,16 @@ async fn preview_character(
     description: String,
     voice: Option<String>,
 ) -> CommandResult<String> {
-    let prepared = generation::prepare_preview(
-        &*state.library.lock().map_err(err)?,
-        request,
-        description,
-        voice,
-    )
-    .map_err(err)?;
+    state.previews_running.fetch_add(1, Ordering::SeqCst);
+    struct Reset<'a>(&'a AtomicUsize);
+    impl Drop for Reset<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    let _reset = Reset(&state.previews_running);
+    let prepared =
+        state.read(|s| generation::prepare_preview(&s.library, request, description, voice))?;
     let inference = state.inference.clone();
     let (take, wav) = tauri::async_runtime::spawn_blocking(move || {
         generation::synthesize(prepared, |job| inference.synthesize(job))
@@ -210,33 +308,26 @@ async fn preview_character(
     .await
     .map_err(err)?
     .map_err(err)?;
-    state
-        .previews
-        .lock()
-        .map_err(err)?
-        .save_take(&take, &wav)
-        .map_err(err)?;
+    state.read(|s| Ok(s.previews.save_take(&take, &wav)?))?;
     Ok(take.id)
 }
 #[tauri::command]
 fn preview_audio_path(state: State<Desktop>, id: String) -> CommandResult<String> {
-    Ok(state
-        .previews
-        .lock()
-        .map_err(err)?
-        .audio_path(&id)
-        .map_err(err)?
-        .to_string_lossy()
-        .into_owned())
+    state.read(|s| {
+        let path = match s.library.character_preview_path(&id)? {
+            Some(path) => path,
+            None => s.previews.audio_path(&id)?,
+        };
+        Ok(path.to_string_lossy().into_owned())
+    })
+}
+#[tauri::command]
+fn character_preview(state: State<Desktop>, id: String) -> CommandResult<Option<String>> {
+    state.read(|s| Ok(s.library.character_preview_path(&id)?.map(|_| id)))
 }
 #[tauri::command]
 fn remove_preview(state: State<Desktop>, id: String) -> CommandResult<()> {
-    state
-        .previews
-        .lock()
-        .map_err(err)?
-        .delete_take(&id)
-        .map_err(err)
+    state.read(|s| Ok(s.previews.delete_take(&id)?))
 }
 #[tauri::command]
 async fn export_preview(
@@ -244,13 +335,12 @@ async fn export_preview(
     state: State<'_, Desktop>,
     id: String,
 ) -> CommandResult<()> {
-    let (wav, filename) = {
-        let library = state.previews.lock().map_err(err)?;
-        (
-            library.audio(&id).map_err(err)?,
-            library.export_filename(&id).map_err(err)?,
-        )
-    };
+    let (wav, filename) = state.read(|s| {
+        if let Some(path) = s.library.character_preview_path(&id)? {
+            return Ok((std::fs::read(path)?, format!("sample-{id}.wav")));
+        }
+        Ok((s.previews.audio(&id)?, s.previews.export_filename(&id)?))
+    })?;
     save_wav(app, wav, filename).await
 }
 pub fn run() {
@@ -265,16 +355,17 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let library = Library::open(&app.path().app_local_data_dir()?)?;
-            let preview_root = app.path().app_local_data_dir()?.join("previews");
-            if preview_root.exists() {
-                std::fs::remove_dir_all(&preview_root)?;
-            }
-            let previews = Library::open(&preview_root)?;
+            let project: SharedProject = Arc::new(Mutex::new(None));
+            let save_handle = app.handle().clone();
+            let saver = Saver::start(project.clone(), move |status| {
+                let _ = save_handle.emit("project-status", status);
+            })?;
             let handle = app.handle().clone();
             app.manage(Desktop {
-                previews: Mutex::new(previews),
-                library: Mutex::new(library),
+                project,
+                saver,
+                switching: AtomicBool::new(false),
+                previews_running: AtomicUsize::new(0),
                 batch: Mutex::new(None),
                 inference: Arc::new(crate::inference::Inference::start_with(move || {
                     Ok(irodoru_engine::EngineConfig::anime(
@@ -287,6 +378,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             is_mobile,
             inference_status,
+            project_status,
+            choose_project,
+            flush_project,
             fetch_characters,
             save_character,
             remove_character,
@@ -303,6 +397,7 @@ pub fn run() {
             export_take,
             preview_character,
             preview_audio_path,
+            character_preview,
             remove_preview,
             export_preview
         ])

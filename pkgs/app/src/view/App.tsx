@@ -5,11 +5,11 @@ import { Header } from "@/view/header/Header.tsx";
 import { Composer } from "@/view/timeline/Composer.tsx";
 
 export const App = () => {
-  const save = useLibrary();
+  const project = useLibrary();
   useInferenceStatus();
   return (
     <div className="studio">
-      <Header onSave={save} />
+      <Header project={project} />
       <Composer />
       <AudioEditor />
     </div>
