@@ -1,4 +1,4 @@
-use irodoru_desktop::media::{import_audio, import_icon};
+use irodoru_desktop::audio::{import_audio, import_icon};
 use std::{io::Cursor, path::Path};
 #[test]
 fn supported_audio_formats_decode_downmix_and_resample() {
