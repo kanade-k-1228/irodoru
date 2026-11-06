@@ -21,13 +21,11 @@ jobs:
         run: |
           uv sync --project pkgs/engine/script --frozen
           uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-      - run: node scripts/models.mts prepare
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask models prepare
       - uses: actions/upload-artifact@v7
         with:
           name: app-models
-          path: pkgs/app/src-tauri/resources/models/
+          path: pkgs/app/resources/models/
           compression-level: 0
           retention-days: 1

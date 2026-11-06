@@ -10,5 +10,5 @@ pkgs/engine/script/*.log
 voices/*
 !voices/.gitkeep
 .claude/
-/pkgs/app/src-tauri/gen/
-/pkgs/app/src-tauri/resources/models/
+/pkgs/app/gen/
+/pkgs/app/resources/models/

@@ -2,7 +2,7 @@
 
 A speech app and Docker inference server built on [Irodori-TTS](https://github.com/Aratako/Irodori-TTS).
 Both include [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) and its codec (about 3.44 GB).
-The app runs offline and targets Windows, macOS (Apple Silicon), Linux, iOS, and Android.
+The Rust/GPUI desktop app runs offline on Windows x64, macOS 15+ (Apple Silicon), and Linux x64.
 
 Download app packages from [Releases](https://github.com/kanade-k-1228/irodoru/releases).
 Large packages are split into parts; download all parts and follow the included README to join and verify them.
@@ -45,19 +45,29 @@ filesystem path; document-provider URLs such as Android `content://` are not sup
 
 ## App development
 
-Requires Rust, Node.js 26, pnpm, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+The app and development tasks use Cargo; Node.js and pnpm are not required. Requires stable Rust and the [GPUI Kit native prerequisites](https://gpui-kit.com/docs/installation/).
+Linux needs a graphical Wayland or X11 session with Vulkan, plus ALSA, fontconfig and XKB development libraries.
+Native file dialogs require `xdg-desktop-portal` and a portal backend for the desktop (GTK, GNOME or KDE).
+Packaging additionally needs `cargo install cargo-packager --version 0.11.8 --locked`, `patchelf` on Linux, or 7-Zip on Windows.
 Model export also requires Python and uv.
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm models:export    # Export anime and codec
-pnpm models:prepare   # Copy models into app resources
-pnpm dev
-pnpm build:app
+cargo xtask models export    # Export anime and codec
+cargo xtask models prepare   # Copy models into app resources
+cargo xtask dev
+cargo xtask package
 ```
 
-For existing models, replace export and prepare with `pnpm models:prepare --source /path/to/models`.
-For mobile, run `pnpm android:init` then `pnpm android:build`, or `pnpm ios:init` then `pnpm ios:build`.
+For existing models, replace export and prepare with `cargo xtask models prepare --source /path/to/models`.
+The app UI and runtime are entirely Rust; Android and iOS builds are no longer provided.
+Reference audio supports WAV, MP3, FLAC, Ogg Vorbis and AAC/M4A; imports become 48 kHz mono WAV, up to 60 seconds (minimum 1 second).
+Icons support PNG, JPEG, WebP, GIF, BMP, TIFF and SVG up to 10 MB, cropped to a 128-pixel square.
+The top-left irodoru menu contains project actions, theme, preferences and app information. Ctrl/Cmd+Shift+N opens an independent window; Ctrl/Cmd+N/O/S create, open and save projects, Ctrl/Cmd+, opens preferences, and Ctrl/Cmd+W closes the current window after saving. The footer displays the project archive path. A project cannot be opened in two windows at once.
+Theme preferences are stored in the OS app configuration directory and default to dark. Existing project ZIPs remain compatible.
+For development, `IRODORU_MODELS` can point to a directory containing `anime/` and `codec/`.
+`cargo xtask package --no-bundle` creates a standalone directory with models.
+Run `cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings` to check the native UI after installing the platform dependencies.
+CI builds all three desktop targets and runs offline synthesis from the extracted ZIP, DMG, AppImage and deb packages. Run `bash scripts/smoke-package.sh TARGET` to repeat this check locally after packaging, or launch the shipped executable with `--smoke-test`.
 
 ## Docker server
 
@@ -90,8 +100,8 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 
 ## Development commands
 
-Run checks with `pnpm verify`. Generate the API schema and types with `pnpm generate`.
-See [package.json](package.json) for other commands and [CI](.github/workflows) for builds and releases.
+Run checks with `cargo xtask verify`. Generate the OpenAPI schema with `cargo xtask generate`.
+Run `cargo xtask help` for other commands and see [CI](.github/workflows) for builds and releases.
 
 ## License
 

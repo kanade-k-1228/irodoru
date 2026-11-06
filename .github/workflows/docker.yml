@@ -87,9 +87,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
@@ -124,4 +122,4 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           IMAGE_TAG: ${{ steps.meta.outputs.version }}
         run: |
-          node scripts/release.mts container
+          cargo xtask release container
