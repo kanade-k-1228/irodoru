@@ -1,17 +1,25 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
-import { fetchPreviewAudio, previewCharacter, removePreview } from "@/logic/lib/api.ts";
+import { characterPreview, fetchPreviewAudio, previewCharacter, removePreview } from "@/logic/lib/api.ts";
 import { speechRequest } from "@/logic/lib/script.ts";
 import { busyAtom } from "@/logic/state/app.ts";
 import { defaultSettingsAtom } from "@/logic/state/script.ts";
 import type { CharacterPreviewProps } from "@/view/editor/character/CharacterPreview.tsx";
 
-export const useCharacterPreview = ({ text, description, voice, disabled, onError }: CharacterPreviewProps) => {
+export const useCharacterPreview = ({
+  characterId,
+  onGenerated,
+  text,
+  description,
+  voice,
+  disabled,
+  onError,
+}: CharacterPreviewProps) => {
   const defaults = useAtomValue(defaultSettingsAtom);
   const setBusy = useSetAtom(busyAtom);
   const [settings, setSettings] = useState(() => ({ ...defaults, numSteps: "", seed: defaults.seed || "1" }));
   const [generating, setGenerating] = useState(false);
-  const [sample, setSample] = useState<{ id: string; url: string; settings: string }>();
+  const [sample, setSample] = useState<{ id: string; url: string; settings: string; stored?: boolean }>();
   const request = useRef<AbortController | null>(null);
   const currentSettings = JSON.stringify({ text, description, voice, settings });
   const source = sample?.url;
@@ -20,7 +28,7 @@ export const useCharacterPreview = ({ text, description, voice, disabled, onErro
     () => () => {
       if (sample) {
         URL.revokeObjectURL(sample.url);
-        void removePreview(sample.id).catch(() => {});
+        if (!sample.stored) void removePreview(sample.id).catch(() => {});
       }
     },
     [sample],
@@ -35,6 +43,22 @@ export const useCharacterPreview = ({ text, description, voice, disabled, onErro
     [],
   );
 
+  useEffect(() => {
+    if (!characterId) return;
+    let disposed = false;
+    void characterPreview(characterId)
+      .then(async (id) => {
+        if (!id) return;
+        const blob = await fetchPreviewAudio(id);
+        if (!disposed)
+          setSample((current) => current ?? { id, url: URL.createObjectURL(blob), settings: "", stored: true });
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, [characterId]);
+
   const generate = async () => {
     if (disabled || request.current || !text.trim()) return;
     const controller = new AbortController();
@@ -47,7 +71,10 @@ export const useCharacterPreview = ({ text, description, voice, disabled, onErro
       try {
         const blob = await fetchPreviewAudio(id);
         if (controller.signal.aborted) await removePreview(id);
-        else setSample({ id, url: URL.createObjectURL(blob), settings: currentSettings });
+        else {
+          setSample({ id, url: URL.createObjectURL(blob), settings: currentSettings });
+          onGenerated(id);
+        }
       } catch (error) {
         await removePreview(id).catch(() => {});
         throw error;

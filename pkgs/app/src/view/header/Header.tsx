@@ -1,11 +1,16 @@
 import { useAtom, useAtomValue } from "jotai";
-import { AudioLines, CircleAlert, Save, X } from "lucide-react";
-import { errorAtom, readyAtom } from "@/logic/state/app.ts";
+import { AudioLines, CircleAlert, FilePlus2, FolderOpen, Save, X } from "lucide-react";
+import type { useLibrary } from "@/logic/hooks/useLibrary.ts";
+import { busyAtom, errorAtom, readyAtom } from "@/logic/state/app.ts";
+import { editingCharacterAtom } from "@/logic/state/characters.ts";
 import { InferenceStatus } from "./InferenceStatus.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
-export const Header = ({ onSave }: { onSave: () => void }) => {
+export const Header = ({ project }: { project: ReturnType<typeof useLibrary> }) => {
   const ready = useAtomValue(readyAtom);
+  const busy = useAtomValue(busyAtom);
+  const editing = useAtomValue(editingCharacterAtom) !== undefined;
+  const disabled = project.loading || busy || editing;
   const [error, setError] = useAtom(errorAtom);
   return (
     <header className="studio-header">
@@ -13,13 +18,38 @@ export const Header = ({ onSave }: { onSave: () => void }) => {
         <AudioLines className="size-5 text-accent" />
         irodoru
       </h1>
+      <span className="ml-auto truncate text-xs text-muted" role="status">
+        {project.status.name ?? "プロジェクト未選択"}
+        {project.status.id &&
+          ` · ${{ closed: "", saved: "保存済み", saving: "保存中…", error: "保存失敗" }[project.status.state] ?? ""}`}
+      </span>
       <button
         type="button"
-        className="icon-btn ml-auto"
+        className="icon-btn"
+        disabled={disabled}
+        aria-label="プロジェクトを新規作成"
+        title="プロジェクトを新規作成"
+        onClick={project.create}
+      >
+        <FilePlus2 className="size-4" />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
+        disabled={disabled}
+        aria-label="プロジェクトを開く"
+        title="プロジェクトを開く"
+        onClick={project.open}
+      >
+        <FolderOpen className="size-4" />
+      </button>
+      <button
+        type="button"
+        className="icon-btn"
         disabled={!ready}
-        aria-label="台本を保存"
-        title="台本を保存"
-        onClick={onSave}
+        aria-label="プロジェクトを保存"
+        title="プロジェクトを保存"
+        onClick={project.save}
       >
         <Save className="size-4" />
       </button>
@@ -36,7 +66,9 @@ export const Header = ({ onSave }: { onSave: () => void }) => {
       )}
       {!ready && (
         <div className="basis-full px-2 py-1 text-xs text-muted">
-          {error ? "ローカルデータを読み込めません。アプリを再起動してください。" : "ライブラリを読み込み中…"}
+          {project.loading
+            ? "プロジェクトを読み込み中…"
+            : "プロジェクトZIPを新規作成するか、既存のZIPを開いてください。"}
         </div>
       )}
     </header>

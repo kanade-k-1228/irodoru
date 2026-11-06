@@ -253,7 +253,7 @@ describe("shared generation atoms", () => {
     expect(store.get(busyAtom)).toBe(true);
   });
 
-  it("regenerates with a distinct seed while keeping previous takes and per-row take selection", async () => {
+  it("regenerates with a distinct seed and replaces the previous take", async () => {
     const store = makeStore();
     const [first, second] = store.get(rowsAtom);
     const old = takeFor(first.id, "old", 19);
@@ -263,25 +263,26 @@ describe("shared generation atoms", () => {
     await store.set(generateSelectedRowAtom, true);
     expect(vi.mocked(prepareGeneration).mock.calls[0][0][0].request.seed).toBe(20);
     expect(store.get(selectedTakeAtom)?.id).toBe("new");
-    expect(store.get(selectedRowTakesAtom)).toHaveLength(2);
+    expect(store.get(selectedRowTakesAtom)).toHaveLength(1);
     store.set(editSelectedRowAtom, { takeId: "old" });
     store.set(selectRowAtom, second.id);
     store.set(selectRowAtom, first.id);
-    expect(store.get(selectedTakeAtom)).toBe(old);
+    expect(store.get(selectedTakeAtom)?.id).toBe("new");
+    expect(store.get(takesAtom)).not.toContain(old);
   });
 
-  it("keeps audio on deletion failure and falls back to the next take after successful deletion", async () => {
+  it("keeps audio on deletion failure and clears the current audio after successful deletion", async () => {
     const store = makeStore();
     const first = store.get(rowsAtom)[0];
-    const old = takeFor(first.id, "old"),
-      latest = takeFor(first.id, "latest");
-    store.set(takesAtom, [latest, old]);
+    const latest = takeFor(first.id, "latest");
+    store.set(takesAtom, [latest]);
     store.set(editSelectedRowAtom, { takeId: "latest" });
     vi.mocked(removeTake).mockRejectedValueOnce(new Error("削除失敗")).mockResolvedValueOnce(undefined);
     await store.set(deleteTakeAtom, latest.id);
     expect(store.get(selectedTakeAtom)).toBe(latest);
     expect(store.get(deletingTakeAtom)).toBeNull();
     await store.set(deleteTakeAtom, latest.id);
-    expect(store.get(selectedTakeAtom)).toBe(old);
+    expect(store.get(selectedTakeAtom)).toBeUndefined();
+    expect(store.get(rowsAtom)[0].takeId).toBeUndefined();
   });
 });
