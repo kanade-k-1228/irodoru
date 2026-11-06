@@ -20,7 +20,8 @@ case "$target" in
   aarch64-apple-darwin)
     archive=$(find "$bundle" -name '*.dmg' -type f -print -quit)
     mkdir "$work/mount"
-    hdiutil attach -readonly -nobrowse -mountpoint "$work/mount" "$archive"
+    # cargo-packager embeds our MIT license in the DMG; hdiutil asks before mounting.
+    hdiutil attach -readonly -nobrowse -mountpoint "$work/mount" "$archive" <<<'Y'
     mounted=true
     (cd "$work" && ./mount/irodoru.app/Contents/MacOS/irodoru --smoke-test)
     ;;

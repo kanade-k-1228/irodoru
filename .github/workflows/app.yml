@@ -70,6 +70,7 @@ jobs:
         with:
           workspaces: . -> target
           key: ${{ matrix.target }}
+          cache-on-failure: true
       - uses: actions/download-artifact@v8
         with:
           name: app-models
