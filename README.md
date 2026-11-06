@@ -4,6 +4,10 @@ A speech app and Docker inference server built on [Irodori-TTS](https://github.c
 Both include [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) and its codec (about 3.44 GB).
 The app runs offline and targets Windows, macOS (Apple Silicon), Linux, iOS, and Android.
 
+Download app packages from [Releases](https://github.com/kanade-k-1228/irodoru/releases).
+Large packages are split into parts; download all parts and follow the included README to join and verify them.
+On Windows, extract the joined ZIP and run `irodoru.exe`.
+
 ## App development
 
 Requires Rust, Node.js 26, pnpm, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
