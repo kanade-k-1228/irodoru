@@ -22,7 +22,13 @@ import { preferencesAtom, rowsAtom, selectRowAtom } from "@/logic/state/script.t
 
 export function useLibrary() {
   const store = useStore();
-  const [status, setStatus] = useState<ProjectStatus>({ id: null, name: null, state: "closed", error: null });
+  const [status, setStatus] = useState<ProjectStatus>({
+    id: null,
+    name: null,
+    path: null,
+    state: "closed",
+    error: null,
+  });
   const [loading, setLoading] = useState(true);
   const session = useRef<string | null>(null);
   const transitioning = useRef(false);

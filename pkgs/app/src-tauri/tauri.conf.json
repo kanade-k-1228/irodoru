@@ -14,6 +14,7 @@
     "windows": [
       {
         "title": "irodoru",
+        "decorations": false,
         "width": 1200,
         "height": 850,
         "minWidth": 600,

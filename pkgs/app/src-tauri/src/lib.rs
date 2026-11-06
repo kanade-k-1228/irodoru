@@ -11,6 +11,7 @@ pub mod generation;
 pub mod library;
 pub mod project;
 pub mod types;
+pub mod workspaces;
 
 pub mod inference;
 #[cfg(feature = "desktop")]
