@@ -77,7 +77,10 @@ impl GenerationConditions {
 }
 
 pub fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -85,6 +88,14 @@ mod tests {
     use super::*;
     use crate::{SynthesisRequest, TTSJob};
     use serde_json::json;
+
+    #[test]
+    fn sha256_preserves_lowercase_hex_with_leading_zeroes() {
+        assert_eq!(
+            sha256(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     fn conditions(input: serde_json::Value) -> GenerationConditions {
         let request: SynthesisRequest = serde_json::from_value(input).unwrap();
