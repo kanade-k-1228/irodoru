@@ -175,6 +175,8 @@ const CharacterEditor = ({
             />
           </div>
           <CharacterPreview
+            characterId={editor.characterId}
+            onGenerated={editor.setPreviewId}
             text={draft.sample_text}
             onTextChange={(sample_text) => change({ sample_text })}
             description={draft.description}
