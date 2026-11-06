@@ -127,8 +127,56 @@ a:focus-visible,
     padding-right: calc(0.5rem + var(--safe-area-right));
     padding-left: calc(0.5rem + var(--safe-area-left));
   }
+  .studio-footer {
+    @apply shrink-0 border-t border-line bg-panel px-2 py-1 text-xs text-muted;
+    padding-right: calc(0.5rem + var(--safe-area-right));
+    padding-bottom: calc(0.25rem + var(--safe-area-bottom));
+    padding-left: calc(0.5rem + var(--safe-area-left));
+  }
   .theme-toggle {
     @apply flex shrink-0 items-center rounded-full text-muted;
+  }
+  .studio-toolbar {
+    @apply flex min-w-0 w-full items-center gap-2;
+  }
+  .app-menu {
+    @apply relative shrink-0;
+  }
+  .app-menu-trigger {
+    @apply flex items-center gap-1.5 rounded-md px-1 py-1 text-base font-bold tracking-tight hover:bg-control;
+  }
+  .app-menu-popup {
+    @apply absolute top-full left-0 z-30 mt-2 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-outline bg-panel p-1 shadow-xl;
+    max-height: calc(100dvh - 3rem - var(--safe-area-top));
+    overflow-y: auto;
+  }
+  .app-menu-item {
+    @apply flex min-h-9 w-full items-center justify-between gap-4 rounded-md px-3 py-2 text-left text-sm text-ink enabled:hover:bg-control-hover focus-visible:bg-control-hover disabled:opacity-40;
+  }
+  .app-menu-separator {
+    @apply my-1 border-line;
+  }
+  .app-dialog {
+    @apply fixed inset-0 m-auto w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-outline bg-panel p-5 text-ink shadow-xl;
+  }
+  .app-dialog::backdrop {
+    background: var(--dialog-backdrop);
+  }
+  .project-title {
+    @apply min-w-16 flex-1 self-stretch content-center truncate text-xs text-muted;
+  }
+  [data-tauri-drag-region] {
+    user-select: none;
+  }
+  .window-controls {
+    @apply -my-1 -mr-2 flex shrink-0 self-stretch;
+  }
+  .window-control {
+    @apply inline-flex min-h-9 w-11 items-center justify-center text-ink enabled:hover:bg-control-hover disabled:opacity-40;
+  }
+  .window-control-close:enabled:hover {
+    background: #c42b1c;
+    color: #fff;
   }
   .inference-status {
     @apply max-w-64 truncate text-xs text-muted;
@@ -163,7 +211,6 @@ a:focus-visible,
     @apply flex-row shrink-0 border-t border-line bg-panel;
     height: min(50%, 360px);
     padding-right: var(--safe-area-right);
-    padding-bottom: var(--safe-area-bottom);
     padding-left: var(--safe-area-left);
   }
   .editor-scroll {
@@ -305,12 +352,17 @@ a:focus-visible,
     appearance: none;
     writing-mode: vertical-lr;
     direction: ltr;
+    border: 0;
     background: transparent;
+    box-shadow: none;
   }
   .script-scrollbar::-webkit-slider-runnable-track {
     width: 4px;
+    height: 100%;
+    border: 0;
     border-radius: 4px;
-    background: var(--color-control);
+    background: transparent;
+    box-shadow: none;
   }
   .script-scrollbar::-webkit-slider-thumb {
     appearance: none;
@@ -322,8 +374,11 @@ a:focus-visible,
   }
   .script-scrollbar::-moz-range-track {
     width: 4px;
+    height: 100%;
+    border: 0;
     border-radius: 4px;
-    background: var(--color-control);
+    background: transparent;
+    box-shadow: none;
   }
   .script-scrollbar::-moz-range-thumb {
     width: 12px;
@@ -400,7 +455,8 @@ a:focus-visible,
     background: color-mix(in srgb, var(--color-control) 78%, black);
   }
   .script-row.is-active .script-text {
-    color: transparent;
+    color: var(--color-ink);
+    padding-right: 2.5rem;
   }
   .script-actions {
     @apply flex shrink-0 flex-wrap items-center justify-between gap-1 px-1 py-1;

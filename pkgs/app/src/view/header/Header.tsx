@@ -1,10 +1,11 @@
 import { useAtom, useAtomValue } from "jotai";
-import { AudioLines, CircleAlert, FilePlus2, FolderOpen, Save, X } from "lucide-react";
+import { CircleAlert, Copy, Minus, Square, X } from "lucide-react";
 import type { useLibrary } from "@/logic/hooks/useLibrary.ts";
+import { useWindowControls } from "@/logic/hooks/useWindowControls.ts";
 import { busyAtom, errorAtom, readyAtom } from "@/logic/state/app.ts";
 import { editingCharacterAtom } from "@/logic/state/characters.ts";
+import { AppMenu } from "./AppMenu.tsx";
 import { InferenceStatus } from "./InferenceStatus.tsx";
-import { ThemeToggle } from "./ThemeToggle.tsx";
 
 export const Header = ({ project }: { project: ReturnType<typeof useLibrary> }) => {
   const ready = useAtomValue(readyAtom);
@@ -12,49 +13,50 @@ export const Header = ({ project }: { project: ReturnType<typeof useLibrary> }) 
   const editing = useAtomValue(editingCharacterAtom) !== undefined;
   const disabled = project.loading || busy || editing;
   const [error, setError] = useAtom(errorAtom);
+  const windowControls = useWindowControls();
   return (
     <header className="studio-header">
-      <h1 className="flex items-center gap-1.5 text-base font-bold tracking-tight">
-        <AudioLines className="size-5 text-accent" />
-        irodoru
-      </h1>
-      <span className="ml-auto truncate text-xs text-muted" role="status">
-        {project.status.name ?? "プロジェクト未選択"}
-        {project.status.id &&
-          ` · ${{ closed: "", saved: "保存済み", saving: "保存中…", error: "保存失敗" }[project.status.state] ?? ""}`}
-      </span>
-      <button
-        type="button"
-        className="icon-btn"
-        disabled={disabled}
-        aria-label="プロジェクトを新規作成"
-        title="プロジェクトを新規作成"
-        onClick={project.create}
-      >
-        <FilePlus2 className="size-4" />
-      </button>
-      <button
-        type="button"
-        className="icon-btn"
-        disabled={disabled}
-        aria-label="プロジェクトを開く"
-        title="プロジェクトを開く"
-        onClick={project.open}
-      >
-        <FolderOpen className="size-4" />
-      </button>
-      <button
-        type="button"
-        className="icon-btn"
-        disabled={!ready}
-        aria-label="プロジェクトを保存"
-        title="プロジェクトを保存"
-        onClick={project.save}
-      >
-        <Save className="size-4" />
-      </button>
-      <ThemeToggle />
-      <InferenceStatus />
+      <div className="studio-toolbar" data-tauri-drag-region={windowControls.desktop || undefined}>
+        <AppMenu project={project} windowControls={windowControls} disabled={disabled} ready={ready} />
+        <span className="project-title" role="status" data-tauri-drag-region={windowControls.desktop || undefined}>
+          {project.status.name ?? "プロジェクト未選択"}
+          {project.status.id &&
+            ` · ${{ closed: "", saved: "保存済み", saving: "保存中…", error: "保存失敗" }[project.status.state] ?? ""}`}
+        </span>
+        <InferenceStatus />
+        {windowControls.desktop && (
+          <fieldset className="window-controls" aria-label="ウィンドウ操作">
+            <button
+              type="button"
+              className="window-control"
+              aria-label="最小化"
+              title="最小化"
+              onClick={windowControls.minimize}
+            >
+              <Minus className="size-4" />
+            </button>
+            <button
+              type="button"
+              className="window-control"
+              aria-label={windowControls.maximized ? "元のサイズに戻す" : "最大化"}
+              title={windowControls.maximized ? "元のサイズに戻す" : "最大化"}
+              onClick={windowControls.toggleMaximize}
+            >
+              {windowControls.maximized ? <Copy className="size-3.5" /> : <Square className="size-3.5" />}
+            </button>
+            <button
+              type="button"
+              className="window-control window-control-close"
+              aria-label="ウィンドウを閉じる"
+              title="閉じる"
+              disabled={project.loading}
+              onClick={windowControls.close}
+            >
+              <X className="size-4" />
+            </button>
+          </fieldset>
+        )}
+      </div>
       {error && (
         <div role="alert" className="error-banner basis-full">
           <CircleAlert className="size-4 shrink-0" />

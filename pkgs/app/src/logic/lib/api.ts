@@ -21,6 +21,7 @@ async function command<T>(name: string, args?: Record<string, unknown>): Promise
 }
 export const fetchCharacters = () => command<Character[]>("fetch_characters");
 export const isMobile = () => command<boolean>("is_mobile");
+export const newWindow = () => command<void>("new_window");
 export const inferenceStatus = () => command<InferenceStatus>("inference_status");
 export const saveCharacter = (input: CharacterInput, id?: string, preview?: string) =>
   command<Character>("save_character", { input, id: id ?? null, preview: preview ?? null });

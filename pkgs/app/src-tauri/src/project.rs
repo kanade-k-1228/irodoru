@@ -18,6 +18,7 @@ use crate::library::{Library, new_id};
 pub struct ProjectStatus {
     pub id: Option<String>,
     pub name: Option<String>,
+    pub path: Option<String>,
     #[ts(type = "\"closed\" | \"saving\" | \"saved\" | \"error\"")]
     pub state: String,
     pub error: Option<String>,
@@ -111,6 +112,7 @@ impl Session {
                     .to_string_lossy()
                     .into_owned(),
             ),
+            path: Some(self.path.to_string_lossy().into_owned()),
             state: if self.error.is_some() {
                 "error"
             } else if self.revision != self.saved {
@@ -219,6 +221,7 @@ pub fn status(project: &SharedProject) -> Result<ProjectStatus> {
         .unwrap_or(ProjectStatus {
             id: None,
             name: None,
+            path: None,
             state: "closed".into(),
             error: None,
         }))
