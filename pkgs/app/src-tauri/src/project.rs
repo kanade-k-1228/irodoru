@@ -228,10 +228,16 @@ struct Snapshot {
     id: String,
     revision: u64,
     path: PathBuf,
-    files: Vec<(String, File)>,
+    files: Vec<(String, PathBuf)>,
+    _directory: tempfile::TempDir,
 }
 fn snapshot(session: &Session) -> Result<Snapshot> {
-    fn visit(root: &Path, path: &Path, files: &mut Vec<(String, File)>) -> Result<()> {
+    fn visit(
+        root: &Path,
+        path: &Path,
+        staging: &Path,
+        files: &mut Vec<(String, PathBuf)>,
+    ) -> Result<()> {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             if entry.file_name().to_string_lossy().starts_with('.') {
@@ -239,28 +245,41 @@ fn snapshot(session: &Session) -> Result<Snapshot> {
             }
             let path = entry.path();
             if entry.file_type()?.is_dir() {
-                visit(root, &path, files)?;
+                visit(root, &path, staging, files)?;
             } else if entry.file_type()?.is_file() {
-                files.push((
-                    path.strip_prefix(root)?
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                    File::open(&path)?,
-                ));
+                let relative = path.strip_prefix(root)?;
+                let target = staging.join(relative);
+                std::fs::create_dir_all(target.parent().unwrap())?;
+                // Working files are replaced atomically, never modified in place. Hard links
+                // pin their current contents without holding Windows handles to editable paths.
+                // Copy on filesystems without hard-link support.
+                if std::fs::hard_link(&path, &target).is_err() {
+                    std::fs::copy(&path, &target)?;
+                }
+                files.push((relative.to_string_lossy().replace('\\', "/"), target));
             } else {
                 bail!("プロジェクトに通常ファイル以外が含まれています");
             }
         }
         Ok(())
     }
+    let directory = tempfile::Builder::new()
+        .prefix(".snapshot-")
+        .tempdir_in(session.library.root())?;
     let mut files = Vec::new();
-    visit(session.library.root(), session.library.root(), &mut files)?;
+    visit(
+        session.library.root(),
+        session.library.root(),
+        directory.path(),
+        &mut files,
+    )?;
     files.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(Snapshot {
         id: session.id.clone(),
         revision: session.revision,
         path: session.path.clone(),
         files,
+        _directory: directory,
     })
 }
 fn save_current(project: &SharedProject, report: &Report) -> Result<()> {
@@ -312,7 +331,7 @@ fn write_archive(snapshot: &Snapshot) -> Result<()> {
             name,
             SimpleFileOptions::default().compression_method(method),
         )?;
-        std::io::copy(&mut source.try_clone()?, &mut zip)?;
+        std::io::copy(&mut File::open(source)?, &mut zip)?;
     }
     zip.finish()?.sync_all()?;
     temp.persist(&snapshot.path).map_err(|e| e.error)?;
@@ -541,7 +560,7 @@ mod tests {
         {
             broken
                 .files
-                .push(("broken.wav".into(), File::open(dir.path()).unwrap()));
+                .push(("broken.wav".into(), dir.path().to_path_buf()));
             assert!(write_archive(&broken).is_err());
             assert_eq!(std::fs::read(&session.path).unwrap(), bytes);
         }
@@ -551,10 +570,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut session = fixture(dir.path().join("project.zip"));
         let old = snapshot(&session).unwrap();
+        let pinned = &old
+            .files
+            .iter()
+            .find(|(name, _)| name == "project.yaml")
+            .unwrap()
+            .1;
+        let mut snapshot_reader = File::open(pinned).unwrap();
         let mut editor = session.library.editor().unwrap();
         editor.rows[0].text = "更新".into();
         session.library.save_editor(&editor).unwrap();
         session.changed();
+        let mut captured = String::new();
+        snapshot_reader.read_to_string(&mut captured).unwrap();
+        assert!(captured.contains("最初"));
+        drop(snapshot_reader);
         write_archive(&old).unwrap();
         assert_eq!(
             Session::open(session.path.clone())

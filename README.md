@@ -33,8 +33,8 @@ also removes its audio; deleting a character keeps already-generated script audi
 Edits and committed character changes trigger autosave on a dedicated `project-save`
 thread. Action bursts are combined for 200 ms (at most one second of continuous changes),
 and changes during saving schedule another save. WAV and PNG files are stored without
-ZIP compression; YAML is deflated. The saver opens a consistent set of working files
-under a short lock, releases the lock, writes and syncs a new ZIP beside the destination,
+ZIP compression; YAML is deflated. The saver pins a consistent set of working files with temporary hard links (or copies
+when hard links are unavailable), releases the lock, writes and syncs a new ZIP beside the destination,
 and replaces the previous ZIP only on success. Closing or switching projects waits for
 pending saves; errors remain visible and the Save button retries.
 
