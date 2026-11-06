@@ -51,47 +51,18 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
             artifact: target/x86_64-unknown-linux-gnu/release/bundle/
-          - platform: android
-            family: mobile
-            os: ubuntu-24.04
-            target: aarch64-linux-android
-            artifact: pkgs/app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-          - platform: ios
-            family: mobile
-            os: macos-latest
-            target: aarch64-apple-ios-sim
-            artifact: irodoru-ios-simulator.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
           components: rustfmt,clippy
       - name: Linux desktop dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-      - uses: actions/setup-java@v6
-        if: matrix.platform == 'android'
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: android-actions/setup-android@v4
-        if: matrix.platform == 'android'
-        with:
-          packages: platform-tools
-      - name: Android NDK
-        if: matrix.platform == 'android'
-        run: |
-          sdkmanager 'ndk;27.2.12479018'
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+        run: sudo apt-get update && sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libzstd-dev libasound2-dev libvulkan1 patchelf libfuse2
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
@@ -100,60 +71,28 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: app-models
-          path: pkgs/app/src-tauri/resources/models
-      - run: pnpm install --frozen-lockfile
+          path: pkgs/app/resources/models
       - name: Check desktop native code
+        env:
+          IRODORU_TEST_MODELS: ${{ github.workspace }}/pkgs/app/resources/models
+          MACOSX_DEPLOYMENT_TARGET: "15.0"
         if: matrix.family == 'desktop'
         run: |
           cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
           cargo test --locked -p irodoru-desktop
+          cargo test --locked --release -p irodoru-desktop --test embedded -- --ignored
       - name: Set release version
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
-        run: node scripts/release.mts version "$RELEASE_TAG"
-      - name: Build desktop
-        if: matrix.family == 'desktop' && matrix.platform != 'windows'
+        run: cargo xtask release version "$RELEASE_TAG"
+      - name: Install packager
+        if: matrix.platform != 'windows'
+        run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build and package desktop
         env:
           TARGET: ${{ matrix.target }}
-          BUNDLES: ${{ matrix.bundles }}
-        run: pnpm build:app --target "$TARGET" --bundles "$BUNDLES"
-      - name: Build Windows portable ZIP
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          pnpm build:app --target $env:TARGET --no-bundle
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $release = Join-Path $PWD "target/$env:TARGET/release"
-          $stage = Join-Path $env:RUNNER_TEMP "portable/irodoru"
-          $bundle = Join-Path $release "bundle/portable"
-          New-Item -ItemType Directory -Force $stage, $bundle | Out-Null
-          Copy-Item "$release/irodoru-desktop.exe" "$stage/irodoru.exe"
-          Get-ChildItem "$release/*.dll" | Copy-Item -Destination $stage
-          Copy-Item "pkgs/app/src-tauri/resources/models" $stage -Recurse
-          $version = (Get-Content "pkgs/app/src-tauri/tauri.conf.json" | ConvertFrom-Json).version
-          Push-Location (Split-Path $stage)
-          & "$env:ProgramFiles/7-Zip/7z.exe" a -tzip -mx=0 "$bundle/irodoru_$($version)_windows.zip" irodoru
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Pop-Location
-      - name: Build Android debug APK
-        if: matrix.platform == 'android'
-        run: |
-          pnpm android:init --ci
-          pnpm android:build --debug --apk
-      - name: Build iOS simulator app
-        if: matrix.platform == 'ios'
-        run: |
-          pnpm ios:init --ci
-          pnpm ios:build --debug --target aarch64-sim
-      - name: Preserve simulator app permissions and symlinks
-        if: matrix.platform == 'ios'
-        run: |
-          app=$(find pkgs/app/src-tauri/gen/apple/build -name '*.app' -type d -print -quit)
-          test -n "$app"
-          ditto -c -k --sequesterRsrc --keepParent "$app" irodoru-ios-simulator.zip
+        run: cargo xtask package --target "$TARGET"
       - uses: actions/upload-artifact@v7
         with:
           name: irodoru-${{ matrix.family }}-${{ matrix.target }}
@@ -187,9 +126,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v8
         with:
           pattern: irodoru-desktop-*
@@ -203,5 +140,5 @@ jobs:
             target=${artifact##*/irodoru-desktop-}
             mkdir -p "target/$target/release"
             mv "$artifact" "target/$target/release/bundle"
-            node scripts/release.mts app "$RELEASE_TAG" "$target"
+            cargo xtask release app "$RELEASE_TAG" "$target"
           done

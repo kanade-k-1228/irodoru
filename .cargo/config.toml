@@ -1,3 +1,6 @@
 # ONNX Runtime's Apple binaries use compiler-rt availability checks.
 [target.'cfg(target_vendor = "apple")']
 rustflags = ["-C", "link-arg=-fapple-link-rtlib"]
+
+[alias]
+xtask = "run --locked --package xtask --"

@@ -20,11 +20,6 @@ jobs:
           -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
           rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
           -color
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-          cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
@@ -32,9 +27,7 @@ jobs:
         with:
           workspaces: . -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm verify
-      - run: cargo test --locked -p irodoru-engine
+      - run: cargo xtask verify
       - run: docker compose --profile local --profile wsl-gpu config --quiet
       - uses: astral-sh/setup-uv@v7
-      - run: pnpm verify:export
+      - run: cargo xtask verify-export

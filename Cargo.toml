@@ -1,5 +1,5 @@
 [workspace]
-members = ["pkgs/engine", "pkgs/server", "pkgs/app/src-tauri"]
+members = ["pkgs/engine", "pkgs/server", "pkgs/app", "xtask"]
 resolver = "3"
 
 [profile.release]
