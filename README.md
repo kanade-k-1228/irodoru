@@ -67,6 +67,7 @@ Theme preferences are stored in the OS app configuration directory and default t
 For development, `IRODORU_MODELS` can point to a directory containing `anime/` and `codec/`.
 `cargo xtask package --no-bundle` creates a standalone directory with models.
 Run `cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings` to check the native UI after installing the platform dependencies.
+CI builds all three desktop targets and runs offline synthesis from the extracted ZIP, DMG, AppImage and deb packages. Run `bash scripts/smoke-package.sh TARGET` to repeat this check locally after packaging, or launch the shipped executable with `--smoke-test`.
 
 ## Docker server
 
@@ -100,7 +101,7 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 ## Development commands
 
 Run checks with `cargo xtask verify`. Generate the OpenAPI schema with `cargo xtask generate`.
-See [package.json](package.json) for other commands and [CI](.github/workflows) for builds and releases.
+Run `cargo xtask help` for other commands and see [CI](.github/workflows) for builds and releases.
 
 ## License
 
