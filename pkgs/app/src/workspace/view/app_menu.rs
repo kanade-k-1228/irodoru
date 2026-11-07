@@ -58,9 +58,9 @@ impl Studio {
         cx.notify();
     }
     fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings.light = crate::preferences::theme::toggle(cx);
+        self.settings.theme = crate::preferences::theme::toggle(cx);
         Theme::change(
-            if self.settings.light {
+            if self.settings.theme.is_light() {
                 ThemeMode::Light
             } else {
                 ThemeMode::Dark
@@ -68,8 +68,8 @@ impl Studio {
             Some(window),
             cx,
         );
-        appearance::apply(self.settings.light, cx);
-        if let Err(error) = crate::preferences::theme::save(cx, self.settings.light) {
+        appearance::apply(self.settings.theme.is_light(), cx);
+        if let Err(error) = crate::preferences::theme::save(cx, self.settings.theme) {
             self.state.error = Some(error.to_string());
         }
         cx.notify();
@@ -93,7 +93,11 @@ impl Studio {
                 div()
                     .absolute()
                     .top(px(2.))
-                    .left(px(if self.settings.light { 2. } else { 26. }))
+                    .left(px(if self.settings.theme.is_light() {
+                        2.
+                    } else {
+                        26.
+                    }))
                     .size(px(18.))
                     .rounded_full()
                     .bg(p.ink),
@@ -101,7 +105,7 @@ impl Studio {
             .child(
                 icon("sun")
                     .size(px(14.))
-                    .text_color(if self.settings.light {
+                    .text_color(if self.settings.theme.is_light() {
                         p.surface
                     } else {
                         p.muted
@@ -110,7 +114,7 @@ impl Studio {
             .child(
                 icon("moon")
                     .size(px(14.))
-                    .text_color(if self.settings.light {
+                    .text_color(if self.settings.theme.is_light() {
                         p.muted
                     } else {
                         p.surface

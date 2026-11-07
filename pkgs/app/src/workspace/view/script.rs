@@ -260,7 +260,7 @@ impl Studio {
                                                 .h(px(40.))
                                                 .ml(px(-4.))
                                                 .rounded(px(6.))
-                                                .bg(if self.settings.light {
+                                                .bg(if self.settings.theme.is_light() {
                                                     rgb(0x9ba8b8)
                                                 } else {
                                                     rgb(0x397cae)
@@ -274,7 +274,7 @@ impl Studio {
                                         .styles(|s| {
                                             s.track(|s| s.bg(transparent_black()).width(px(4.)))
                                                 .thumb(|s| {
-                                                    s.bg(if self.settings.light {
+                                                    s.bg(if self.settings.theme.is_light() {
                                                         rgb(0x9ba8b8)
                                                     } else {
                                                         rgb(0x397cae)

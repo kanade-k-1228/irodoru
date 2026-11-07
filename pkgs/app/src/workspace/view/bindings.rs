@@ -187,10 +187,10 @@ impl Studio {
             }),
         );
         let settings = Settings {
-            light: crate::preferences::theme::light(cx),
+            theme: crate::preferences::theme::current(cx),
         };
         Theme::change(
-            if settings.light {
+            if settings.theme.is_light() {
                 ThemeMode::Light
             } else {
                 ThemeMode::Dark
@@ -198,7 +198,7 @@ impl Studio {
             Some(window),
             cx,
         );
-        appearance::apply(settings.light, cx);
+        appearance::apply(settings.theme.is_light(), cx);
         let (service, error) = match Service::start() {
             Ok(s) => (Some(s), None),
             Err(e) => (None, Some(format!("{e:#}"))),
