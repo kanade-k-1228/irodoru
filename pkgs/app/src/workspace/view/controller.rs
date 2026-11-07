@@ -31,7 +31,7 @@ impl Studio {
         }
     }
     pub(super) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings.light = crate::preferences::theme::light(cx);
+        self.settings.theme = crate::preferences::theme::current(cx);
         if let Some(error) = crate::preferences::theme::take_error(cx) {
             self.state.error = Some(error);
         }

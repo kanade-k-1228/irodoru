@@ -65,7 +65,7 @@ The app UI and runtime are entirely Rust; Android and iOS builds are no longer p
 Reference audio supports WAV, MP3, FLAC, Ogg Vorbis and AAC/M4A; imports become 48 kHz mono WAV, up to 60 seconds (minimum 1 second).
 Icons support PNG, JPEG, WebP, GIF, BMP, TIFF and SVG up to 10 MB, cropped to a 128-pixel square.
 The top-left irodoru menu contains project actions, theme, preferences and app information. Ctrl/Cmd+Shift+N opens an independent window; Ctrl/Cmd+N/O/S create, open and save projects, Ctrl/Cmd+, opens preferences, and Ctrl/Cmd+W closes the current window after saving. The footer displays the project archive path. A project cannot be opened in two windows at once.
-Theme preferences are stored in the OS app configuration directory and default to dark. Existing project ZIPs remain compatible.
+Theme preferences use confy with YAML: `theme: light` or `theme: dark` in `config.yaml` in the OS app configuration directory. The default is dark; old JSON settings are not read. Existing project ZIPs remain compatible.
 For development, `IRODORU_MODELS` can point to a directory containing `anime/` and `codec/`.
 `cargo xtask package --no-bundle` creates a standalone directory with models.
 Run `cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings` to check the native UI after installing the platform dependencies.

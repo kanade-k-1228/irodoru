@@ -1,4 +1,4 @@
-//! Atomic replacement shared by project and preference persistence.
+//! Atomic asset replacement for project persistence.
 use crate::domain::AppError;
 use anyhow::Result;
 use std::path::Path as FsPath;

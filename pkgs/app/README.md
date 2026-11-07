@@ -32,7 +32,7 @@ src/
 ├── library/                  # Filesystem repository: project YAML, characters, WAV/assets
 ├── synthesis/                # Engine lifetime, generation batches and model discovery
 ├── audio/                    # Decode/resample/import, WAV validation, native playback
-├── preferences/              # OS-local settings, ordered writer and app-wide theme
+├── preferences/              # OS-local YAML settings via confy, ordered writer and theme
 └── files.rs                  # Private atomic file replacement primitive
 ```
 

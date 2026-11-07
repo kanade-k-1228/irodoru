@@ -6,7 +6,7 @@ use gpui_kit::*;
 
 impl Studio {
     pub(super) fn palette(&self) -> Palette {
-        Palette::new(self.settings.light)
+        Palette::new(self.settings.theme.is_light())
     }
     pub(super) fn accent(&self) -> Hsla {
         let color = self
