@@ -5,8 +5,8 @@ use std::{
     io::{Read, Write},
 };
 fn set_version(root: &Path, tag: &str) -> Result<()> {
-    let version = tag.strip_prefix('v').unwrap_or(tag);
-    semver::Version::parse(version).context("Release tag must be vMAJOR.MINOR.PATCH")?;
+    let version = tag;
+    semver::Version::parse(version).context("Release tag must be MAJOR.MINOR.PATCH")?;
     let manifest = root.join("pkgs/app/Cargo.toml");
     let lock = root.join("Cargo.lock");
     let config_path = root.join("pkgs/app/packager.json");
@@ -144,14 +144,11 @@ pub fn cli(args: &[String]) -> Result<()> {
         anyhow::ensure!(args.len() == 2, "Usage: release version TAG");
         return set_version(&root(), &args[1]);
     }
-    let temp = tempfile::tempdir()?;
-    let (tag, assets) = match args.first().map(String::as_str) {
-        Some("app") if args.len() == 3 => (
-            args[1].clone(),
-            prepare(&root(), &args[2], temp.path(), 1024 * 1024 * 1024)?,
-        ),
-        Some("container") if args.len() == 1 => {
-            let tag = env::var("RELEASE_TAG")?;
+    match args.first().map(String::as_str) {
+        Some("app") if args.len() == 3 => {
+            prepare(&root(), &args[1], Path::new(&args[2]), 1024 * 1024 * 1024)?;
+        }
+        Some("container") if args.len() == 2 => {
             let image = env::var("IMAGE")?.to_lowercase();
             let version = env::var("IMAGE_TAG")?;
             let manifest: serde_json::Value = serde_json::from_slice(&output(
@@ -172,26 +169,18 @@ pub fn cli(args: &[String]) -> Result<()> {
                     && digest[7..].chars().all(|c| c.is_ascii_hexdigit()),
                 "Invalid container digest"
             );
-            let path = temp.path().join("container-image.txt");
+            let destination = Path::new(&args[1]);
+            fs::create_dir_all(destination)?;
+            let path = destination.join("container-image.txt");
             fs::write(
                 &path,
                 format!(
                     "irodoru synthesis server (linux/amd64, linux/arm64)\n\ndocker pull {image}:{version}\ndocker pull {image}@{digest}\n\ndocker run --rm -p 127.0.0.1:8080:8080 {image}:{version}\n"
                 ),
             )?;
-            (tag, vec![path])
         }
-        _ => bail!("Usage: cargo xtask release version TAG | app TAG TARGET | container"),
-    };
-    anyhow::ensure!(
-        Command::new("gh")
-            .args(["release", "upload", &tag])
-            .args(assets)
-            .arg("--clobber")
-            .status()?
-            .success(),
-        "Release upload failed"
-    );
+        _ => bail!("Usage: cargo xtask release version TAG | app TARGET DEST | container DEST"),
+    }
     Ok(())
 }
 #[cfg(test)]
@@ -253,7 +242,12 @@ mod tests {
         )
         .unwrap();
         fs::write(dir.path().join("Cargo.lock"),"version = 4\n[[package]]\nname = \"irodoru\"\nversion = \"0.1.0\"\n[[package]]\nname = \"other\"\nversion = \"0.1.0\"\n").unwrap();
-        set_version(dir.path(), "v1.2.3-beta.1").unwrap();
+        set_version(dir.path(), "1.2.3").unwrap();
+        let config: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.path().join("pkgs/app/packager.json")).unwrap())
+                .unwrap();
+        assert_eq!(config["version"], "1.2.3");
+        set_version(dir.path(), "1.2.3-beta.1").unwrap();
         let lock = fs::read_to_string(dir.path().join("Cargo.lock")).unwrap();
         assert!(lock.contains("version = \"1.2.3-beta.1\""));
         assert!(lock.contains("name = \"other\"\nversion = \"0.1.0\""));
