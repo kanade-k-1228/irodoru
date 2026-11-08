@@ -6,7 +6,7 @@ use super::{
 use crate::{domain::InferenceStatus, synthesis::Inference};
 use anyhow::{Context, Result};
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
@@ -19,23 +19,7 @@ pub struct Service {
 }
 impl Service {
     pub fn start() -> Result<Self> {
-        static ENGINE: std::sync::OnceLock<Mutex<std::sync::Weak<Inference>>> =
-            std::sync::OnceLock::new();
-        let mut shared = ENGINE
-            .get_or_init(Default::default)
-            .lock()
-            .map_err(|_| anyhow::anyhow!("engine lock poisoned"))?;
-        let inference = if let Some(engine) = shared.upgrade() {
-            engine
-        } else {
-            Arc::new(Inference::start_with_progress(|progress| {
-                Ok(irodoru_engine::EngineConfig::anime(
-                    crate::synthesis::resources::models_with_progress(progress)?,
-                ))
-            })?)
-        };
-        *shared = Arc::downgrade(&inference);
-        drop(shared);
+        let inference = Inference::shared()?;
         let (sender, receiver) = mpsc::channel();
         let (events, output) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));

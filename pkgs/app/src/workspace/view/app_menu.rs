@@ -159,7 +159,7 @@ impl Studio {
             2 => self.choose_project(false, window, cx),
             3 => {
                 self.autosave();
-                self.send(Command::Flush { close: false }, true);
+                self.send(Command::Flush { close: false });
             }
             4 => self.toggle_theme(window, cx),
             5 | 6 => self.show_app_dialog(index == 5, window, cx),

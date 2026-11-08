@@ -1,27 +1,22 @@
 //! Ordered application commands. All storage and synthesis work runs off the UI thread.
 use crate::{
-    domain::TakeRequest,
-    domain::new_id,
-    project::{self, Saver, Session, SharedProject},
-    synthesis::Inference,
+    domain::TakeRequest, domain::new_id, project::Project, synthesis::Inference,
     synthesis::generation,
 };
 use anyhow::{Context, Result};
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
 
 use super::protocol::{Command, Event, Snapshot};
 pub(super) struct Worker {
-    project: SharedProject,
-    saver: Saver,
+    project: Project,
     inference: Arc<Inference>,
     stop: Arc<AtomicBool>,
     events: mpsc::Sender<Event>,
     editor_error: Option<String>,
-    window_project: crate::project::WindowProject,
 }
 impl Worker {
     pub(super) fn run(
@@ -30,9 +25,8 @@ impl Worker {
         inference: Arc<Inference>,
         stop: Arc<AtomicBool>,
     ) {
-        let project: SharedProject = Arc::new(Mutex::new(None));
         let report = events.clone();
-        let saver = match Saver::start(project.clone(), move |s| {
+        let project = match Project::new(move |s| {
             let _ = report.send(Event::Status(s));
         }) {
             Ok(s) => s,
@@ -43,15 +37,13 @@ impl Worker {
         };
         let mut worker = Worker {
             project,
-            saver,
             inference,
             stop,
             editor_error: None,
-            window_project: Default::default(),
             events,
         };
         while let Ok(command) = receiver.recv() {
-            let passive = matches!(command, Command::SaveEditor(_) | Command::RemovePreview(_));
+            let passive = command.is_passive();
             if let Err(e) = worker.execute(command) {
                 let _ = worker.events.send(Event::Error(format!("{e:#}")));
             }
@@ -59,34 +51,10 @@ impl Worker {
                 let _ = worker.events.send(Event::Done);
             }
         }
-        let _ = worker.saver.flush();
     }
 
-    fn read<T>(&self, f: impl FnOnce(&Session) -> Result<T>) -> Result<T> {
-        let guard = self
-            .project
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
-        f(guard
-            .as_ref()
-            .context("プロジェクトを作成または開いてください")?)
-    }
-    fn change<T>(&self, f: impl FnOnce(&Session) -> Result<T>) -> Result<T> {
-        let mut guard = self
-            .project
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
-        let session = guard
-            .as_mut()
-            .context("プロジェクトを作成または開いてください")?;
-        let value = f(session)?;
-        session.changed();
-        drop(guard);
-        self.saver.changed()?;
-        Ok(value)
-    }
     fn snapshot(&self) -> Result<()> {
-        let snapshot = self.read(|s| {
+        let snapshot = self.project.read(|s| {
             Ok(Snapshot {
                 character_previews: s
                     .library
@@ -104,8 +72,7 @@ impl Worker {
                 voices: s.library.voices()?,
             })
         })?;
-        self.events
-            .send(Event::Status(project::status(&self.project)?))?;
+        self.events.send(Event::Status(self.project.status()?))?;
         self.events.send(Event::Snapshot(snapshot))?;
         Ok(())
     }
@@ -119,18 +86,22 @@ impl Worker {
             irodoru_engine::SynthOutput,
         )>,
     ) -> Result<()> {
-        let prepared = self.read(|s| generation::prepare(&s.library, requests.clone()))?;
-        for (request, prepared) in requests.into_iter().zip(prepared) {
+        let prepared = self
+            .project
+            .read(|s| generation::prepare(&s.library, requests))?;
+        for prepared in prepared {
             if self.stop.load(Ordering::SeqCst) {
                 break;
             }
-            self.events
-                .send(Event::RowStarted(request.row_id.clone()))?;
-            let result = generation::synthesize(prepared, &mut infer)
-                .and_then(|(take, wav)| self.change(|s| Ok(s.library.save_take(&take, &wav)?)));
+            let row_id = prepared.row_id().to_owned();
+            self.events.send(Event::RowStarted(row_id.clone()))?;
+            let result = generation::synthesize(prepared, &mut infer).and_then(|(take, wav)| {
+                self.project
+                    .change(|s| Ok(s.library.save_take(&take, &wav)?))
+            });
             if let Err(e) = result {
                 self.events
-                    .send(Event::RowFailed(request.row_id, format!("{e:#}")))?;
+                    .send(Event::RowFailed(row_id, format!("{e:#}")))?;
             }
         }
         self.snapshot()?;
@@ -144,30 +115,22 @@ impl Worker {
         }
         match command {
             Command::Open { path, create } => {
-                self.saver.flush()?;
-                let session = self.window_project.open(&path, create)?;
-                *self
-                    .project
-                    .lock()
-                    .map_err(|_| anyhow::anyhow!("project lock poisoned"))? = Some(session);
-                if create {
-                    self.saver.changed()?;
-                }
+                self.project.open(&path, create)?;
                 self.snapshot()?;
             }
             Command::SaveEditor(editor) => {
-                let result = self.change(|s| Ok(s.library.save_editor(&editor)?));
+                let result = self.project.change(|s| Ok(s.library.save_editor(&editor)?));
                 self.editor_error = result.as_ref().err().map(|e| format!("{e:#}"));
                 result?;
             }
             Command::Flush { close } => {
-                self.saver.flush()?;
+                self.project.flush()?;
                 if close {
                     self.events.send(Event::Close)?;
                 }
             }
             Command::SaveCharacter { id, input, preview } => {
-                self.change(|s| {
+                self.project.change(|s| {
                     let c = match id {
                         Some(id) => s.library.update_character(id, input)?,
                         None => s.library.create_character(input)?,
@@ -181,17 +144,19 @@ impl Worker {
                 self.snapshot()?;
             }
             Command::DeleteCharacter(id) => {
-                self.change(|s| Ok(s.library.delete_character(&id)?))?;
+                self.project
+                    .change(|s| Ok(s.library.delete_character(&id)?))?;
                 self.snapshot()?;
             }
             Command::DeleteTake(id) => {
-                self.change(|s| Ok(s.library.delete_take(&id)?))?;
+                self.project.change(|s| Ok(s.library.delete_take(&id)?))?;
                 self.snapshot()?;
             }
             Command::ImportVoice(path) => {
                 let wav = crate::audio::import_audio(&path)?;
                 let id = format!("reference-{}", new_id());
-                self.change(|s| Ok(s.library.save_voice(&id, &wav)?))?;
+                self.project
+                    .change(|s| Ok(s.library.save_voice(&id, &wav)?))?;
                 self.events.send(Event::Voice(id))?;
                 self.snapshot()?;
             }
@@ -209,17 +174,19 @@ impl Worker {
                 voice,
             } => {
                 let prepared = self
+                    .project
                     .read(|s| generation::prepare_preview(&s.library, input, description, voice))?;
                 let (take, wav) =
                     generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
-                self.read(|s| Ok(s.previews.save_take(&take, &wav)?))?;
+                self.project
+                    .read(|s| Ok(s.previews.save_take(&take, &wav)?))?;
                 self.events.send(Event::Preview(take.id))?;
             }
             Command::RemovePreview(id) => {
-                self.read(|s| Ok(s.previews.delete_take(&id)?))?;
+                self.project.read(|s| Ok(s.previews.delete_take(&id)?))?;
             }
             Command::Audio { id, preview } => {
-                let wav = self.read(|s| {
+                let wav = self.project.read(|s| {
                     Ok(if preview {
                         s.previews.audio(&id)?
                     } else {
@@ -230,18 +197,20 @@ impl Worker {
             }
             Command::ExportCharacter { id, path } => {
                 let source = self
+                    .project
                     .read(|s| Ok(s.library.character_preview_path(&id)?))?
                     .context("サンプル音声がありません")?;
                 crate::files::atomic_bytes(&path, &std::fs::read(source)?)?;
             }
             Command::CharacterAudio(id) => {
                 let path = self
+                    .project
                     .read(|s| Ok(s.library.character_preview_path(&id)?))?
                     .context("サンプル音声がありません")?;
                 self.events.send(Event::Audio(std::fs::read(path)?))?;
             }
             Command::Export { id, preview, path } => {
-                let wav = self.read(|s| {
+                let wav = self.project.read(|s| {
                     Ok(if preview {
                         s.previews.audio(&id)?
                     } else {
@@ -258,23 +227,21 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::EditorState;
-    use std::sync::Mutex;
+    use crate::domain::{CharacterInput, EditorState};
+    use irodoru_engine::{Audio, GenerationConditions, SynthOutput};
+
     fn worker() -> (Worker, mpsc::Receiver<Event>) {
-        let project = Arc::new(Mutex::new(None));
-        let saver = Saver::start(project.clone(), |_| {}).unwrap();
+        let project = Project::new(|_| {}).unwrap();
         let (events, rx) = mpsc::channel();
         (
             Worker {
                 project,
-                saver,
                 events,
                 inference: Arc::new(
                     Inference::start_with(|| anyhow::bail!("test: no models")).unwrap(),
                 ),
                 stop: Arc::new(AtomicBool::new(false)),
                 editor_error: None,
-                window_project: Default::default(),
             },
             rx,
         )
@@ -288,8 +255,9 @@ mod tests {
             create: true,
         })
         .unwrap();
-        w.saver.flush().unwrap();
+        w.project.flush().unwrap();
         let yaml = w
+            .project
             .read(|s| Ok(s.library.root().join("project.yaml")))
             .unwrap();
         let original = std::fs::read(&yaml).unwrap();
@@ -317,55 +285,16 @@ mod tests {
         assert!(rx.try_iter().any(|event| matches!(event, Event::Close)));
     }
     #[test]
-    fn corrupt_project_does_not_replace_active_session() {
+    fn stop_finishes_current_row_and_failed_regeneration_keeps_audio() {
         let dir = tempfile::tempdir().unwrap();
         let (mut w, _rx) = worker();
-        let old = dir.path().join("old.zip");
         w.execute(Command::Open {
-            path: old.clone(),
+            path: dir.path().join("project.zip"),
             create: true,
         })
         .unwrap();
-        let invalid = dir.path().join("bad.zip");
-        std::fs::write(&invalid, b"not a zip").unwrap();
-        assert!(
-            w.execute(Command::Open {
-                path: invalid,
-                create: false
-            })
-            .is_err()
-        );
-        assert_eq!(
-            w.read(|s| Ok(s.path.clone())).unwrap(),
-            old.canonicalize().unwrap()
-        );
-    }
-}
-
-#[cfg(test)]
-mod queue_tests {
-    use super::*;
-    use crate::domain::{CharacterInput, EditorState};
-    use irodoru_engine::{Audio, GenerationConditions, SynthOutput};
-    use std::sync::Mutex;
-    #[test]
-    fn stop_finishes_current_row_and_failed_regeneration_keeps_audio() {
-        let dir = tempfile::tempdir().unwrap();
-        let project = Arc::new(Mutex::new(Some(
-            Session::create(dir.path().join("project.zip")).unwrap(),
-        )));
-        let saver = Saver::start(project.clone(), |_| {}).unwrap();
-        let (events, _rx) = mpsc::channel();
-        let w = Worker {
-            project,
-            saver,
-            events,
-            inference: Arc::new(Inference::start_with(|| anyhow::bail!("unused")).unwrap()),
-            stop: Arc::new(AtomicBool::new(false)),
-            editor_error: None,
-            window_project: Default::default(),
-        };
         let character = w
+            .project
             .change(|s| {
                 Ok(s.library.create_character(CharacterInput {
                     name: "声".into(),
@@ -385,13 +314,14 @@ mod queue_tests {
                 r
             })
             .collect::<Vec<_>>();
-        w.change(|s| {
-            Ok(s.library.save_editor(&EditorState {
-                rows: rows.clone(),
-                ..Default::default()
-            })?)
-        })
-        .unwrap();
+        w.project
+            .change(|s| {
+                Ok(s.library.save_editor(&EditorState {
+                    rows: rows.clone(),
+                    ..Default::default()
+                })?)
+            })
+            .unwrap();
         let requests =
             crate::workspace::editor::requests(&rows, &[character], &Default::default()).unwrap();
         let mut calls = 0;
@@ -410,15 +340,23 @@ mod queue_tests {
         })
         .unwrap();
         assert_eq!(calls, 1);
-        let takes = w.read(|s| Ok(s.library.takes()?)).unwrap();
+        let takes = w.project.read(|s| Ok(s.library.takes()?)).unwrap();
         assert_eq!(takes.len(), 1);
-        let wav = w.read(|s| Ok(s.library.audio(&takes[0].id)?)).unwrap();
+        let wav = w
+            .project
+            .read(|s| Ok(s.library.audio(&takes[0].id)?))
+            .unwrap();
         w.stop.store(false, Ordering::SeqCst);
         w.generate_with(requests, |_| anyhow::bail!("failed inference"))
             .unwrap();
-        let after = w.read(|s| Ok(s.library.takes()?)).unwrap();
+        let after = w.project.read(|s| Ok(s.library.takes()?)).unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].id, takes[0].id);
-        assert_eq!(w.read(|s| Ok(s.library.audio(&after[0].id)?)).unwrap(), wav);
+        assert_eq!(
+            w.project
+                .read(|s| Ok(s.library.audio(&after[0].id)?))
+                .unwrap(),
+            wav
+        );
     }
 }

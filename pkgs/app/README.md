@@ -28,6 +28,7 @@ src/
 │       ├── generation_controls.rs, player.rs, playback.rs
 │       └── actions.rs, appearance.rs, components.rs
 ├── project/                  # Session lifetime and portable project persistence
+│   ├── active.rs             # Session access, ownership, change tracking and flush lifecycle
 │   ├── session.rs            # Active working directories and revision/status
 │   ├── archive.rs            # Immutable save snapshots, safe ZIP extraction/replacement
 │   ├── autosave.rs           # Debounce, single writer, flush and retry reporting
@@ -66,6 +67,18 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
 ```
 
 Storage and inference execute on dedicated workers using owned command data.
+`project::Project` owns the active session, archive reservation and saver together.
+The workspace worker uses `read`, `change`, `open` and `flush`; it does not manage
+project locks or notify the saver itself. Switching and dropping a project flush
+pending saves before releasing the old archive. Explicit flush failures are still
+reported to the user before a window closes.
+
+`Command::is_passive` defines which commands leave editing available and do not emit
+`Done`. Both the view and worker use this policy, so call sites do not pass a separate
+busy flag. Generation consumes prepared takes in order; batch IDs and index lookup
+are unnecessary inside the ordered worker. Shared model initialization belongs to
+`synthesis::Inference`, while `Service` owns only command/event transport and stop requests.
+
 The view drains notifications on the UI thread; only that thread updates retained
 GPUI entities. Its weak-entity timer stops when the window disappears. New-window
 requests are GPUI events observed by `desktop`, so the feature never calls into the
@@ -101,8 +114,8 @@ an independent reuse, ownership or build boundary.
 
 ```bash
 cargo xtask verify
-cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru-desktop --features desktop
+cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
+cargo test --locked -p irodoru --features desktop
 cargo xtask dev
 ```
 

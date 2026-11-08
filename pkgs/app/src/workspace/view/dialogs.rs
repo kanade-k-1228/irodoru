@@ -33,13 +33,10 @@ impl Studio {
                     this.playback = None;
                     this.audio_id = None;
                     this.state.row_errors.clear();
-                    this.send(
-                        Command::Open {
-                            path: file.path().to_owned(),
-                            create,
-                        },
-                        true,
-                    );
+                    this.send(Command::Open {
+                        path: file.path().to_owned(),
+                        create,
+                    });
                 } else {
                     this.state.busy = false;
                 }
@@ -67,14 +64,11 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
-                    this.send(
-                        if icon {
-                            Command::ImportIcon(file.path().to_owned())
-                        } else {
-                            Command::ImportVoice(file.path().to_owned())
-                        },
-                        true,
-                    );
+                    this.send(if icon {
+                        Command::ImportIcon(file.path().to_owned())
+                    } else {
+                        Command::ImportVoice(file.path().to_owned())
+                    });
                 } else {
                     this.state.busy = false;
                 }
@@ -110,14 +104,11 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
-                    this.send(
-                        Command::Export {
-                            id,
-                            preview,
-                            path: file.path().to_owned(),
-                        },
-                        true,
-                    );
+                    this.send(Command::Export {
+                        id,
+                        preview,
+                        path: file.path().to_owned(),
+                    });
                 } else {
                     this.state.busy = false;
                 }
@@ -144,13 +135,10 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
-                    this.send(
-                        Command::ExportCharacter {
-                            id,
-                            path: file.path().to_owned(),
-                        },
-                        true,
-                    );
+                    this.send(Command::ExportCharacter {
+                        id,
+                        path: file.path().to_owned(),
+                    });
                 } else {
                     this.state.busy = false;
                 }
@@ -212,7 +200,7 @@ impl Studio {
             let _ = this.update_in(cx, |this, _, cx| {
                 if choice == rfd::MessageDialogResult::Yes {
                     this.state.saving_draft = this.state.draft.is_some();
-                    this.send(Command::DeleteCharacter(id), true);
+                    this.send(Command::DeleteCharacter(id));
                 } else {
                     this.state.busy = false;
                 }

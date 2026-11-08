@@ -1,10 +1,10 @@
 [package]
-name = "irodoru-desktop"
+name = "irodoru"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Offline speech synthesis studio"
-default-run = "irodoru-desktop"
+default-run = "irodoru"
 
 [features]
 default = []
@@ -38,6 +38,6 @@ resvg = "0.46"
 objc2 = "0.6.5"
 
 [[bin]]
-name = "irodoru-desktop"
+name = "irodoru"
 path = "src/main.rs"
 required-features = ["desktop"]

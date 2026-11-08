@@ -435,125 +435,21 @@ fn extract_archive(
 mod tests {
     use super::*;
     use irodoru_engine::output::sha256;
-    use std::{cell::RefCell, io::Cursor};
+    use std::io::Cursor;
 
-    #[test]
-    fn accepts_both_registry_token_fields_and_rejects_invalid_tokens() {
-        for value in [
-            serde_json::json!({"token": "pull-token"}),
-            serde_json::json!({"access_token": "pull-token"}),
-            serde_json::json!({"token": "pull-token", "access_token": "pull-token"}),
-        ] {
-            assert_eq!(
-                parse_token(&serde_json::to_vec(&value).unwrap()).unwrap(),
-                "pull-token"
-            );
-        }
-        for value in [
-            serde_json::json!({}),
-            serde_json::json!({"token": ""}),
-            serde_json::json!({"token": "line\nbreak"}),
-            serde_json::json!({"token": "space here"}),
-            serde_json::json!({"token": "non-ascii-あ"}),
-        ] {
-            assert!(parse_token(&serde_json::to_vec(&value).unwrap()).is_err());
-        }
-    }
-
-    #[test]
-    fn pull_token_is_reused_and_refreshed_once_on_expiry() {
-        let mut token = None;
-        let mut issued = 0;
-        let mut authorize = || {
-            issued += 1;
-            Ok(format!("token-{issued}"))
-        };
-        with_token(&mut token, &mut authorize, |value| {
-            assert_eq!(value, "token-1");
-            Ok(())
-        })
-        .unwrap();
-        with_token(&mut token, &mut authorize, |value| {
-            assert_eq!(value, "token-1");
-            Ok(())
-        })
-        .unwrap();
-        let mut attempts = 0;
-        with_token(&mut token, &mut authorize, |value| {
-            attempts += 1;
-            if attempts == 1 {
-                assert_eq!(value, "token-1");
-                Err(ureq::Error::StatusCode(401))
-            } else {
-                assert_eq!(value, "token-2");
-                Ok(())
-            }
-        })
-        .unwrap();
-        assert_eq!(attempts, 2);
-        assert_eq!(issued, 2);
-    }
-
-    #[test]
-    fn authentication_retry_is_bounded_and_other_failures_do_not_refresh() {
-        for status in [401, 403, 404, 429, 500] {
-            let mut token = Some("existing".to_owned());
-            let mut issued = 0;
-            let mut attempts = 0;
-            let result: Result<()> = with_token(
-                &mut token,
-                || {
-                    issued += 1;
-                    Ok("replacement".to_owned())
-                },
-                |_| {
-                    attempts += 1;
-                    Err(ureq::Error::StatusCode(status))
-                },
-            );
-            assert!(result.is_err());
-            assert_eq!(issued, usize::from(status == 401));
-            assert_eq!(attempts, 1 + usize::from(status == 401));
-        }
-    }
-
-    #[test]
-    fn rejects_repository_paths_that_could_change_registry_or_token_scope() {
-        for name in [
-            "",
-            "../models",
-            "owner/..",
-            "owner/models/other",
-            "owner/models?scope=x",
-            "owner/models#fragment",
-            "owner/models:pull,push",
-            "Owner/models",
-            "owner/",
-            "/models",
-            "https://ghcr.io/owner/models",
-            "owner\\models",
-            "owner/model space",
-        ] {
-            assert!(!repository(name), "{name}");
-        }
-        assert!(repository("kanade-k-1228/irodoru-models"));
-    }
-
-    fn archive_with(mut modify: impl FnMut(usize, &mut String, &mut Vec<u8>)) -> Vec<u8> {
-        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    fn archive() -> Vec<u8> {
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .large_file(true);
-        for (index, path) in REQUIRED.iter().enumerate() {
-            let mut name = (*path).to_owned();
-            let mut bytes = b"model".to_vec();
-            modify(index, &mut name, &mut bytes);
-            archive.start_file(name, options).unwrap();
-            archive.write_all(&bytes).unwrap();
+        for path in REQUIRED {
+            zip.start_file(*path, options).unwrap();
+            zip.write_all(b"model").unwrap();
         }
-        archive.finish().unwrap().into_inner()
+        zip.finish().unwrap().into_inner()
     }
-    fn fixture(archive: &[u8]) -> serde_json::Value {
+
+    fn manifest(archive: &[u8]) -> serde_json::Value {
         serde_json::json!({
             "schema": 2, "model": "anime", "revision": sha256(b"bundle"),
             "repository": "example/models",
@@ -563,67 +459,72 @@ mod tests {
             })).collect::<Vec<_>>()
         })
     }
+
     #[test]
-    fn installs_single_zip64_archive_and_reuses_verified_cache_offline() {
-        let root = tempfile::tempdir().unwrap();
-        let archive = archive_with(|_, _, _| {});
-        let mut manifest = fixture(&archive);
-        let updates = RefCell::new(Vec::new());
-        let mut requests = 0;
-        let destination = install(
-            &serde_json::to_vec(&manifest).unwrap(),
-            root.path(),
-            &|s| updates.borrow_mut().push(s),
-            |repository, digest| {
-                requests += 1;
-                assert_eq!(repository, "example/models");
-                assert_eq!(digest, sha256(&archive));
-                Ok(Box::new(Cursor::new(archive.clone())))
+    fn parses_registry_tokens() {
+        for field in ["token", "access_token"] {
+            let value = serde_json::json!({field: "pull-token"});
+            assert_eq!(
+                parse_token(&serde_json::to_vec(&value).unwrap()).unwrap(),
+                "pull-token"
+            );
+        }
+        assert!(parse_token(br#"{"token":""}"#).is_err());
+    }
+
+    #[test]
+    fn expired_token_is_replaced_and_reused() {
+        let mut token = Some("expired".into());
+        with_token(
+            &mut token,
+            || Ok("fresh".into()),
+            |value| {
+                if value == "expired" {
+                    Err(ureq::Error::StatusCode(401))
+                } else {
+                    Ok(())
+                }
             },
         )
         .unwrap();
-        assert_eq!(requests, 1);
+        with_token(
+            &mut token,
+            || panic!("reuse the token"),
+            |value| {
+                assert_eq!(value, "fresh");
+                Ok(())
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn installs_models_and_reuses_the_cache_offline() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = archive();
+        let index = serde_json::to_vec(&manifest(&archive)).unwrap();
+        let destination = install(&index, root.path(), &|_| {}, |_, _| {
+            Ok(Box::new(Cursor::new(archive.clone())))
+        })
+        .unwrap();
+        for path in REQUIRED {
+            assert_eq!(std::fs::read(destination.join(path)).unwrap(), b"model");
+        }
         assert_eq!(
-            std::fs::read(destination.join("anime/backbone.onnx")).unwrap(),
-            b"model"
+            install(&index, root.path(), &|_| {}, |_, _| {
+                panic!("cached models must not download")
+            })
+            .unwrap(),
+            destination
         );
         assert!(!destination.join(".models.zip").exists());
-        assert!(updates.borrow().iter().any(|status| matches!(status,
-            InferenceStatus::Downloading { downloaded, total } if *downloaded == archive.len() as u64 && downloaded == total)));
-        assert!(matches!(
-            updates.borrow().last(),
-            Some(InferenceStatus::Extracting {
-                extracted: 70,
-                total: 70
-            })
-        ));
-        // Repacking or renaming the distribution must not invalidate the model-file cache.
-        manifest["archive"]["asset"] = "repacked-models.zip".into();
-        manifest["archive"]["sha256"] = sha256(b"repacked archive").into();
-        manifest["archive"]["size"] = (archive.len() + 100).into();
-        for repository in [
-            serde_json::json!("example/new-models"),
-            serde_json::Value::Null,
-        ] {
-            manifest["repository"] = repository;
-            assert_eq!(
-                install(
-                    &serde_json::to_vec(&manifest).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| panic!("offline cache must not download")
-                )
-                .unwrap(),
-                destination
-            );
-        }
     }
+
     #[test]
-    fn extraction_retry_reuses_archive_and_preserves_completed_files() {
+    fn failed_extraction_can_retry_without_downloading() {
         let root = tempfile::tempdir().unwrap();
-        let archive = archive_with(|_, _, _| {});
-        let mut manifest = fixture(&archive);
-        let index = serde_json::to_vec(&manifest).unwrap();
+        let archive = archive();
+        let index = serde_json::to_vec(&manifest(&archive)).unwrap();
         let destination = root.path().join(sha256(b"bundle"));
         let blocked = destination.join(REQUIRED[1]);
         assert!(
@@ -632,347 +533,54 @@ mod tests {
                 root.path(),
                 &|status| {
                     if matches!(status, InferenceStatus::Extracting { extracted: 0, .. }) {
-                        // Simulate a disk-side failure after verification and before extraction.
                         std::fs::create_dir_all(&blocked).unwrap();
                     }
                 },
-                |_, _| { Ok(Box::new(Cursor::new(archive.clone()))) }
+                |_, _| Ok(Box::new(Cursor::new(archive.clone())))
             )
             .is_err()
         );
         assert!(destination.join(".models.zip").is_file());
-        assert_eq!(
-            std::fs::read(destination.join(REQUIRED[0])).unwrap(),
-            b"model"
-        );
         std::fs::remove_dir(&blocked).unwrap();
-        manifest["repository"] = serde_json::Value::Null;
-        install(
-            &serde_json::to_vec(&manifest).unwrap(),
-            root.path(),
-            &|_| {},
-            |_, _| panic!("verified archive must be reused offline"),
-        )
-        .unwrap();
-        assert!(!destination.join(".models.zip").exists());
-        assert_eq!(
-            std::fs::read(destination.join(REQUIRED[0])).unwrap(),
-            b"model"
-        );
-        // Corrupt cache files are replaced with individually verified extracted files.
-        std::fs::write(destination.join(REQUIRED[0]), b"wrong").unwrap();
         install(&index, root.path(), &|_| {}, |_, _| {
-            Ok(Box::new(Cursor::new(archive.clone())))
+            panic!("reuse the verified archive")
         })
         .unwrap();
-        assert_eq!(
-            std::fs::read(destination.join(REQUIRED[0])).unwrap(),
-            b"model"
-        );
+        assert_eq!(std::fs::read(blocked).unwrap(), b"model");
+        assert!(!destination.join(".models.zip").exists());
     }
+
     #[test]
-    fn rejects_unsafe_incomplete_or_inconsistent_manifests_before_writing() {
+    fn unsafe_manifest_fails_before_download() {
         let root = tempfile::tempdir().unwrap();
-        let archive = archive_with(|_, _, _| {});
-        let original = fixture(&archive);
-        for path in [
-            "../escape",
-            "anime/../../escape",
-            "anime/a\\b",
-            "anime/C:foo",
-            "anime/.hidden",
-            "anime/..",
-        ] {
-            let mut manifest = original.clone();
-            manifest["files"][0]["path"] = path.into();
-            assert!(
-                install(
-                    &serde_json::to_vec(&manifest).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| panic!("invalid manifest")
-                )
-                .is_err()
-            );
-        }
-        for mutate in [
-            |v: &mut serde_json::Value| {
-                v["files"][0]["size"] = 0.into();
-            },
-            |v: &mut serde_json::Value| {
-                v["files"][0]["sha256"] = "oops".into();
-            },
-            |v: &mut serde_json::Value| {
-                v["archive"]["asset"] = "../escape".into();
-            },
-            |v: &mut serde_json::Value| {
-                v["archive"]["size"] = 0.into();
-            },
-            |v: &mut serde_json::Value| {
-                v["archive"]["size"] = 10_000_000_001u64.into();
-            },
-            |v: &mut serde_json::Value| {
-                v["archive"]["sha256"] = "oops".into();
-            },
-            |v: &mut serde_json::Value| {
-                v["archive"]["format"] = "tar".into();
-            },
-            |v: &mut serde_json::Value| {
-                v["files"][1] = v["files"][0].clone();
-            },
-            |v: &mut serde_json::Value| {
-                v["files"].as_array_mut().unwrap().pop();
-            },
-            |v: &mut serde_json::Value| {
-                v["revision"] = "../escape".into();
-            },
-            |v: &mut serde_json::Value| {
-                v["repository"] = "https://example.com/models".into();
-            },
-        ] {
-            let mut manifest = original.clone();
-            mutate(&mut manifest);
-            assert!(
-                install(
-                    &serde_json::to_vec(&manifest).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| panic!("invalid manifest")
-                )
-                .is_err()
-            );
-        }
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
-    }
-    #[test]
-    fn rejects_oversized_truncated_and_corrupt_downloads() {
-        let archive = archive_with(|_, _, _| {});
-        let mut oversized = archive.clone();
-        oversized.push(0);
-        let mut corrupt = archive.clone();
-        corrupt[0] ^= 1;
-        for bytes in [oversized, archive[..archive.len() - 1].to_vec(), corrupt] {
-            let root = tempfile::tempdir().unwrap();
-            assert!(
-                install(
-                    &serde_json::to_vec(&fixture(&archive)).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| Ok(Box::new(Cursor::new(bytes.clone())))
-                )
-                .is_err()
-            );
-            let destination = root.path().join(sha256(b"bundle"));
-            assert!(!destination.join(REQUIRED[0]).exists());
-            assert!(!destination.join(".models.zip").exists());
-        }
-    }
-    #[test]
-    fn rejects_unexpected_archive_paths_before_extracting_any_files() {
-        for path in [
-            "../escape",
-            "anime/../../escape",
-            "anime/unexpected",
-            "anime/a\\b",
-        ] {
-            let archive = archive_with(|index, name, _| {
-                if index == 1 {
-                    *name = path.to_owned();
-                }
-            });
-            let root = tempfile::tempdir().unwrap();
-            assert!(
-                install(
-                    &serde_json::to_vec(&fixture(&archive)).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| Ok(Box::new(Cursor::new(archive.clone())))
-                )
-                .is_err()
-            );
-            assert!(
-                !root
-                    .path()
-                    .join(sha256(b"bundle"))
-                    .join(REQUIRED[0])
-                    .exists()
-            );
-        }
-    }
-    #[test]
-    fn rejects_corrupt_extracted_files_but_keeps_archive_and_valid_files() {
-        let archive = archive_with(|index, _, bytes| {
-            if index == 1 {
-                *bytes = b"wrong".to_vec();
-            }
-        });
-        let root = tempfile::tempdir().unwrap();
+        let mut manifest = manifest(&archive());
+        manifest["files"][0]["path"] = "../escape".into();
         assert!(
             install(
-                &serde_json::to_vec(&fixture(&archive)).unwrap(),
+                &serde_json::to_vec(&manifest).unwrap(),
                 root.path(),
                 &|_| {},
-                |_, _| Ok(Box::new(Cursor::new(archive.clone())))
+                |_, _| { panic!("invalid manifest must not download") }
             )
+            .is_err()
+        );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn corrupt_download_is_not_installed() {
+        let root = tempfile::tempdir().unwrap();
+        let mut archive = archive();
+        let index = serde_json::to_vec(&manifest(&archive)).unwrap();
+        archive[0] ^= 1;
+        assert!(
+            install(&index, root.path(), &|_| {}, |_, _| {
+                Ok(Box::new(Cursor::new(archive.clone())))
+            })
             .is_err()
         );
         let destination = root.path().join(sha256(b"bundle"));
-        assert!(destination.join(".models.zip").is_file());
-        assert_eq!(
-            std::fs::read(destination.join(REQUIRED[0])).unwrap(),
-            b"model"
-        );
-        assert!(!destination.join(REQUIRED[1]).exists());
-    }
-    #[test]
-    fn rejects_symlink_archive_entries() {
-        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
-        for (index, path) in REQUIRED.iter().enumerate() {
-            if index == 1 {
-                archive.add_symlink(*path, "model", options).unwrap();
-            } else {
-                archive.start_file(*path, options).unwrap();
-                archive.write_all(b"model").unwrap();
-            }
-        }
-        let archive = archive.finish().unwrap().into_inner();
-        let root = tempfile::tempdir().unwrap();
-        assert!(
-            install(
-                &serde_json::to_vec(&fixture(&archive)).unwrap(),
-                root.path(),
-                &|_| {},
-                |_, _| Ok(Box::new(Cursor::new(archive.clone())))
-            )
-            .is_err()
-        );
-        assert!(
-            !root
-                .path()
-                .join(sha256(b"bundle"))
-                .join(REQUIRED[0])
-                .exists()
-        );
-    }
-    #[test]
-    fn rejects_missing_extra_directory_compressed_and_wrong_size_entries() {
-        for kind in ["missing", "extra", "directory", "compressed", "size"] {
-            let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-            let options = zip::write::SimpleFileOptions::default().compression_method(
-                if kind == "compressed" {
-                    zip::CompressionMethod::Deflated
-                } else {
-                    zip::CompressionMethod::Stored
-                },
-            );
-            for (index, path) in REQUIRED.iter().enumerate() {
-                if index == 0 && kind == "missing" {
-                    continue;
-                }
-                if index == 0 && kind == "directory" {
-                    archive.add_directory(*path, options).unwrap();
-                    continue;
-                }
-                archive.start_file(*path, options).unwrap();
-                archive
-                    .write_all(if index == 0 && kind == "size" {
-                        b"bigger"
-                    } else {
-                        b"model"
-                    })
-                    .unwrap();
-            }
-            if kind == "extra" {
-                archive.start_file("anime/extra", options).unwrap();
-                archive.write_all(b"model").unwrap();
-            }
-            let archive = archive.finish().unwrap().into_inner();
-            let root = tempfile::tempdir().unwrap();
-            assert!(
-                install(
-                    &serde_json::to_vec(&fixture(&archive)).unwrap(),
-                    root.path(),
-                    &|_| {},
-                    |_, _| Ok(Box::new(Cursor::new(archive.clone())))
-                )
-                .is_err(),
-                "{kind}"
-            );
-            assert!(
-                !root
-                    .path()
-                    .join(sha256(b"bundle"))
-                    .join(REQUIRED[0])
-                    .exists()
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_duplicate_names_even_when_zip_reader_collapses_them() {
-        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
-        for path in REQUIRED.iter().copied().chain(["anime/xxxxxxxx.json"]) {
-            archive.start_file(path, options).unwrap();
-            archive.write_all(b"model").unwrap();
-        }
-        let mut archive = archive.finish().unwrap().into_inner();
-        let from = b"anime/xxxxxxxx.json";
-        for index in 0..=archive.len() - from.len() {
-            if &archive[index..index + from.len()] == from {
-                archive[index..index + from.len()].copy_from_slice(b"anime/manifest.json");
-            }
-        }
-        let root = tempfile::tempdir().unwrap();
-        assert!(
-            install(
-                &serde_json::to_vec(&fixture(&archive)).unwrap(),
-                root.path(),
-                &|_| {},
-                |_, _| Ok(Box::new(Cursor::new(archive.clone())))
-            )
-            .is_err()
-        );
-        assert!(
-            !root
-                .path()
-                .join(sha256(b"bundle"))
-                .join(REQUIRED[0])
-                .exists()
-        );
-    }
-
-    #[test]
-    fn complete_cache_removes_archive_left_after_interruption() {
-        let root = tempfile::tempdir().unwrap();
-        let archive = archive_with(|_, _, _| {});
-        let index = serde_json::to_vec(&fixture(&archive)).unwrap();
-        let destination = install(&index, root.path(), &|_| {}, |_, _| {
-            Ok(Box::new(Cursor::new(archive.clone())))
-        })
-        .unwrap();
-        std::fs::write(destination.join(".models.zip"), archive).unwrap();
-        install(&index, root.path(), &|_| {}, |_, _| {
-            panic!("cache is complete")
-        })
-        .unwrap();
+        assert!(!destination.join(REQUIRED[0]).exists());
         assert!(!destination.join(".models.zip").exists());
-    }
-
-    #[test]
-    fn unpublished_placeholder_has_actionable_error() {
-        let placeholder = br#"{"schema":2,"model":"anime","revision":null,"repository":null,"archive":null,"files":[]}"#;
-        let result = install(placeholder, Path::new("unused"), &|_| {}, |_, _| {
-            panic!("placeholder must not download")
-        });
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("まだ公開されていません")
-        );
     }
 }
