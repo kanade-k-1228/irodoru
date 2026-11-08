@@ -42,6 +42,7 @@ impl Studio {
                     .flex_1()
                     .min_w(px(64.))
                     .h(px(32.))
+                    .window_control_area(WindowControlArea::Drag)
                     .on_mouse_down(MouseButton::Left, |event, w, _| {
                         if event.click_count == 2 {
                             w.zoom_window();
