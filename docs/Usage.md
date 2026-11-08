@@ -1,60 +1,58 @@
-# 詳しい使い方
+# User guide
 
-[README](../README.md) · [Docker](Docker.md) · [開発](Dev.md)
+[README](../README.md) · [Docker](Docker.md) · [Development](Dev.md)
 
-![台本・キャラクター・セリフ編集・音声プレーヤー](imgs/main.png)
+![Script, characters, dialogue editor, and audio player](imgs/main.png)
 
-## プロジェクト
+## Projects
 
-左上の **irodoru** メニューから新規作成・開く・保存を操作します。`.iro` は台本、キャラクター、参照音声、アイコン、生成音声をまとめたファイルです。以前の `.zip` プロジェクトも開けます。
+- Use the **irodoru** menu at the top left to create, open, or save a project.
+- A `.iro` file contains the script, characters, reference audio, icons, and generated audio. Older `.zip` projects also work.
+- Edits are saved automatically. If saving fails, use the menu's save action to retry.
+- Before switching projects, save or cancel character edits and wait for generation to finish.
+- Opening a `.iro` file from your OS creates a separate window. A project can be open in only one window at a time.
+- On Windows, associate `.iro` files with `irodoru.exe` through **Open with**.
 
-編集内容は自動保存されます。保存エラーが出たら「プロジェクトを保存」で再試行してください。キャラクター編集中は保存かキャンセルを行い、生成中は完了を待ってからプロジェクトを切り替えます。
+![Project menu for creating, opening, and saving projects](imgs/menu.png)
 
-OSから `.iro` を開くと別ウィンドウで開きます。同じプロジェクトは同時に複数のウィンドウで開けません。Windowsでは `.iro` の「プログラムから開く」で `irodoru.exe` を指定すると関連付けできます。
+## Characters
 
-![プロジェクトの新規作成・読み込み・保存メニュー](imgs/menu.png)
+1. Click **+** at the bottom left and enter a name and voice prompt, such as “a calm, clear voice.”
+2. Enter sample text and generate a preview.
+3. Click the save icon at the top right of the editor. Use **×** to cancel or the pencil icon to edit again.
 
-## キャラクター
+![Character editor with name, voice prompt, and sample text](imgs/character.png)
 
-1. 左下の「＋」を押し、名前とプロンプト（例：落ち着いた、はっきりした声）を入力します。
-2. サンプル文を入力して「サンプル生成」で試します。
-3. 編集欄右上の保存アイコンで確定します。「×」で取り消し、鉛筆アイコンで再編集できます。
+Characters belong to their project. Optional assets:
 
-![名前・声のプロンプト・サンプル文を設定するキャラクター編集画面](imgs/character.png)
+- **Reference audio:** WAV, MP3, FLAC, Ogg Vorbis, or AAC/M4A; 1–60 seconds. Imports are converted to 48 kHz mono WAV.
+- **Icon:** PNG, JPEG, WebP, GIF, BMP, TIFF, or SVG; up to 10 MB. Images are cropped to 128 × 128 pixels.
 
-参照音声やアイコンも設定できます。キャラクターはプロジェクトごとに保存されます。
+## Edit a script
 
-| 素材 | 対応形式・制限 |
-| --- | --- |
-| 参照音声 | WAV、MP3、FLAC、Ogg Vorbis、AAC/M4A。1〜60秒。取り込み時に48 kHz・モノラルWAVへ変換 |
-| アイコン | PNG、JPEG、WebP、GIF、BMP、TIFF、SVG。10 MB以下。128 px四方に切り抜き |
+- Click a character name to append a line for that character. Select a line and edit its dialogue in the lower center field.
+- Click **+** between lines or at the end to add an empty line. Drag the left handle to reorder it.
+- Click the selected line's trash icon to delete it and its generated audio. The last line cannot be deleted.
+- Press `Enter` to add the next line or `Shift+Enter` for a line break. During Japanese input, `Enter` confirms the IME composition.
 
-## 台本の編集
+## Generate and export audio
 
-- キャラクター名をクリックすると、そのキャラクターの行が末尾に追加されます。行を選び、中央下の入力欄でセリフを編集します。
-- 行間や末尾の「＋」で空の行を追加し、左端のハンドルをドラッグして並べ替えます。
-- 選択行のゴミ箱で削除します。行を削除すると、その行の生成音声も削除されます。最後の1行は削除できません。
-- `Enter` で次の行を追加、`Shift+Enter` でセリフ内を改行します。日本語変換中の `Enter` は変換を確定します。
+- Select a line and generate audio. Speed ranges from **0.5× to 2.0×**; advanced settings include the seed and step count. Start with the defaults.
+- Use the lower-right player to play, pause, or seek. Click its download icon to export WAV.
+- Regeneration replaces existing audio only after it succeeds.
+- If the first model download fails, retry it. Prepared models are reused for offline generation.
 
-## 音声の生成・書き出し
+## Settings and shortcuts
 
-行を選んで「生成」を押します。速度は **×0.5〜×2.0**、詳細設定ではシードやステップ数を変更できます。まずは既定値で試してください。
+Choose the color theme or open preferences from the top-left menu to switch between light and dark mode.
 
-生成後は右下のプレーヤーで再生・一時停止・再生位置の変更ができ、ダウンロードアイコンからWAVを書き出せます。再生成した音声は成功したときだけ以前の音声と置き換わります。
+![Preferences with color theme settings](imgs/preferences.png)
 
-モデルの初回ダウンロードに失敗したら「再試行」を押してください。準備が完了したモデルは次回以降も使われ、オフラインで生成できます。
+Use `⌘` instead of `Ctrl` on macOS.
 
-## 設定・ショートカット
-
-左上のメニューの「カラーテーマ」または「環境設定…」で明るい表示・暗い表示を切り替えます。
-
-![カラーテーマを切り替える環境設定画面](imgs/preferences.png)
-
-macOSでは `Ctrl` を `⌘` に読み替えてください。
-
-| 操作 | キー |
-| --- | --- |
-| 新規ウィンドウ | `Ctrl+Shift+N` |
-| 新規プロジェクト／開く／保存 | `Ctrl+N` ／ `Ctrl+O` ／ `Ctrl+S` |
-| 環境設定 | `Ctrl+,` |
-| ウィンドウを閉じる | `Ctrl+W` |
+- New window: `Ctrl+Shift+N`
+- New project: `Ctrl+N`
+- Open project: `Ctrl+O`
+- Save project: `Ctrl+S`
+- Preferences: `Ctrl+,`
+- Close window: `Ctrl+W`
