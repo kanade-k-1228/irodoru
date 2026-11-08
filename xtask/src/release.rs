@@ -106,7 +106,12 @@ fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Res
             parts.push(filename);
         }
         let checksum = destination.join(format!("{name}.sha256"));
-        fs::write(&checksum, format!("{:x}  {name}\n", hash.finalize()))?;
+        let digest: String = hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        fs::write(&checksum, format!("{digest}  {name}\n"))?;
         assets.push(checksum);
         if count > 1 {
             split = true;

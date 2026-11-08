@@ -1,12 +1,15 @@
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rubato::{
-    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+    Async, FixedAsync, Resampler, SincInterpolationParameters, SincInterpolationType,
+    WindowFunction, audioadapter_buffers::direct::InterleavedSlice,
 };
 use std::{io::Cursor, path::Path};
 use symphonia::core::{
-    audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions,
-    io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+    codecs::audio::AudioDecoderOptions,
+    formats::{FormatOptions, TrackType, probe::Hint},
+    io::MediaSourceStream,
+    meta::MetadataOptions,
 };
 
 pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "ogg", "oga", "aac", "m4a", "mp4"];
@@ -19,46 +22,46 @@ pub fn import_audio(path: &Path) -> Result<Vec<u8>> {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
-    let mut format = symphonia::default::get_probe()
-        .format(
-            &hint,
-            source,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )?
-        .format;
-    let track = format.default_track().context("音声トラックがありません")?;
+    let mut format = symphonia::default::get_probe().probe(
+        &hint,
+        source,
+        FormatOptions::default(),
+        MetadataOptions::default(),
+    )?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .context("音声トラックがありません")?;
     let id = track.id;
-    let mut decoder =
-        symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
+    let params = track
+        .codec_params
+        .as_ref()
+        .and_then(|params| params.audio())
+        .context("音声トラックの形式を読み込めません")?;
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(params, &AudioDecoderOptions::default())?;
     let mut mono = Vec::new();
     let mut rate = 0;
-    loop {
-        let packet = match format.next_packet() {
-            Ok(p) => p,
-            Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e.into()),
-        };
-        if packet.track_id() != id {
+    let mut samples = Vec::<f32>::new();
+    while let Some(packet) = format.next_packet()? {
+        if packet.track_id != id {
             continue;
         }
         let decoded = decoder.decode(&packet)?;
         // Some compressed packets contain only decoder priming information.
-        // Symphonia cannot interleave an empty multichannel buffer.
         if decoded.frames() == 0 {
             continue;
         }
-        let spec = *decoded.spec();
-        if rate != 0 && rate != spec.rate {
+        let spec = decoded.spec();
+        if rate != 0 && rate != spec.rate() {
             bail!("途中でサンプルレートが変わる音声は読み込めません");
         }
-        rate = spec.rate;
-        if rate == 0 || spec.channels.count() == 0 {
+        rate = spec.rate();
+        if rate == 0 || spec.channels().count() == 0 {
             bail!("不正な音声です");
         }
-        let mut samples = SampleBuffer::<f32>::new(decoded.frames() as u64, spec);
-        samples.copy_interleaved_ref(decoded);
-        for frame in samples.samples().chunks(spec.channels.count()) {
+        samples.resize(decoded.samples_interleaved(), 0.0);
+        decoded.copy_to_slice_interleaved(&mut samples);
+        for frame in samples.chunks(spec.channels().count()) {
             let sample = frame.iter().sum::<f32>() / frame.len() as f32;
             if !sample.is_finite() {
                 bail!("不正な音声サンプルです");
@@ -86,30 +89,25 @@ pub fn normalize_audio(mut mono: Vec<f32>, rate: u32) -> Result<Vec<u8>> {
         mono
     } else {
         let count = (mono.len() as u64 * 48000 / rate as u64) as usize;
-        let mut resampler = SincFixedIn::<f32>::new(
+        let mut resampler = Async::<f32>::new_sinc(
             48000.0 / rate as f64,
             1.0,
-            SincInterpolationParameters {
+            &SincInterpolationParameters {
                 sinc_len: 128,
-                f_cutoff: 0.95,
+                f_cutoff: Some(0.95),
                 interpolation: SincInterpolationType::Linear,
                 oversampling_factor: 128,
                 window: WindowFunction::BlackmanHarris2,
             },
             1024,
             1,
+            FixedAsync::Input,
         )?;
-        let delay = resampler.output_delay();
-        let mut output = Vec::with_capacity(count + delay + 2048);
-        for chunk in mono.chunks(1024) {
-            let mut input = vec![0.0; 1024];
-            input[..chunk.len()].copy_from_slice(chunk);
-            output.extend(resampler.process(&[input], None)?.remove(0));
-        }
-        while output.len() < count + delay {
-            output.extend(resampler.process(&[vec![0.0; 1024]], None)?.remove(0));
-        }
-        output[delay..delay + count].to_vec()
+        let input = InterleavedSlice::new(&mono, 1, mono.len())?;
+        let mut output = resampler.process_all(&input, mono.len(), None)?.take_data();
+        // Preserve the existing duration rounding; process_all rounds up.
+        output.truncate(count);
+        output
     };
     let mut buffer = Cursor::new(Vec::new());
     {
@@ -202,6 +200,29 @@ mod tests {
             hound::WavReader::new(Cursor::new(wav)).unwrap().duration(),
             48000 * 60
         );
+    }
+    #[test]
+    fn resampling_preserves_duration_and_trims_delay() {
+        for rate in [8000, 44100, 96000] {
+            let frames = rate as usize + 137;
+            let ramp = (0..frames)
+                .map(|i| 0.1 + 0.5 * i as f32 / frames as f32)
+                .collect();
+            let wav = normalize_audio(ramp, rate).unwrap();
+            let mut reader = hound::WavReader::new(Cursor::new(wav)).unwrap();
+            let samples: Vec<i16> = reader.samples().map(Result::unwrap).collect();
+            assert_eq!(samples.len(), frames * 48000 / rate as usize);
+            // Check alignment away from the sinc filter's edge ringing.
+            for index in [1024, samples.len() - 1024] {
+                let expected =
+                    (0.1 + 0.5 * index as f64 * rate as f64 / (48000.0 * frames as f64)) * 32767.0;
+                assert!(
+                    (samples[index] as f64 - expected).abs() < 5.0,
+                    "rate={rate}, index={index}, actual={}, expected={expected}",
+                    samples[index]
+                );
+            }
+        }
     }
     #[test]
     fn image_crop_and_svg_are_png() {
