@@ -48,7 +48,7 @@
       "mimeType": "application/x-irodoru-project",
       "description": "irodoru project",
       "name": "irodoru project",
-      "role": "Editor"
+      "role": "editor"
     }
   ]
 }

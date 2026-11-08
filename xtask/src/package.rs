@@ -206,6 +206,8 @@ mod tests {
             config["fileAssociations"][0]["mimeType"],
             "application/x-irodoru-project"
         );
+        // cargo-packager deserializes camelCase; its macOS plist writer emits "Editor".
+        assert_eq!(config["fileAssociations"][0]["role"], "editor");
         let config = configuration(
             &root,
             &stage,
