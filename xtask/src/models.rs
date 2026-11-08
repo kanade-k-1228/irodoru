@@ -1,7 +1,16 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, io::Read};
+use std::{
+    collections::BTreeSet,
+    io::{Read, Write},
+};
+
+mod distribution;
+#[cfg(test)]
+mod tests;
+
+const MAX_ARCHIVE_SIZE: u64 = 10_000_000_000;
 const REQUIRED: &[(&str, &[&str])] = &[
     (
         "anime",
@@ -24,156 +33,195 @@ const REQUIRED: &[(&str, &[&str])] = &[
         &["codec.json", "dacvae_encoder.onnx", "dacvae_decoder.onnx"],
     ),
 ];
-#[derive(Serialize, Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Entry {
     path: String,
     size: u64,
     sha256: String,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Index {
     model: String,
     checkpoint: serde_json::Value,
     files: Vec<Entry>,
 }
-pub fn fingerprint(path: &Path) -> Result<(u64, String)> {
-    let mut input = fs::File::open(path)?;
+fn hex(bytes: impl AsRef<[u8]>) -> String {
+    bytes
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+// Hash while copying so archiving does not need a second pass over the source.
+fn copy_hashed(path: &Path, output: &mut impl Write) -> Result<(u64, String)> {
+    let mut input = fs::File::open(path).with_context(|| format!("Read {}", path.display()))?;
     let mut hash = Sha256::new();
     let mut size = 0;
-    let mut buffer = [0u8; 65536];
+    let mut buffer = vec![0; 1024 * 1024];
     loop {
         let n = input.read(&mut buffer)?;
         if n == 0 {
             break;
         }
+        output.write_all(&buffer[..n])?;
         hash.update(&buffer[..n]);
         size += n as u64;
     }
-    let digest = hash
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    Ok((size, digest))
+    Ok((size, hex(hash.finalize())))
 }
-pub fn files(directory: &Path) -> Result<Vec<PathBuf>> {
-    let mut result = Vec::new();
+fn fingerprint(path: &Path) -> Result<(u64, String)> {
+    copy_hashed(path, &mut std::io::sink())
+}
+fn files(directory: &Path) -> Result<BTreeSet<PathBuf>> {
+    let mut result = BTreeSet::new();
+    anyhow::ensure!(!directory.is_symlink(), "Symlink in model resources");
+    if !directory.exists() {
+        return Ok(result);
+    }
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let kind = entry.file_type()?;
         if kind.is_dir() {
             result.extend(files(&entry.path())?);
         } else if kind.is_file() {
-            result.push(entry.path());
+            result.insert(entry.path());
         } else {
-            bail!("Unsupported resource: {}", entry.path().display());
+            bail!("Unsupported model resource: {}", entry.path().display());
         }
     }
-    result.sort();
     Ok(result)
 }
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
 fn valid_path(path: &str) -> bool {
-    let parts: Vec<_> = path.split('/').collect();
-    parts.len() == 2
-        && ["anime", "codec"].contains(&parts[0])
-        && !["", ".", ".."].contains(&parts[1])
-        && !path.contains(['\\', ':'])
+    let Some((folder, name)) = path.split_once('/') else {
+        return false;
+    };
+    let edge = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
+    ["anime", "codec"].contains(&folder)
+        && name.bytes().next().is_some_and(edge)
+        && name.bytes().last().is_some_and(edge)
+        && name.bytes().all(|b| edge(b) || b == b'.')
 }
-pub fn check(destination: &Path) -> Result<()> {
-    let index: Index = serde_json::from_slice(&fs::read(destination.join("bundle.json"))?)?;
-    anyhow::ensure!(index.model == "anime", "The app must bundle anime");
-    let paths: BTreeSet<_> = index.files.iter().map(|e| e.path.as_str()).collect();
-    anyhow::ensure!(
-        paths.len() == index.files.len(),
-        "Duplicate model resources"
-    );
-    for (dir, names) in REQUIRED {
-        for name in *names {
-            anyhow::ensure!(
-                paths.contains(format!("{dir}/{name}").as_str()),
-                "Missing {dir}/{name}"
-            );
-        }
-    }
-    for entry in &index.files {
-        anyhow::ensure!(valid_path(&entry.path), "Invalid model resource path");
-        let actual = fingerprint(&destination.join(&entry.path))?;
+fn validate_files(entries: &[Entry]) -> Result<BTreeSet<&str>> {
+    let mut paths = BTreeSet::new();
+    for entry in entries {
+        anyhow::ensure!(valid_path(&entry.path), "Invalid distribution model path");
         anyhow::ensure!(
-            actual == (entry.size, entry.sha256.clone()),
-            "Model checksum mismatch: {}",
-            entry.path
+            paths.insert(entry.path.as_str()),
+            "Duplicate model resource"
         );
+        anyhow::ensure!(
+            entry.size > 0 && entry.size <= MAX_ARCHIVE_SIZE,
+            "Empty or invalid model file"
+        );
+        anyhow::ensure!(valid_sha256(&entry.sha256), "Invalid model file checksum");
     }
-    anyhow::ensure!(
-        files(destination)?.len() == paths.len() + 1,
-        "Unexpected model resources; run cargo xtask models prepare"
-    );
-    println!("Anime model resources verified");
-    Ok(())
-}
-pub fn prepare(source: &Path, destination: &Path) -> Result<()> {
-    let source = source.canonicalize()?;
-    for (dir, names) in REQUIRED {
+    for (folder, names) in REQUIRED {
         for name in *names {
-            let path = source.join(dir).join(name);
-            let metadata = fs::metadata(&path).with_context(|| {
-                format!("Missing {}. Run cargo xtask models export", path.display())
-            })?;
             anyhow::ensure!(
-                metadata.is_file() && metadata.len() > 0,
-                "Empty model: {}",
-                path.display()
+                paths.contains(format!("{folder}/{name}").as_str()),
+                "Incomplete model resources: {folder}/{name}"
             );
         }
     }
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(source.join("anime/manifest.json"))?)?;
-    anyhow::ensure!(manifest["name"] == "anime", "The app must bundle anime");
+    Ok(paths)
+}
+fn separate_directories(source: &Path, destination: &Path) -> Result<(PathBuf, PathBuf)> {
+    let source = source.canonicalize()?;
     fs::create_dir_all(destination)?;
     let destination = destination.canonicalize()?;
     anyhow::ensure!(
         !source.starts_with(&destination) && !destination.starts_with(&source),
-        "Model staging directories must not overlap"
+        "Model directories must not overlap"
+    );
+    Ok((source, destination))
+}
+fn read_bundle(source: &Path) -> Result<(Vec<u8>, Index)> {
+    let bytes = fs::read(source.join("bundle.json"))?;
+    let index: Index = serde_json::from_slice(&bytes)?;
+    anyhow::ensure!(index.model == "anime", "App model resources must use anime");
+    let expected = validate_files(&index.files)?
+        .into_iter()
+        .chain(["bundle.json"])
+        .map(|path| source.join(path))
+        .collect();
+    anyhow::ensure!(
+        files(source)? == expected,
+        "Unexpected model resources; run cargo xtask models prepare"
+    );
+    Ok((bytes, index))
+}
+fn check(source: &Path) -> Result<()> {
+    let (_, index) = read_bundle(source)?;
+    for entry in index.files {
+        anyhow::ensure!(
+            fingerprint(&source.join(&entry.path))? == (entry.size, entry.sha256),
+            "Model checksum mismatch: {}",
+            entry.path
+        );
+    }
+    println!("Anime model resources verified");
+    Ok(())
+}
+fn prepare(source: &Path, destination: &Path) -> Result<()> {
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(source.join("anime/manifest.json"))?)?;
+    anyhow::ensure!(
+        manifest["name"] == "anime",
+        "App model resources must use anime"
     );
     let mut entries = Vec::new();
-    for (dir, names) in REQUIRED {
-        for path in files(&source.join(dir))? {
-            let name = path.file_name().unwrap().to_string_lossy();
-            if !names.contains(&name.as_ref())
-                && !names
+    for (folder, names) in REQUIRED {
+        let directory = source.join(folder);
+        for path in files(&directory)? {
+            let name = path.strip_prefix(&directory)?.to_string_lossy();
+            if names.contains(&name.as_ref())
+                || names
                     .iter()
                     .any(|n| n.ends_with(".onnx") && name.starts_with(&format!("{n}.")))
             {
-                continue;
+                let (size, sha256) = fingerprint(&path)?;
+                entries.push(Entry {
+                    path: format!("{folder}/{name}"),
+                    size,
+                    sha256,
+                });
             }
-            let relative = format!("{dir}/{name}");
-            let target = destination.join(&relative);
-            fs::create_dir_all(target.parent().unwrap())?;
-            let (size, sha256) = fingerprint(&path)?;
-            if !target.is_file() || fingerprint(&target)? != (size, sha256.clone()) {
-                let temp = target.with_extension("copy-tmp");
-                fs::copy(&path, &temp)?;
-                if cfg!(windows) && target.exists() {
-                    fs::remove_file(&target)?;
-                }
-                fs::rename(temp, &target)?;
-            }
-            entries.push(Entry {
-                path: relative,
-                size,
-                sha256,
-            });
         }
     }
-    let expected: BTreeSet<_> = entries
-        .iter()
-        .map(|e| destination.join(&e.path))
-        .chain([destination.join("bundle.json")])
-        .collect();
-    for path in files(&destination)? {
-        if !expected.contains(&path) {
-            fs::remove_file(path)?;
+    let paths = validate_files(&entries)?;
+    // Reject unsupported destination entries before copying any data.
+    files(destination)?;
+    let (source, destination) = separate_directories(source, destination)?;
+    for entry in &entries {
+        let target = destination.join(&entry.path);
+        if target.is_file() && fingerprint(&target)? == (entry.size, entry.sha256.clone()) {
+            continue;
         }
+        let parent = target.parent().unwrap();
+        fs::create_dir_all(parent)?;
+        let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+        anyhow::ensure!(
+            copy_hashed(&source.join(&entry.path), &mut temporary)?
+                == (entry.size, entry.sha256.clone()),
+            "Model changed while copying: {}",
+            entry.path
+        );
+        temporary.persist(&target)?;
+    }
+    let expected: BTreeSet<_> = paths
+        .into_iter()
+        .chain(["bundle.json"])
+        .map(|p| destination.join(p))
+        .collect();
+    for path in files(&destination)?.difference(&expected) {
+        fs::remove_file(path)?;
     }
     let index = Index {
         model: "anime".into(),
@@ -188,26 +236,37 @@ pub fn prepare(source: &Path, destination: &Path) -> Result<()> {
     );
     Ok(())
 }
+
 pub fn cli(args: &[String]) -> Result<()> {
-    if matches!(
-        args.first().map(String::as_str),
-        Some("distribute" | "publish")
-    ) {
-        let status = Command::new(if cfg!(windows) { "python" } else { "python3" })
-            .arg(root().join("scripts/model_distribution.py"))
-            .args(args)
-            .status()
-            .context("Run model distribution helper (requires Python 3.10+)")?;
-        anyhow::ensure!(status.success(), "Model distribution failed: {status}");
-        return Ok(());
-    }
-    let source = PathBuf::from(option(args, "--source")?.unwrap_or_else(|| "models".into()));
-    let destination = PathBuf::from(
-        option(args, "--destination")?.unwrap_or_else(|| "pkgs/app/resources/models".into()),
+    let command = args.first().map(String::as_str);
+    let distributing = matches!(command, Some("distribute" | "publish"));
+    let bundle = "pkgs/app/resources/models";
+    let source = PathBuf::from(
+        option(args, "--source")?
+            .unwrap_or_else(|| if distributing { bundle } else { "models" }.into()),
     );
-    match args.first().map(String::as_str) {
+    let destination = PathBuf::from(
+        option(args, "--destination")?
+            .unwrap_or_else(|| if distributing { "model-assets" } else { bundle }.into()),
+    );
+    match command {
         Some("prepare") => prepare(&source, &destination),
         Some("check") => check(&destination),
+        Some("distribute") => {
+            distribution::distribute(&source, &destination, option(args, "--repository")?)
+                .map(|_| ())
+        }
+        Some("publish") => distribution::publish(&destination, |args, directory| {
+            let result = Command::new("oras")
+                .args(args)
+                .current_dir(directory)
+                .stderr(Stdio::inherit())
+                .output()
+                .context("Run oras")?;
+            anyhow::ensure!(result.status.success(), "oras failed: {}", result.status);
+            Ok(result.stdout)
+        })
+        .map(|_| ()),
         Some("export") => run(
             "uv",
             &[
@@ -225,48 +284,5 @@ pub fn cli(args: &[String]) -> Result<()> {
         _ => bail!(
             "Usage: cargo xtask models prepare|check|export|distribute|publish [--source DIR] [--destination DIR] [--repository OWNER/PACKAGE]"
         ),
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn fixture(dir: &Path) {
-        for (folder, names) in REQUIRED {
-            fs::create_dir_all(dir.join(folder)).unwrap();
-            for name in *names {
-                fs::write(dir.join(folder).join(name), b"model").unwrap();
-            }
-        }
-        fs::write(dir.join("anime/manifest.json"), r#"{"name":"anime"}"#).unwrap();
-    }
-    #[test]
-    fn stage_checks_external_data_and_rejects_corruption() {
-        let temp = tempfile::tempdir().unwrap();
-        let src = temp.path().join("source");
-        let dst = temp.path().join("dest");
-        fixture(&src);
-        fs::write(src.join("anime/backbone.onnx.data"), b"weights").unwrap();
-        prepare(&src, &dst).unwrap();
-        check(&dst).unwrap();
-        fs::write(dst.join("anime/backbone.onnx.data"), b"corrupt").unwrap();
-        assert!(check(&dst).is_err());
-        prepare(&src, &dst).unwrap();
-        fs::write(dst.join("extra"), "stale").unwrap();
-        assert!(check(&dst).is_err());
-        prepare(&src, &dst).unwrap();
-        check(&dst).unwrap();
-        assert!(prepare(&src, &src).is_err());
-    }
-    #[test]
-    fn resource_paths_cannot_escape_bundle() {
-        for p in [
-            "../secret",
-            "anime/../../x",
-            "anime/..",
-            "anime/C:x",
-            "anime/\\x",
-        ] {
-            assert!(!valid_path(p));
-        }
     }
 }

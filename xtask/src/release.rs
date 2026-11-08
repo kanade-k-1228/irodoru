@@ -210,11 +210,11 @@ mod tests {
             .flat_map(|i| fs::read(dest.join(format!("app-test.zip.part{i:03}"))).unwrap())
             .collect();
         assert_eq!(joined, b"1234567890");
-        let expected = models::fingerprint(&source.join("app.zip")).unwrap().1;
+        let expected = "c775e7b757ede630cd0aa1113bd102661ab38829ca52a6422ab782862f268646";
         assert!(
             fs::read_to_string(dest.join("app-test.zip.sha256"))
                 .unwrap()
-                .starts_with(&expected)
+                .starts_with(expected)
         );
         fs::create_dir(source.join("nested")).unwrap();
         fs::write(source.join("nested/app.zip"), b"duplicate").unwrap();

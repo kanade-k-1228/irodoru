@@ -26,13 +26,103 @@ env:
 
 jobs:
   check:
-    uses: ./.github/workflows/verify.yml
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check workflow syntax and shell scripts
+        run: >-
+          docker run --rm
+          -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo xtask verify
+      - run: docker compose --profile local --profile wsl-gpu config --quiet
+      - uses: astral-sh/setup-uv@v7
+      - run: cargo xtask verify-export
 
   models:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/models.yml
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: models
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --locked --release -p xtask
+      # Cache only the prepared bundle (~3.4 GB), not unused portable exports.
+      # Both the exporter inputs and the bundle preparation code affect its contents.
+      - uses: actions/cache/restore@v6
+        id: models
+        with:
+          path: pkgs/app/resources/models
+          key: anime-bundle-v1-${{ hashFiles('pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/Cargo.toml') }}
+      - uses: astral-sh/setup-uv@v7
+        if: steps.models.outputs.cache-hit != 'true'
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - name: Export and prepare models on cache miss
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          uv sync --project pkgs/engine/script --frozen
+          uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
+          target/release/xtask models prepare
+      # Distribution verifies file checksums even when the bundle came from cache.
+      - name: Prepare one model ZIP for GHCR
+        env:
+          PUBLISH_MODELS: ${{ github.event_name == 'release' }}
+        run: |
+          args=()
+          if [[ "$PUBLISH_MODELS" == 'true' ]]; then
+            args+=(--repository "${GITHUB_REPOSITORY,,}-models")
+          fi
+          target/release/xtask models distribute "${args[@]}"
+      - uses: actions/cache/save@v6
+        if: steps.models.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: pkgs/app/resources/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
+      - uses: oras-project/setup-oras@v2
+        if: github.event_name == 'release'
+        with:
+          version: 1.3.6
+      - name: Authenticate to GHCR
+        if: github.event_name == 'release'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish models and verify public access before building apps
+        if: github.event_name == 'release'
+        run: target/release/xtask models publish
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-model-manifest
+          path: model-assets/model-distribution.json
+          if-no-files-found: error
+          retention-days: 1
+      # Test fixtures are downloaded outside app resources and never packaged.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-models
+          path: pkgs/app/resources/models/
+          compression-level: 0
+          retention-days: 1
 
   build:
     name: build (${{ matrix.platform }})
@@ -71,6 +161,8 @@ jobs:
           workspaces: . -> target
           key: ${{ matrix.target }}
           cache-on-failure: true
+          # PR caches cannot be reused by other PRs and evict the shared main cache.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v8
         with:
           name: app-model-manifest
@@ -87,7 +179,7 @@ jobs:
         run: |
           cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
           cargo test --locked -p irodoru
-          cargo test --locked --release --target "$TARGET" -p irodoru --test embedded -- --ignored
+          cargo test --locked --release --target "$TARGET" -p irodoru --features desktop --test embedded -- --ignored
       - name: Set release version
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         env:
@@ -96,11 +188,30 @@ jobs:
       - name: Install packager
         if: matrix.platform != 'windows'
         run: cargo install cargo-packager --version 0.11.8 --locked
+      # Fetch cargo-packager 0.11.8 tools through the API; browser download URLs return 504.
+      - name: Fetch AppImage tools
+        if: matrix.platform == 'linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          appimage_tools="${XDG_CACHE_HOME:-$HOME/.cache}/.cargo-packager/AppImage"
+          mkdir -p "$appimage_tools"
+          gh api -H 'Accept: application/octet-stream' repos/tauri-apps/binary-releases/releases/assets/274691722 > "$appimage_tools/AppRun-x86_64"
+          printf '%s  %s\n' f30140a43a0a59e46db21bdefdf749b9e9f2c6946e92afabbacf98b8ae73fb4f "$appimage_tools/AppRun-x86_64" | sha256sum --check
+          gh api -H 'Accept: application/octet-stream' repos/tauri-apps/binary-releases/releases/assets/182515537 > "$appimage_tools/linuxdeploy-x86_64.AppImage"
+          printf '%s  %s\n' e762bea85c8eb0d4b3508d46e5c1f037f717d0f9303ae3b4aafc8b04991fa1ef "$appimage_tools/linuxdeploy-x86_64.AppImage" | sha256sum --check
+          gh api -H 'Accept: application/octet-stream' repos/linuxdeploy/linuxdeploy-plugin-appimage/releases/assets/602435573 > "$appimage_tools/linuxdeploy-plugin-appimage.AppImage"
+          printf '%s  %s\n' 49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e "$appimage_tools/linuxdeploy-plugin-appimage.AppImage" | sha256sum --check
+          chmod 755 "$appimage_tools/AppRun-x86_64" "$appimage_tools/linuxdeploy-x86_64.AppImage" "$appimage_tools/linuxdeploy-plugin-appimage.AppImage"
+          gh api -H 'Accept: application/octet-stream' repos/AppImage/type2-runtime/releases/assets/657374641 > "$appimage_tools/runtime-x86_64"
+          printf '%s  %s\n' 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46 "$appimage_tools/runtime-x86_64" | sha256sum --check
+          printf 'LDAI_RUNTIME_FILE=%s\n' "$appimage_tools/runtime-x86_64" >> "$GITHUB_ENV"
       - name: Build and package desktop
         env:
           TARGET: ${{ matrix.target }}
         run: cargo xtask package --target "$TARGET"
       - name: Verify lightweight packages and offline synthesis with external models
+        if: github.event_name == 'release'
         env:
           IRODORU_TEST_MODELS: ${{ runner.temp }}/irodoru-test-models
           TARGET: ${{ matrix.target }}

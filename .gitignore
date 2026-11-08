@@ -2,6 +2,7 @@ node_modules/
 dist/
 __pycache__/
 models/
+!xtask/src/models/
 library/
 !pkgs/app/src/library/
 target/
