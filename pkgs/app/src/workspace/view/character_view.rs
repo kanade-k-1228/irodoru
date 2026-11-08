@@ -53,6 +53,7 @@ impl Studio {
                         .bg(rgb(0xb52e42))
                         .text_color(rgb(0xffffff))
                         .disabled(disabled)
+                        .when(disabled, |el| el.cursor_default())
                         .on_click(cx.listener(move |this, _, w, cx| {
                             this.delete_character(id.clone(), name.clone(), w, cx)
                         })),
@@ -61,12 +62,16 @@ impl Studio {
             .child(
                 tool("cancel-character", "close", "キャンセル")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| this.cancel_character(w, cx))),
             )
             .child(
                 tool("save-character", "save", "キャラクターを保存")
                     .text_color(self.accent())
                     .disabled(disabled || draft.input.name.trim().is_empty())
+                    .when(disabled || draft.input.name.trim().is_empty(), |el| {
+                        el.cursor_default()
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(draft) = &this.state.draft {
                             let command = Command::SaveCharacter {
@@ -123,9 +128,11 @@ impl Studio {
             .children(self.state.snapshot.voices.iter().enumerate().map(|(i, v)| {
                 let voice = v.clone();
                 Button::new(("voice", i))
+                    .cursor_pointer()
                     .small()
                     .label(v.clone())
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(draft) = &mut this.state.draft {
                             draft.input.voice = Some(voice.clone());
@@ -150,6 +157,7 @@ impl Studio {
                     el.child(
                         tool("clear-icon", "close", "画像を削除")
                             .disabled(disabled)
+                            .when(disabled, |el| el.cursor_default())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 if let Some(draft) = &mut this.state.draft {
                                     draft.input.icon = Some(String::new());
@@ -188,6 +196,7 @@ impl Studio {
                             .into_any_element()
                     } else {
                         ColorPicker::new(&self.fields.color)
+                            .cursor_pointer()
                             .small()
                             .size(px(32.))
                             .accessibility_label("テーマカラー")
@@ -216,6 +225,7 @@ impl Studio {
                 |el, image| el.child(img(image).size(px(40.))),
             )
             .disabled(disabled)
+            .when(disabled, |el| el.cursor_default())
             .tooltip("画像を選択")
             .on_click(cx.listener(|this, _, w, cx| this.import(true, w, cx)))
             .into_any_element()
@@ -250,11 +260,13 @@ impl Studio {
             .child(
                 tool("import-voice", "folder", "音声を取り込む")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| this.import(false, w, cx))),
             )
             .child(
                 tool("clear-voice", "close", "参照解除")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(draft) = &mut this.state.draft {
                             draft.input.voice = None;
@@ -288,6 +300,7 @@ impl Studio {
                     .bg(self.accent())
                     .icon(icon("wand"))
                     .disabled(disabled || !self.can_generate())
+                    .when(disabled || !self.can_generate(), |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.preview();
                         cx.notify();
@@ -363,6 +376,7 @@ impl Studio {
             .child(
                 tool("saved-preview", "play", "保存済みサンプルを聴く")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.audio_id = None;
                         this.send(Command::CharacterAudio(id.clone()));
@@ -372,6 +386,7 @@ impl Studio {
             .child(
                 tool("export-saved-preview", "download", "サンプル保存")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.export_character(export.clone(), w, cx)
                     })),
@@ -394,7 +409,7 @@ impl Studio {
                     },
                 )),
             )
-            .child(Slider::new(&self.seek).flex_1())
+            .child(Slider::new(&self.seek).cursor_pointer().flex_1())
             .into_any_element()
     }
 }

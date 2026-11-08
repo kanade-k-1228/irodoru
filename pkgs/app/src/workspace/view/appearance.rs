@@ -139,6 +139,7 @@ pub(super) fn icon(name: &str) -> Icon {
 
 pub(super) fn tool(id: impl Into<ElementId>, name: &str, label: &'static str) -> Button {
     Button::new(id)
+        .cursor_pointer()
         .ghost()
         .icon(icon(name))
         .tooltip(label)
@@ -148,6 +149,7 @@ pub(super) fn tool(id: impl Into<ElementId>, name: &str, label: &'static str) ->
 }
 pub(super) fn button(id: impl Into<ElementId>, label: &'static str) -> Button {
     Button::new(id)
+        .cursor_pointer()
         .small()
         .label(label)
         .h(px(32.))

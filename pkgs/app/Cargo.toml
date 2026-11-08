@@ -37,6 +37,9 @@ resvg = "0.46"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"
 
+[build-dependencies]
+embed-resource = "3.0"
+
 [[bin]]
 name = "irodoru"
 path = "src/main.rs"

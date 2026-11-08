@@ -2,6 +2,7 @@ use super::Studio;
 use super::appearance::tool;
 use gpui_kit::component::Disableable;
 use gpui_kit::component::slider::Slider;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
@@ -32,6 +33,7 @@ impl Studio {
                     "再生 / 一時停止",
                 )
                 .disabled(self.state.busy)
+                .when(self.state.busy, |el| el.cursor_default())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.play(id.clone(), preview);
                     cx.notify();
@@ -39,7 +41,10 @@ impl Studio {
             )
             .child(div().w(px(36.)).text_right().child(time(position.into())))
             .child(if active {
-                Slider::new(&self.seek).flex_1().into_any_element()
+                Slider::new(&self.seek)
+                    .cursor_pointer()
+                    .flex_1()
+                    .into_any_element()
             } else {
                 div()
                     .flex_1()
@@ -59,6 +64,7 @@ impl Studio {
             .child(
                 tool((key.0, key.1 * 2 + 1), "download", "WAVを保存")
                     .disabled(self.state.busy)
+                    .when(self.state.busy, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.export(export.clone(), preview, w, cx)
                     })),

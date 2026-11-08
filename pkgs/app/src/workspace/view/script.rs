@@ -93,6 +93,10 @@ impl Studio {
                             .bg(rgb(0xb52e42))
                             .text_color(rgb(0xffffff))
                             .disabled(disabled || self.state.snapshot.editor.rows.len() <= 1)
+                            .when(
+                                disabled || self.state.snapshot.editor.rows.len() <= 1,
+                                |el| el.cursor_default(),
+                            )
                             .on_click(cx.listener(|this, _, w, cx| this.remove_row(w, cx))),
                     ),
                 )
@@ -124,7 +128,7 @@ impl Studio {
             .flex()
             .items_center()
             .text_color(p.muted.opacity(0.4))
-            .cursor_move()
+            .when(!disabled, |el| el.cursor_move())
             .child(icon("grip"))
             .when(!disabled, |el| {
                 el.on_drag(DragRow(id.clone()), |drag, _, _, cx| {
@@ -208,6 +212,7 @@ impl Studio {
                         .border_1()
                         .border_color(p.line)
                         .disabled(disabled)
+                        .when(disabled, |el| el.cursor_default())
                         .on_click(cx.listener(move |this, _, w, cx| {
                             this.state.selected = Some(after.clone());
                             this.add(false, w, cx);
@@ -298,6 +303,7 @@ impl Studio {
                     },
                 )
                 .disabled(self.state.stopping)
+                .when(self.state.stopping, |el| el.cursor_default())
                 .on_click(cx.listener(|this, _, _, cx| {
                     if let Some(s) = &this.service {
                         s.stop();
