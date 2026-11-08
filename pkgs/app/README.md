@@ -21,9 +21,12 @@ src/
 │       ├── editing.rs       # Editing action adapters
 │       ├── dialogs.rs       # Async native file/confirmation dialogs
 │       ├── layout.rs        # Window composition and keyboard actions
+│       ├── header.rs        # App menu trigger, window drag area and window controls
+│       ├── app_menu.rs      # Menu items, keyboard navigation and theme control
+│       ├── app_dialog.rs    # Preferences and About dialog composition
 │       ├── script.rs, line_editor.rs, characters.rs, character_view.rs
 │       ├── generation_controls.rs, player.rs, playback.rs
-│       └── app_menu.rs, actions.rs, appearance.rs, components.rs
+│       └── actions.rs, appearance.rs, components.rs
 ├── project/                  # Session lifetime and portable project persistence
 │   ├── session.rs            # Active working directories and revision/status
 │   ├── archive.rs            # Immutable save snapshots, safe ZIP extraction/replacement
@@ -44,6 +47,15 @@ window and its plain `WorkspaceState`. Inputs retain their own GPUI entities and
 subscriptions; stateless presentation is built as elements. The state module does
 not import GPUI, rodio, rfd or a repository. It can consume worker events and return
 `Effect` values without opening a window or touching disk.
+
+View entry points compose named sections rather than embedding entire forms or
+list-item trees. Each section builds stateless GPUI elements in the same `Studio`
+context; extracting presentation does not add entities or duplicate state. Keep
+list iteration separate from item rendering, and keep script rows and insertion
+controls as siblings. Retain containers needed for layout, scrolling or hit
+testing, and remove wrappers that serve none of those purposes. Editing actions
+belong in `editing.rs`; presentation helpers keep the existing input entities,
+element IDs and focus handles.
 
 A typical action follows this path:
 

@@ -55,7 +55,9 @@ mod appearance;
 
 mod character_view;
 
+mod app_dialog;
 mod app_menu;
+mod header;
 
 pub(crate) mod actions;
 pub(crate) enum WindowRequest {
