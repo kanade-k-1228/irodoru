@@ -1,5 +1,5 @@
 // Run the shipped executable without a display or audio device. This exercises its
-// actual runtime linkage and executable-relative model paths after package extraction.
+// actual runtime linkage with a verified external model fixture after package extraction.
 pub(super) fn package_smoke_test() -> anyhow::Result<()> {
     use irodoru_engine::{Engine, EngineConfig, SynthesisRequest};
     let path = crate::synthesis::resources::models()?;
@@ -17,7 +17,7 @@ pub(super) fn package_smoke_test() -> anyhow::Result<()> {
     let reader = hound::WavReader::new(std::io::Cursor::new(wav))?;
     anyhow::ensure!(
         reader.duration() > 0,
-        "Packaged model generated empty audio"
+        "External model generated empty audio"
     );
     println!(
         "Packaged offline synthesis passed: {} frames, models at {}",

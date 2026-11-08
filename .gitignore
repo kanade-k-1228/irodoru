@@ -13,3 +13,4 @@ voices/*
 .claude/
 /pkgs/app/gen/
 /pkgs/app/resources/models/
+/model-assets/

@@ -28,9 +28,9 @@ impl Service {
         let inference = if let Some(engine) = shared.upgrade() {
             engine
         } else {
-            Arc::new(Inference::start_with(|| {
+            Arc::new(Inference::start_with_progress(|progress| {
                 Ok(irodoru_engine::EngineConfig::anime(
-                    crate::synthesis::resources::models()?,
+                    crate::synthesis::resources::models_with_progress(progress)?,
                 ))
             })?)
         };
@@ -67,6 +67,9 @@ impl Service {
     }
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
+    }
+    pub fn retry_models(&self) -> Result<()> {
+        self.inference.retry()
     }
     pub fn status(&self) -> InferenceStatus {
         self.inference.status()

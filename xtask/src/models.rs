@@ -189,6 +189,18 @@ pub fn prepare(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 pub fn cli(args: &[String]) -> Result<()> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("distribute" | "publish")
+    ) {
+        let status = Command::new(if cfg!(windows) { "python" } else { "python3" })
+            .arg(root().join("scripts/model_distribution.py"))
+            .args(args)
+            .status()
+            .context("Run model distribution helper (requires Python 3.10+)")?;
+        anyhow::ensure!(status.success(), "Model distribution failed: {status}");
+        return Ok(());
+    }
     let source = PathBuf::from(option(args, "--source")?.unwrap_or_else(|| "models".into()));
     let destination = PathBuf::from(
         option(args, "--destination")?.unwrap_or_else(|| "pkgs/app/resources/models".into()),
@@ -211,7 +223,7 @@ pub fn cli(args: &[String]) -> Result<()> {
             ],
         ),
         _ => bail!(
-            "Usage: cargo xtask models prepare|check|export [--source DIR] [--destination DIR]"
+            "Usage: cargo xtask models prepare|check|export|distribute|publish [--source DIR] [--destination DIR] [--repository OWNER/PACKAGE]"
         ),
     }
 }

@@ -24,6 +24,9 @@ pub struct TakeRequest {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "state", rename_all = "lowercase")]
 pub enum InferenceStatus {
+    Checking { checked: u64, total: u64 },
+    Downloading { downloaded: u64, total: u64 },
+    Extracting { extracted: u64, total: u64 },
     Loading,
     Ready,
     Generating,

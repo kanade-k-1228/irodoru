@@ -5,24 +5,25 @@
   "identifier": "io.github.kanade-k-1228.irodoru",
   "description": "Offline speech synthesis studio",
   "longDescription": "Create Japanese speech with local characters, scripts and reference audio.",
-  "authors": ["irodoru contributors"],
+  "authors": [
+    "irodoru contributors"
+  ],
   "publisher": "irodoru",
   "homepage": "https://github.com/kanade-k-1228/irodoru",
   "category": "Music",
   "licenseFile": "LICENSE",
-  "icons": ["pkgs/app/icons/icon.png", "pkgs/app/icons/icon.icns", "pkgs/app/icons/icon.ico"],
+  "icons": [
+    "pkgs/app/icons/icon.png",
+    "pkgs/app/icons/icon.icns",
+    "pkgs/app/icons/icon.ico"
+  ],
   "binaries": [
     {
       "path": "irodoru",
       "main": true
     }
   ],
-  "resources": [
-    {
-      "src": "pkgs/app/resources/models",
-      "target": "models"
-    }
-  ],
+  "resources": [],
   "macos": {
     "minimumSystemVersion": "15.0",
     "signingIdentity": "-"
@@ -38,5 +39,16 @@
       "xdg-desktop-portal",
       "xdg-desktop-portal-gtk | xdg-desktop-portal-kde | xdg-desktop-portal-gnome"
     ]
-  }
+  },
+  "fileAssociations": [
+    {
+      "extensions": [
+        "iro"
+      ],
+      "mimeType": "application/x-irodoru-project",
+      "description": "irodoru project",
+      "name": "irodoru project",
+      "role": "editor"
+    }
+  ]
 }

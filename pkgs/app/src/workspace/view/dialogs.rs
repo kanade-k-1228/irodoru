@@ -15,11 +15,18 @@ impl Studio {
         self.state.busy = true;
         self.autosave();
         cx.spawn_in(window, async move |this, cx| {
-            let dialog = rfd::AsyncFileDialog::new().add_filter("irodoru project", &["zip"]);
+            let dialog = rfd::AsyncFileDialog::new();
             let file = if create {
-                dialog.set_file_name("project.zip").save_file().await
+                dialog
+                    .add_filter("irodoru project", &["iro"])
+                    .set_file_name("project.iro")
+                    .save_file()
+                    .await
             } else {
-                dialog.pick_file().await
+                dialog
+                    .add_filter("irodoru project", &["iro", "zip"])
+                    .pick_file()
+                    .await
             };
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {

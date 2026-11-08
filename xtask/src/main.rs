@@ -81,7 +81,6 @@ fn main() -> Result<()> {
     let rest = args.get(1..).unwrap_or_default();
     match args.first().map(String::as_str) {
         Some("dev") => {
-            models::check(&root().join("pkgs/app/resources/models"))?;
             run(
                 "cargo",
                 &[
@@ -105,6 +104,18 @@ fn main() -> Result<()> {
             generate(rest.iter().any(|s| s == "--check"))?;
         }
         Some("verify") => {
+            run(
+                if cfg!(windows) { "python" } else { "python3" },
+                &[
+                    "-m",
+                    "unittest",
+                    "discover",
+                    "-s",
+                    "scripts",
+                    "-p",
+                    "test_*.py",
+                ],
+            )?;
             run("cargo", &["fmt", "--all", "--", "--check"])?;
             run(
                 "cargo",
@@ -138,7 +149,7 @@ fn main() -> Result<()> {
             ],
         )?,
         None | Some("help" | "--help") => println!(
-            "cargo xtask dev | models export/prepare/check | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] | release version/app/container | verify | verify-export"
+            "cargo xtask dev | models export/prepare/check/distribute/publish | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] | release version/app/container | verify | verify-export"
         ),
         _ => bail!("Unknown task; run cargo xtask help"),
     }

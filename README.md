@@ -1,23 +1,31 @@
 # irodoru
 
 A speech app and Docker inference server built on [Irodori-TTS](https://github.com/Aratako/Irodori-TTS).
-Both include [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) and its codec (about 3.44 GB).
-The Rust/GPUI desktop app runs offline on Windows x64, macOS 15+ (Apple Silicon), and Linux x64.
+Both use [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) and its codec (about 3.44 GB).
+Desktop packages contain the Rust/GPUI app and runtime libraries. On first launch, the app downloads
+one model ZIP from public GHCR, verifies it, and caches the extracted models. Later launches work
+offline on Windows x64, macOS 15+ (Apple Silicon), and Linux x64. Docker images still include the models.
 
 Download app packages from [Releases](https://github.com/kanade-k-1228/irodoru/releases).
-Large packages are split into parts; download all parts and follow the included README to join and verify them.
-On Windows, extract the joined ZIP and run `irodoru.exe`.
+On Windows, extract the ZIP and run `irodoru.exe`. If a package exceeds the release asset size
+threshold, download all its parts and follow the included README to join and verify them.
 
 See [使い方ガイド（日本語・スクリーンショット付き）](docs/user-guide.md) to get started with the desktop app.
 
 ## Projects
 
-Create or open a project ZIP from the app header. Each project contains its own script,
+Create or open an `.iro` project from the app menu. `.iro` files are ZIP archives; existing `.zip` projects can still be opened. Each project contains its own script,
 characters, reference audio, icons, and generated audio; there is no shared character or
 voice library. Existing pre-project application data is not migrated.
 
+Opening a project from the OS creates an independent window, including when the app is already
+running. Existing edits, character drafts and generation jobs stay in their current windows.
+The macOS app and Linux deb package associate `.iro` files with irodoru. For the Windows portable
+ZIP, right-click an `.iro` file, choose **Open with → Choose another app**, select the extracted
+`irodoru.exe`, and choose **Always**. If you move the app directory, select the executable again.
+
 ```text
-project.zip
+project.iro
 ├── project.yaml                      # format version, script, generation settings
 ├── characters/<character-id>/
 │   ├── character.yaml                # character settings; relative asset paths
@@ -53,11 +61,11 @@ The app and development tasks use Cargo; Node.js and pnpm are not required. Requ
 Linux needs a graphical Wayland or X11 session with Vulkan, plus ALSA, fontconfig and XKB development libraries.
 Native file dialogs require `xdg-desktop-portal` and a portal backend for the desktop (GTK, GNOME or KDE).
 Packaging additionally needs `cargo install cargo-packager --version 0.11.8 --locked`, `patchelf` on Linux, or 7-Zip on Windows.
-Model export also requires Python and uv.
+Model export requires Python and uv; distribution and verification tasks require Python 3.10+.
 
 ```bash
 cargo xtask models export    # Export anime and codec
-cargo xtask models prepare   # Copy models into app resources
+cargo xtask models prepare   # Stage local development models (not included in app packages)
 cargo xtask dev
 cargo xtask package
 ```
@@ -69,9 +77,33 @@ Icons support PNG, JPEG, WebP, GIF, BMP, TIFF and SVG up to 10 MB, cropped to a 
 The top-left irodoru menu contains project actions, theme, preferences and app information. Ctrl/Cmd+Shift+N opens an independent window; Ctrl/Cmd+N/O/S create, open and save projects, Ctrl/Cmd+, opens preferences, and Ctrl/Cmd+W closes the current window after saving. The footer displays the project archive path. A project cannot be opened in two windows at once.
 Theme preferences use confy with YAML: `theme: light` or `theme: dark` in `config.yaml` in the OS app configuration directory. The default is dark; old JSON settings are not read. Existing project ZIPs remain compatible.
 For development, `IRODORU_MODELS` can point to a directory containing `anime/` and `codec/`.
-`cargo xtask package --no-bundle` creates a standalone directory with models.
+`cargo xtask package --no-bundle` creates a standalone app directory without model weights.
+The tracked distribution manifest is an unpublished placeholder, so local builds need prepared models
+or `IRODORU_MODELS`; release CI embeds the published distribution manifest before compiling.
 Run `cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings` to check the native UI after installing the platform dependencies.
-CI builds all three desktop targets and runs offline synthesis from the extracted ZIP, DMG, AppImage and deb packages. Run `bash scripts/smoke-package.sh TARGET` to repeat this check locally after packaging, or launch the shipped executable with `--smoke-test`.
+CI builds all three desktop targets, checks that the extracted ZIP, DMG, AppImage and deb packages
+contain no model weights, and runs offline synthesis with models staged outside the package.
+Run `IRODORU_TEST_MODELS=/absolute/path/to/prepared-models bash scripts/smoke-package.sh TARGET`
+to repeat this check locally, or run the shipped executable with `--smoke-test` and `IRODORU_MODELS` set.
+
+## Desktop model releases
+
+`cargo xtask models distribute` creates `model-assets/model-distribution.json` and one uncompressed,
+deterministic ZIP64 archive containing all anime and codec files, including ONNX external data.
+The manifest records each file checksum, the archive checksum and size, and a revision derived from
+`bundle.json`. The app cache uses this content revision, so unchanged models survive app updates.
+Archives larger than 10,000,000,000 bytes are rejected before publishing to GHCR.
+
+On a published GitHub release, CI uses ORAS and `GITHUB_TOKEN` with `packages: write` to push one
+`application/zip` OCI layer to `ghcr.io/OWNER/REPOSITORY-models`. Its tag is the archive SHA-256,
+which keeps older archive downloads addressable when packaging changes. CI verifies anonymous access
+to both the manifest and the model blob descriptor before any app build starts. Pull requests and
+ordinary builds do not publish models.
+
+The first GHCR package is private by default. If the initial release workflow stops at the public
+access check, open the package's settings on GitHub, change its visibility to **Public**, and rerun
+the failed workflow. Do not delete old model versions while released apps still reference them.
+The app does not need a GitHub account or token to download models.
 
 ## Docker server
 
@@ -109,5 +141,5 @@ Run `cargo xtask help` for other commands and see [CI](.github/workflows) for bu
 
 ## License
 
-[MIT](LICENSE), like the bundled model. Dependencies and models retain their own licenses.
+[MIT](LICENSE), like the model. Dependencies and models retain their own licenses.
 Model use is also subject to the upstream [usage restrictions](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions).

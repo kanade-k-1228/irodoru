@@ -31,9 +31,10 @@ src/
 │   ├── session.rs            # Active working directories and revision/status
 │   ├── archive.rs            # Immutable save snapshots, safe ZIP extraction/replacement
 │   ├── autosave.rs           # Debounce, single writer, flush and retry reporting
-│   └── ownership.rs          # In-process multi-window path reservation
+│   ├── ownership.rs          # In-process multi-window path reservation
+│   └── incoming.rs           # Native file-open parsing and per-user process handoff
 ├── library/                  # Filesystem repository: project YAML, characters, WAV/assets
-├── synthesis/                # Engine lifetime, generation batches and model discovery
+├── synthesis/                # Shared engine, generation, verified model download/cache
 ├── audio/                    # Decode/resample/import, WAV validation, native playback
 ├── preferences/              # OS-local YAML settings via confy, ordered writer and theme
 └── files.rs                  # Private atomic file replacement primitive
@@ -68,7 +69,14 @@ Storage and inference execute on dedicated workers using owned command data.
 The view drains notifications on the UI thread; only that thread updates retained
 GPUI entities. Its weak-entity timer stops when the window disappears. New-window
 requests are GPUI events observed by `desktop`, so the feature never calls into the
-shell. App-wide globals are limited to theme/settings; project state stays local.
+shell. Project state stays local; theme/settings and inference are coordinated across windows.
+
+Native file-open events and forwarded launches open independent project windows. The per-user
+instance lock keeps one process responsible for project ownership; a bounded atomic request inbox
+retains launches until that process can receive them. Requests never replace an existing editor.
+All windows share one inference worker, including model preparation progress and retry. Release
+builds verify a revisioned model cache and download one GHCR ZIP when needed; model weights are
+kept outside the app package.
 
 `project` and `library` use domain values and audio validation, and never depend on
 workspace presentation or the synthesis engine. The generation coordinator uses

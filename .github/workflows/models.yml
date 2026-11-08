@@ -5,9 +5,14 @@ permissions:
   contents: read
 jobs:
   anime:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
@@ -23,6 +28,34 @@ jobs:
           uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo xtask models prepare
+      - name: Prepare one model ZIP for GHCR
+        env:
+          PUBLISH_MODELS: ${{ github.event_name == 'release' }}
+        run: |
+          args=()
+          if [[ "$PUBLISH_MODELS" == 'true' ]]; then
+            args+=(--repository "${GITHUB_REPOSITORY,,}-models")
+          fi
+          cargo xtask models distribute --destination model-assets "${args[@]}"
+      - uses: oras-project/setup-oras@v2
+        if: github.event_name == 'release'
+        with:
+          version: 1.3.6
+      - name: Authenticate to GHCR
+        if: github.event_name == 'release'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish models and verify public access before building apps
+        if: github.event_name == 'release'
+        run: cargo xtask models publish --destination model-assets
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-model-manifest
+          path: model-assets/model-distribution.json
+          if-no-files-found: error
+          retention-days: 1
+      # Test fixtures are downloaded outside app resources and never packaged.
       - uses: actions/upload-artifact@v7
         with:
           name: app-models

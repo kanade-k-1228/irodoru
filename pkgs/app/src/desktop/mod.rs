@@ -1,6 +1,8 @@
 //! Process and native window composition. Features request windows through events.
+use crate::project::incoming::{self, Inbox};
 use crate::workspace::view::{Studio, WindowRequest, actions::*};
 use gpui_kit::*;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 #[cfg(target_os = "macos")]
 mod macos_quit;
 mod smoke;
@@ -46,17 +48,40 @@ pub fn run() {
         }
         return;
     }
-    let _instance = match crate::preferences::lock_instance() {
-        Ok(lock) => lock,
+    let paths = incoming::argument_paths(
+        std::env::args_os(),
+        &std::env::current_dir().unwrap_or_default(),
+    );
+    let inbox = match Inbox::new() {
+        Ok(inbox) => inbox,
         Err(error) => {
-            rfd::MessageDialog::new()
-                .set_title("irodoru")
-                .set_description(format!("{error:#}"))
-                .show();
+            show_error(error);
             return;
         }
     };
-    gpui_kit::application().run(|cx| {
+    let _instance = match crate::preferences::lock_instance() {
+        Ok(lock) => lock,
+        Err(error) => {
+            if !paths.is_empty()
+                && matches!(
+                    error.downcast_ref::<std::fs::TryLockError>(),
+                    Some(std::fs::TryLockError::WouldBlock)
+                )
+            {
+                if let Err(error) = inbox.forward(&paths) {
+                    show_error(error);
+                }
+            } else {
+                show_error(error);
+            }
+            return;
+        }
+    };
+    let pending = Rc::new(RefCell::new(paths));
+    let application = gpui_kit::application();
+    let opened = pending.clone();
+    application.on_open_urls(move |urls| opened.borrow_mut().extend(incoming::url_paths(urls)));
+    application.run(move |cx| {
         gpui_kit::init(cx);
         if let Err(error) = crate::preferences::theme::initialize(cx) {
             eprintln!("{error:#}");
@@ -113,12 +138,62 @@ pub fn run() {
                 MenuItem::action("ウィンドウを閉じる", CloseWindow),
             ],
         }]);
-        if let Err(error) = open_studio(std::env::args_os().nth(1).map(Into::into), cx) {
-            eprintln!("{error:#}");
-            cx.quit();
+        let paths = std::mem::take(&mut *pending.borrow_mut());
+        if paths.is_empty() {
+            if let Err(error) = open_studio(None, cx) {
+                show_error(error);
+                cx.quit();
+                return;
+            }
         } else {
-            #[cfg(target_os = "macos")]
-            macos_quit::install(cx);
+            open_projects(paths, cx);
         }
+        #[cfg(target_os = "macos")]
+        macos_quit::install(cx);
+        cx.spawn(async move |cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(250))
+                    .await;
+                let inbox = inbox.clone();
+                let forwarded = cx
+                    .background_executor()
+                    .spawn(async move { inbox.drain() })
+                    .await;
+                let mut paths = std::mem::take(&mut *pending.borrow_mut());
+                match forwarded {
+                    Ok(batch) => paths.extend(batch),
+                    Err(error) => {
+                        // Do not show a repeating modal if a user's configuration disk disappears.
+                        eprintln!("プロジェクトを開く要求を読み込めません: {error:#}");
+                    }
+                }
+                if !paths.is_empty() {
+                    cx.update(|cx| open_projects(paths, cx));
+                }
+            }
+        })
+        .detach();
     });
+}
+
+fn open_projects(paths: Vec<std::path::PathBuf>, cx: &mut App) {
+    let mut seen = std::collections::HashSet::new();
+    for path in paths {
+        if !seen.insert(path.canonicalize().unwrap_or_else(|_| path.clone())) {
+            continue;
+        }
+        // OS requests get independent windows. Existing editors, drafts, synthesis jobs and
+        // failed saves stay intact; WindowProject still prevents two writers for one archive.
+        if let Err(error) = open_studio(Some(path), cx) {
+            show_error(error);
+        }
+    }
+}
+
+fn show_error(error: anyhow::Error) {
+    rfd::MessageDialog::new()
+        .set_title("irodoru")
+        .set_description(format!("{error:#}"))
+        .show();
 }

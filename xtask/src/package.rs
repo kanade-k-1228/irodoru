@@ -1,13 +1,5 @@
 use super::*;
 use serde_json::{Value, json};
-fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
-    for file in models::files(source)? {
-        let target = destination.join(file.strip_prefix(source)?);
-        fs::create_dir_all(target.parent().unwrap())?;
-        fs::copy(file, target)?;
-    }
-    Ok(())
-}
 fn platform() -> &'static str {
     if cfg!(windows) {
         "x86_64-pc-windows-msvc"
@@ -34,7 +26,7 @@ fn configuration(
         config["macos"]["frameworks"] =
             json!(libraries.iter().map(|s| stage.join(s)).collect::<Vec<_>>());
     } else {
-        let files: serde_json::Map<String, Value> = libraries
+        let mut files: serde_json::Map<String, Value> = libraries
             .iter()
             .map(|name| {
                 (
@@ -43,6 +35,12 @@ fn configuration(
                 )
             })
             .collect();
+        files.insert(
+            root.join("pkgs/app/linux/irodoru.xml")
+                .to_string_lossy()
+                .into_owned(),
+            json!("usr/share/mime/packages/irodoru.xml"),
+        );
         config["deb"]["files"] = json!(files);
         config["appimage"] = json!({"files": files});
     }
@@ -79,8 +77,6 @@ pub fn cli(args: &[String]) -> Result<()> {
     let windows = target.contains("windows");
     let mac = target.contains("apple");
     let root = root();
-    let models = root.join("pkgs/app/resources/models");
-    models::check(&models)?;
     let mut build = Command::new("cargo");
     build.args([
         "build",
@@ -143,7 +139,6 @@ pub fn cli(args: &[String]) -> Result<()> {
     }
     let no_bundle = args.iter().any(|a| a == "--no-bundle");
     if windows || no_bundle {
-        copy_tree(&models, &stage.join("models"))?;
         if no_bundle {
             return Ok(());
         }
@@ -199,7 +194,20 @@ mod tests {
             config["deb"]["files"][stage.join("libonnxruntime.so").to_str().unwrap()],
             "usr/bin/libonnxruntime.so"
         );
-        assert!(Path::new(config["resources"][0]["src"].as_str().unwrap()).is_absolute());
+        assert!(config["resources"].as_array().unwrap().is_empty());
+        for format in ["deb", "appimage"] {
+            assert_eq!(
+                config[format]["files"][root.join("pkgs/app/linux/irodoru.xml").to_str().unwrap()],
+                "usr/share/mime/packages/irodoru.xml"
+            );
+        }
+        assert_eq!(config["fileAssociations"][0]["extensions"], json!(["iro"]));
+        assert_eq!(
+            config["fileAssociations"][0]["mimeType"],
+            "application/x-irodoru-project"
+        );
+        // cargo-packager deserializes camelCase; its macOS plist writer emits "Editor".
+        assert_eq!(config["fileAssociations"][0]["role"], "editor");
         let config = configuration(
             &root,
             &stage,

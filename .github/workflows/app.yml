@@ -29,6 +29,9 @@ jobs:
     uses: ./.github/workflows/verify.yml
 
   models:
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/models.yml
 
   build:
@@ -73,12 +76,16 @@ jobs:
           cache-on-failure: true
       - uses: actions/download-artifact@v8
         with:
+          name: app-model-manifest
+          path: pkgs/app/resources
+      - uses: actions/download-artifact@v8
+        with:
           name: app-models
-          path: pkgs/app/resources/models
+          path: ${{ runner.temp }}/irodoru-test-models
       - name: Check desktop native code
         env:
           TARGET: ${{ matrix.target }}
-          IRODORU_TEST_MODELS: ${{ github.workspace }}/pkgs/app/resources/models
+          IRODORU_TEST_MODELS: ${{ runner.temp }}/irodoru-test-models
           MACOSX_DEPLOYMENT_TARGET: "15.0"
         run: |
           cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
@@ -96,8 +103,9 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: cargo xtask package --target "$TARGET"
-      - name: Verify offline synthesis from extracted packages
+      - name: Verify lightweight packages and offline synthesis with external models
         env:
+          IRODORU_TEST_MODELS: ${{ runner.temp }}/irodoru-test-models
           TARGET: ${{ matrix.target }}
         run: bash scripts/smoke-package.sh "$TARGET"
       - uses: actions/upload-artifact@v7
