@@ -10,6 +10,16 @@ pub struct GenerationSettings {
     pub cfg_caption: f32,
     pub duration_scale: f64,
 }
+impl GenerationSettings {
+    /// The UI shows speaking speed; projects and inference store duration.
+    pub fn speed(&self) -> f64 {
+        self.duration_scale.recip()
+    }
+
+    pub fn set_speed(&mut self, speed: f64) {
+        self.duration_scale = speed.recip();
+    }
+}
 impl Default for GenerationSettings {
     fn default() -> Self {
         Self {

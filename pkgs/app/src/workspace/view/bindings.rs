@@ -158,7 +158,7 @@ impl Studio {
                     {
                         let settings = this.state.generation_settings_mut();
                         match index {
-                            0 => settings.duration_scale = *value as f64,
+                            0 => settings.set_speed(f64::from(*value)),
                             1 => settings.cfg_text = *value,
                             2 => settings.cfg_speaker = *value,
                             _ => settings.cfg_caption = *value,
@@ -287,18 +287,18 @@ impl Studio {
             .prompt
             .update(cx, |f, cx| f.set_value(prompt, window, cx));
         let s = self.state.settings_value();
+        let speed = s.speed() as f32;
         self.fields
             .seed
             .update(cx, |f, cx| f.set_value(s.seed, window, cx));
         self.fields
             .steps
             .update(cx, |f, cx| f.set_value(s.num_steps, window, cx));
-        for (slider, value) in self.sliders.iter().zip([
-            s.duration_scale as f32,
-            s.cfg_text,
-            s.cfg_speaker,
-            s.cfg_caption,
-        ]) {
+        for (slider, value) in
+            self.sliders
+                .iter()
+                .zip([speed, s.cfg_text, s.cfg_speaker, s.cfg_caption])
+        {
             slider.update(cx, |s, cx| s.set_value(value, window, cx));
         }
         if let Some(d) = &self.state.draft {

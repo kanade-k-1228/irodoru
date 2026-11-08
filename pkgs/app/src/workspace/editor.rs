@@ -4,7 +4,6 @@ use crate::{
     domain::{EditorState, GenerationSettings, ScriptRow, SynthesisInput, TakeRequest},
 };
 use anyhow::{Result, bail};
-pub const MAX_ROWS: usize = 50;
 
 pub fn new_row(character_id: String, settings: GenerationSettings) -> ScriptRow {
     ScriptRow {
@@ -17,9 +16,6 @@ pub fn new_row(character_id: String, settings: GenerationSettings) -> ScriptRow 
     }
 }
 pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool) -> Result<String> {
-    if editor.rows.len() >= MAX_ROWS {
-        bail!("台本は50行までです");
-    }
     let index = selected.and_then(|id| editor.rows.iter().position(|r| r.id == id));
     let source = index.map(|i| &editor.rows[i]);
     let mut row = new_row(
@@ -142,10 +138,41 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(e.rows[1].text, "こんにちは");
         assert!(e.rows[1].take_id.is_none());
-        for _ in 2..50 {
-            insert(&mut e, None, false).unwrap();
+    }
+    #[test]
+    fn insertion_and_duplication_work_beyond_fifty_rows() {
+        let mut editor = EditorState::default();
+        for _ in 0..60 {
+            insert(&mut editor, None, false).unwrap();
         }
-        assert!(insert(&mut e, None, false).is_err());
+        let source = editor.rows[30].id.clone();
+        editor.rows[30].text = "行数制限なし".into();
+        let inserted = insert(&mut editor, Some(&source), false).unwrap();
+        assert_eq!(editor.rows[31].id, inserted);
+        let copied = insert(&mut editor, Some(&source), true).unwrap();
+        assert_eq!(editor.rows[31].id, copied);
+        assert_eq!(editor.rows[31].text, "行数制限なし");
+        assert_eq!(editor.rows[32].id, inserted);
+        assert_eq!(editor.rows.len(), 62);
+    }
+
+    #[test]
+    fn speaking_speed_maps_to_inverse_duration_and_survives_save() {
+        for (speed, duration) in [(0.5, 2.0), (1.0, 1.0), (1.25, 0.8), (2.0, 0.5)] {
+            let mut settings = GenerationSettings::default();
+            settings.set_speed(speed);
+            let input = speech("こんにちは".into(), &settings).unwrap();
+            assert!((input.duration_scale - duration).abs() < 1e-12);
+            let yaml = serde_yaml::to_string(&settings).unwrap();
+            let restored: GenerationSettings = serde_yaml::from_str(&yaml).unwrap();
+            assert!((restored.speed() - speed).abs() < 1e-12);
+            assert!(yaml.contains("durationScale:"));
+        }
+        for speed in [0.0, 0.49, 2.01, f64::NAN, f64::INFINITY] {
+            let mut settings = GenerationSettings::default();
+            settings.set_speed(speed);
+            assert!(speech("こんにちは".into(), &settings).is_err());
+        }
     }
     #[test]
     fn reorder_and_delete_keep_neighbor_and_final_row() {
