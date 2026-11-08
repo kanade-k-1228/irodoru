@@ -3,7 +3,7 @@ use crate::{
     domain::{Take, new_id},
     library::Library,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use irodoru_engine::{GenerationConditions, SynthOutput, SynthesisRequest, TTSJob};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -12,40 +12,9 @@ pub struct PreparedTake {
     take: Take,
 }
 
-pub struct PreparedBatch {
-    id: String,
-    takes: Vec<Option<PreparedTake>>,
-}
-impl PreparedBatch {
-    pub fn prepare(
-        active: &mut Option<Self>,
-        library: &Library,
-        requests: Vec<TakeRequest>,
-    ) -> Result<String> {
-        if active.is_some() {
-            bail!("生成は既に実行中です");
-        }
-        let takes = prepare(library, requests)?.into_iter().map(Some).collect();
-        let id = new_id();
-        *active = Some(Self {
-            id: id.clone(),
-            takes,
-        });
-        Ok(id)
-    }
-    pub fn take(&mut self, id: &str, index: usize) -> Result<PreparedTake> {
-        if self.id != id {
-            bail!("生成リクエストが見つかりません");
-        }
-        self.takes
-            .get_mut(index)
-            .and_then(Option::take)
-            .context("生成リクエストが見つかりません")
-    }
-    pub fn finish(active: &mut Option<Self>, id: &str) {
-        if active.as_ref().is_some_and(|batch| batch.id == id) {
-            *active = None;
-        }
+impl PreparedTake {
+    pub(crate) fn row_id(&self) -> &str {
+        &self.take.row_id
     }
 }
 
@@ -222,48 +191,14 @@ mod tests {
     }
 
     #[test]
-    fn batch_accepts_more_than_fifty_rows_in_order() {
+    fn preparation_rejects_empty_or_partially_invalid_queues() {
         let (_dir, library, request) = fixture();
-        let requests = (0..60)
-            .map(|i| TakeRequest {
-                row_id: format!("row-{i}"),
-                ..request.clone()
-            })
-            .collect();
-        let mut active = None;
-        let id = PreparedBatch::prepare(&mut active, &library, requests).unwrap();
-        let batch = active.as_mut().unwrap();
-        for i in 0..60 {
-            assert_eq!(batch.take(&id, i).unwrap().take.row_id, format!("row-{i}"));
-        }
-        assert!(batch.take(&id, 60).is_err());
-        PreparedBatch::finish(&mut active, &id);
-        assert!(active.is_none());
-    }
-
-    #[test]
-    fn batch_rejects_duplicates_and_stale_ids_and_recovers_after_failure() {
-        let (_dir, library, request) = fixture();
-        let mut active = None;
-        let id = PreparedBatch::prepare(&mut active, &library, vec![request.clone()]).unwrap();
-        assert!(PreparedBatch::prepare(&mut active, &library, vec![request.clone()]).is_err());
-        let batch = active.as_mut().unwrap();
-        assert!(batch.take("stale", 0).is_err());
-        assert!(batch.take(&id, 1).is_err());
-        let prepared = batch.take(&id, 0).unwrap();
-        assert!(batch.take(&id, 0).is_err());
-        assert!(synthesize(prepared, |_| bail!("inference failed")).is_err());
-        PreparedBatch::finish(&mut active, "stale");
-        assert!(active.is_some());
-        PreparedBatch::finish(&mut active, &id);
-        assert!(active.is_none());
-        let next = PreparedBatch::prepare(&mut active, &library, vec![request]).unwrap();
-        PreparedBatch::finish(&mut active, &id);
-        assert!(active.as_mut().unwrap().take(&next, 0).is_ok());
+        assert!(prepare(&library, vec![]).is_err());
+        let mut invalid = request.clone();
+        invalid.request.duration_scale = 0.0;
+        assert!(prepare(&library, vec![request.clone(), invalid]).is_err());
         assert!(library.takes().unwrap().is_empty());
-        PreparedBatch::finish(&mut active, &next);
-        assert!(PreparedBatch::prepare(&mut active, &library, vec![]).is_err());
-        assert!(active.is_none());
+        assert_eq!(prepare(&library, vec![request]).unwrap().len(), 1);
     }
 
     #[test]
@@ -329,15 +264,5 @@ mod tests {
         assert!(take.filename.as_ref().unwrap().ends_with(".wav"));
         library.save_take(&take, &bytes).unwrap();
         assert_eq!(library.audio(&take.id).unwrap(), bytes);
-    }
-    #[test]
-    fn invalid_request_and_failed_inference_do_not_publish_a_take() {
-        let (_dir, library, mut request) = fixture();
-        request.request.duration_scale = 0.0;
-        assert!(prepare(&library, vec![request]).is_err());
-        let (_dir, library, request) = fixture();
-        let prepared = prepare(&library, vec![request]).unwrap().remove(0);
-        assert!(synthesize(prepared, |_| anyhow::bail!("inference failed")).is_err());
-        assert!(library.takes().unwrap().is_empty());
     }
 }

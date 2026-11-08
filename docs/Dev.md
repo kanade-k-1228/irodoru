@@ -40,8 +40,8 @@ cargo xtask verify          # Pythonテスト、fmt、Clippy、Rustテスト、O
 cargo xtask verify-export   # モデル変換処理のテスト
 cargo xtask generate        # OpenAPIを更新
 # GUI部分も変更した場合
-cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru-desktop --features desktop
+cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
+cargo test --locked -p irodoru --features desktop
 ```
 
 実モデルを使うテストや配布物の検証はCIも参照してください。日本語入力、ドラッグ操作、音声デバイスは各OSでの操作確認が必要です。

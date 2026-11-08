@@ -253,13 +253,10 @@ impl Studio {
             dialog_open: false,
         };
         if let Some(path) = path {
-            studio.send(
-                Command::Open {
-                    path,
-                    create: false,
-                },
-                true,
-            );
+            studio.send(Command::Open {
+                path,
+                create: false,
+            });
         }
         studio.focus.focus(window, cx);
         studio

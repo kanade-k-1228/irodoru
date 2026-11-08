@@ -1,9 +1,9 @@
-use irodoru_desktop::{
+use irodoru::{
     domain::CharacterInput,
     domain::{InferenceStatus, SynthesisInput, TakeRequest},
     library::Library,
     synthesis::Inference,
-    synthesis::generation::{self, PreparedBatch},
+    synthesis::generation,
 };
 use irodoru_engine::{EngineConfig, SynthesisRequest};
 use std::time::{Duration, Instant};
@@ -59,12 +59,9 @@ fn application_worker_generates_takes_and_previews_and_recovers() -> anyhow::Res
         additional_prompt: None,
         request: input.clone(),
     };
-    let mut batch = None;
-    let id = PreparedBatch::prepare(&mut batch, &library, vec![request])?;
-    let prepared = batch.as_mut().unwrap().take(&id, 0)?;
+    let prepared = generation::prepare(&library, vec![request])?.remove(0);
     let (take, wav) = generation::synthesize(prepared, |job| inference.synthesize(job))?;
     library.save_take(&take, &wav)?;
-    PreparedBatch::finish(&mut batch, &id);
     assert_eq!(take.model, "anime");
     assert!(take.audio_seconds > 0.0);
     assert!(matches!(inference.status(), InferenceStatus::Ready));

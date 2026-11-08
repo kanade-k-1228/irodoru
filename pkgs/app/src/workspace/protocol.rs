@@ -52,6 +52,14 @@ pub enum Command {
         path: PathBuf,
     },
 }
+
+impl Command {
+    /// Passive writes neither block editing nor complete a foreground operation.
+    pub fn is_passive(&self) -> bool {
+        matches!(self, Self::SaveEditor(_) | Self::RemovePreview(_))
+    }
+}
+
 pub enum Event {
     Snapshot(Snapshot),
     Status(project::ProjectStatus),

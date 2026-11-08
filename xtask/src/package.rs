@@ -83,7 +83,7 @@ pub fn cli(args: &[String]) -> Result<()> {
         "--locked",
         "--release",
         "-p",
-        "irodoru-desktop",
+        "irodoru",
         "--features",
         "desktop",
         "--target",
@@ -99,15 +99,9 @@ pub fn cli(args: &[String]) -> Result<()> {
         fs::remove_dir_all(&stage)?;
     }
     fs::create_dir_all(&stage)?;
-    let binary = stage.join(if windows { "irodoru.exe" } else { "irodoru" });
-    fs::copy(
-        release.join(if windows {
-            "irodoru-desktop.exe"
-        } else {
-            "irodoru-desktop"
-        }),
-        &binary,
-    )?;
+    let binary_name = if windows { "irodoru.exe" } else { "irodoru" };
+    let binary = stage.join(binary_name);
+    fs::copy(release.join(binary_name), &binary)?;
     let mut libraries = Vec::new();
     for entry in fs::read_dir(&release)? {
         let entry = entry?;

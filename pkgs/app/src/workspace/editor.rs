@@ -139,22 +139,6 @@ mod tests {
         assert_eq!(e.rows[1].text, "こんにちは");
         assert!(e.rows[1].take_id.is_none());
     }
-    #[test]
-    fn insertion_and_duplication_work_beyond_fifty_rows() {
-        let mut editor = EditorState::default();
-        for _ in 0..60 {
-            insert(&mut editor, None, false).unwrap();
-        }
-        let source = editor.rows[30].id.clone();
-        editor.rows[30].text = "行数制限なし".into();
-        let inserted = insert(&mut editor, Some(&source), false).unwrap();
-        assert_eq!(editor.rows[31].id, inserted);
-        let copied = insert(&mut editor, Some(&source), true).unwrap();
-        assert_eq!(editor.rows[31].id, copied);
-        assert_eq!(editor.rows[31].text, "行数制限なし");
-        assert_eq!(editor.rows[32].id, inserted);
-        assert_eq!(editor.rows.len(), 62);
-    }
 
     #[test]
     fn speaking_speed_maps_to_inverse_duration_and_survives_save() {

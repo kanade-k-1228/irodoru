@@ -13,6 +13,28 @@ pub struct Inference {
     status: Arc<Mutex<InferenceStatus>>,
 }
 impl Inference {
+    /// Share one model worker across windows while any window still uses it.
+    pub(crate) fn shared() -> Result<Arc<Self>> {
+        static ENGINE: std::sync::OnceLock<Mutex<std::sync::Weak<Inference>>> =
+            std::sync::OnceLock::new();
+        let mut shared = ENGINE
+            .get_or_init(Default::default)
+            .lock()
+            .map_err(|_| anyhow::anyhow!("engine lock poisoned"))?;
+        let inference = if let Some(engine) = shared.upgrade() {
+            engine
+        } else {
+            Arc::new(Self::start_with_progress(|progress| {
+                Ok(irodoru_engine::EngineConfig::anime(
+                    super::resources::models_with_progress(progress)?,
+                ))
+            })?)
+        };
+        *shared = Arc::downgrade(&inference);
+        drop(shared);
+        Ok(inference)
+    }
+
     pub fn start_with(config: impl Fn() -> Result<EngineConfig> + Send + 'static) -> Result<Self> {
         Self::start_with_progress(move |_| config())
     }
@@ -106,34 +128,6 @@ mod tests {
         while !matches!(inference.status(), InferenceStatus::Error { .. }) {
             assert!(Instant::now() < deadline, "worker did not report failure");
             std::thread::sleep(Duration::from_millis(5));
-        }
-    }
-    #[test]
-    fn retry_does_not_queue_duplicate_initialization_while_preparing() {
-        let (started, attempts) = mpsc::channel();
-        let (release, proceed) = mpsc::channel();
-        let inference = Inference::start_with_progress(move |progress| {
-            progress(InferenceStatus::Checking {
-                checked: 0,
-                total: 5,
-            });
-            started.send(()).unwrap();
-            proceed.recv().unwrap();
-            bail!("temporary failure")
-        })
-        .unwrap();
-        for attempt in 0..2 {
-            if attempt > 0 {
-                inference.retry().unwrap();
-            }
-            attempts.recv_timeout(Duration::from_secs(5)).unwrap();
-            assert!(matches!(
-                inference.status(),
-                InferenceStatus::Checking { .. }
-            ));
-            assert!(inference.retry().is_err());
-            release.send(()).unwrap();
-            wait_error(&inference);
         }
     }
 

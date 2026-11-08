@@ -204,7 +204,7 @@ impl Studio {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.playback = None;
                         this.audio_id = None;
-                        this.send(Command::DeleteTake(delete.clone()), true);
+                        this.send(Command::DeleteTake(delete.clone()));
                         cx.notify();
                     })),
             )

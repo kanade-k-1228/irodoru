@@ -87,7 +87,7 @@ impl Studio {
         ) {
             Ok(requests) if !requests.is_empty() => {
                 self.autosave();
-                self.send(Command::Generate(requests), true);
+                self.send(Command::Generate(requests));
             }
             Ok(_) => {}
             Err(e) => self.state.error = Some(e.to_string()),
@@ -107,14 +107,11 @@ impl Studio {
     pub(super) fn preview(&mut self) {
         if let Some(d) = &self.state.draft {
             match editor::speech(d.input.sample_text.clone().unwrap_or_default(), &d.settings) {
-                Ok(input) => self.send(
-                    Command::Preview {
-                        input,
-                        description: d.input.description.clone(),
-                        voice: d.input.voice.clone(),
-                    },
-                    true,
-                ),
+                Ok(input) => self.send(Command::Preview {
+                    input,
+                    description: d.input.description.clone(),
+                    voice: d.input.voice.clone(),
+                }),
                 Err(e) => self.state.error = Some(e.to_string()),
             }
         }
@@ -125,7 +122,7 @@ impl Studio {
         if let Some(draft) = self.state.draft.take()
             && let Some(id) = draft.preview
         {
-            self.send(Command::RemovePreview(id), false);
+            self.send(Command::RemovePreview(id));
         }
         self.sync_fields(window, cx);
         cx.notify();

@@ -83,14 +83,7 @@ fn main() -> Result<()> {
         Some("dev") => {
             run(
                 "cargo",
-                &[
-                    "run",
-                    "--locked",
-                    "-p",
-                    "irodoru-desktop",
-                    "--features",
-                    "desktop",
-                ],
+                &["run", "--locked", "-p", "irodoru", "--features", "desktop"],
             )?;
         }
         Some("models") => models::cli(rest)?,
