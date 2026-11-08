@@ -8,6 +8,8 @@ Download app packages from [Releases](https://github.com/kanade-k-1228/irodoru/r
 Large packages are split into parts; download all parts and follow the included README to join and verify them.
 On Windows, extract the joined ZIP and run `irodoru.exe`.
 
+See [使い方ガイド（日本語・スクリーンショット付き）](docs/user-guide.md) to get started with the desktop app.
+
 ## Projects
 
 Create or open a project ZIP from the app header. Each project contains its own script,

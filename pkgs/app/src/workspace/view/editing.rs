@@ -130,4 +130,17 @@ impl Studio {
         self.sync_fields(window, cx);
         cx.notify();
     }
+
+    pub(super) fn remove_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.busy || self.state.draft.is_some() {
+            return;
+        }
+        if let Some(id) = self.state.selected.clone() {
+            self.state.selected = editor::remove(&mut self.state.snapshot.editor, &id);
+            self.state.snapshot.takes.retain(|t| t.row_id != id);
+            self.autosave();
+            self.sync_fields(window, cx);
+        }
+        cx.notify();
+    }
 }
