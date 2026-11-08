@@ -19,6 +19,7 @@ from graphs import (
     SpeakerGraph,
 )
 from models import MODELS, InferenceRuntime, load_runtime
+from license_resources import CODEC_REPO, write_notices
 from onnx_io import export, verify
 from patches import apply_global_patches, original_math, remove_weight_norms
 from portable_onnx import make_portable, original_graphs
@@ -58,6 +59,7 @@ def export_codec(rt: InferenceRuntime, out: Path):
     (d / "codec.json").write_text(
         json.dumps({"sample_rate": sr, "hop_length": hop, "latent_dim": latent_dim}, indent=2)
     )
+    write_notices(d, CODEC_REPO)
 
 
 def export_tokenizer(rt: InferenceRuntime, d: Path):
@@ -209,6 +211,7 @@ def export_model(name: str, rt: InferenceRuntime, out: Path):
         **tok_info,
     }
     (d / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+    write_notices(d, MODELS[name])
     for path in original_graphs(d):
         make_portable(path)
     print(f"[{name}] manifest: {manifest}")

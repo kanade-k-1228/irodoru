@@ -7,12 +7,62 @@ pub(super) fn fixture(directory: &Path) {
             fs::write(directory.join(folder).join(name), b"model fixture").unwrap();
         }
     }
+    let reviewed: serde_json::Value =
+        serde_json::from_slice(&fs::read(root().join("licenses/model/revisions.json")).unwrap())
+            .unwrap();
+    for (folder, repository) in [
+        ("anime", "phasefield-audio/Irodori-TTS-v4.1-Anime"),
+        ("codec", "Aratako/Semantic-DACVAE-Japanese-32dim"),
+    ] {
+        json_write(
+            &directory.join(folder).join("provenance.json"),
+            &serde_json::json!({
+                "repository": repository, "revision": reviewed[repository],
+            }),
+        )
+        .unwrap();
+    }
     fs::write(
         directory.join("anime/manifest.json"),
-        br#"{"name":"anime","checkpoint":"fixture"}"#,
+        br#"{"name":"anime","checkpoint":"phasefield-audio/Irodori-TTS-v4.1-Anime"}"#,
     )
     .unwrap();
     fs::write(directory.join("anime/backbone.onnx.data"), [42; 1024]).unwrap();
+}
+#[test]
+fn model_distribution_requires_notices_and_reviewed_provenance() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source");
+    let bundle = temp.path().join("bundle");
+    fixture(&source);
+    fs::remove_file(source.join("codec/LICENSES.txt"))?;
+    assert!(prepare(&source, &bundle).is_err());
+    fixture(&source);
+    fs::write(
+        source.join("anime/provenance.json"),
+        br#"{"repository":"phasefield-audio/Irodori-TTS-v4.1-Anime","revision":"unreviewed"}"#,
+    )?;
+    assert!(
+        prepare(&source, &bundle)
+            .unwrap_err()
+            .to_string()
+            .contains("Unreviewed")
+    );
+    fixture(&source);
+    prepare(&source, &bundle)?;
+    for folder in ["anime", "codec"] {
+        assert_eq!(
+            fs::read(source.join(folder).join("LICENSES.txt"))?,
+            fs::read(bundle.join(folder).join("LICENSES.txt"))?
+        );
+    }
+    let (_, mut index) = read_bundle(&bundle)?;
+    index
+        .files
+        .retain(|entry| entry.path != "codec/LICENSES.txt");
+    json_write(&bundle.join("bundle.json"), &index)?;
+    assert!(read_bundle(&bundle).is_err());
+    Ok(())
 }
 #[test]
 fn prepare_preserves_unchanged_files_and_repairs_corruption() -> Result<()> {

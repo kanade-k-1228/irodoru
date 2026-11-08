@@ -71,7 +71,7 @@ jobs:
         id: models
         with:
           path: pkgs/app/resources/models
-          key: anime-bundle-v1-${{ hashFiles('pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/Cargo.toml') }}
+          key: anime-bundle-v1-${{ hashFiles('licenses/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/Cargo.toml') }}
       - uses: astral-sh/setup-uv@v7
         if: steps.models.outputs.cache-hit != 'true'
         with:
@@ -205,7 +205,10 @@ jobs:
       - name: Build and package desktop
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo xtask package --target "$TARGET"
+        run: |
+          cargo install cargo-about --version 0.9.3 --locked --features cli
+          cargo fetch --locked
+          cargo xtask package --target "$TARGET"
       - name: Verify lightweight packages and offline synthesis with external models
         if: startsWith(github.ref, 'refs/tags/')
         env:

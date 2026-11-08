@@ -1,0 +1,79 @@
+irodoru model distribution notices
+Reviewed: 2026-11-08
+
+The MIT license for the irodoru application does not replace any model,
+tokenizer, codec or third-party license. LICENSES.txt accompanies each exported
+model and codec. Its ETHICAL-RESTRICTIONS.txt section contains the upstream usage conditions.
+The revisions in revisions.json are the reviewed inputs; provenance.json in an
+export records the input repository and revision. Re-export before distributing
+old model directories that do not contain these notices.
+
+Speech models
+-------------
+phasefield-audio/Irodori-TTS-v4.1-Anime (fine-tuning by phasefield-audio)
+https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime/blob/6b259f5baa5e236b3d14cbd1f8555ca87d92b530/README.md
+Derived from Aratako/Irodori-TTS-v4.1-Small, by Chihiro Arata / Aratako.
+The Anime model card explicitly adopts the base model's MIT license and ethical
+restrictions. Its model card does not provide a separate copyright notice.
+
+Aratako/Irodori-TTS-v4.1-Small and Aratako/Irodori-TTS-v4.1-Small-MF
+https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small
+https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small-MF
+MIT; subject also to the upstream model usage conditions reproduced below.
+Irodori-TTS inference code and token-splitting rules: Copyright (c) 2026 Aratako.
+https://github.com/Aratako/Irodori-TTS/tree/7ed4374eaf49355279db51307e8141984f900836
+
+Text encoder and tokenizers
+--------------------------
+sbintuitions/modernbert-ja-310m, Copyright (c) 2025 SB Intuitions, MIT.
+https://huggingface.co/sbintuitions/modernbert-ja-310m/blob/77675fc96a7e445e982e2ba90246b816efc74ec6/LICENSE
+The encoder is inherited through the Irodori checkpoint. Tokenizer assets are
+loaded from the pinned speech checkpoint, then converted for Rust inference.
+The ModernBERT model card identifies sbintuitions/sarashina2-13b as the source of
+its tokenizer and vocabulary (also MIT).
+https://huggingface.co/sbintuitions/modernbert-ja-310m
+https://huggingface.co/sbintuitions/sarashina2-13b
+Tokenizer ancestor license: Copyright (c) 2024 SB Intuitions.
+https://huggingface.co/sbintuitions/sarashina2-13b/blob/07b16d21dc7cf0115283312fef8c348c946d165b/LICENSE
+
+Audio codec and ancestors
+-------------------------
+Aratako/Semantic-DACVAE-Japanese-32dim, by Chihiro Arata / Aratako, MIT.
+https://huggingface.co/Aratako/Semantic-DACVAE-Japanese-32dim/blob/47376ee24834d7a05a48ebabfe3cde29b3c5e214/README.md
+Derived from Aratako/Semantic-DACVAE-Japanese and facebook/dacvae-watermarked.
+The MIT declaration for the fine-tuning does not remove Apache-2.0 conditions
+on the inherited DACVAE work.
+
+facebook/dacvae-watermarked: Apache-2.0, Meta / Facebook Research.
+https://huggingface.co/facebook/dacvae-watermarked/discussions/1#69458aa9682b3352e8a576e3
+On 2025-12-19, Matt Le (lematt1991, a member of the facebook organization and
+the model uploader) explicitly confirmed that the model weights are also
+Apache-2.0. The model card metadata was updated in commit
+8680102d141858a21bd533543966a2eb2e569f92. The contradictory SAM License sentence
+remains in the prose; the proposed correction is discussion/PR #2. This review
+relies on the provider's explicit weights clarification, not on the code license
+alone or on the unmerged community PR.
+https://huggingface.co/facebook/dacvae-watermarked/commit/8680102d141858a21bd533543966a2eb2e569f92
+https://huggingface.co/facebook/dacvae-watermarked/discussions/2
+
+DACVAE code: Apache-2.0.
+https://github.com/facebookresearch/dacvae/tree/414c20785fc3a28373073ea8ef7a1316eeeaca6e
+DACVAE derives from Descript Audio Codec (MIT, Descript, Inc.). Both license
+texts are retained here. The DACVAE decoder also contains AudioSeal-derived
+implementation, covered by the retained Apache-2.0 terms; this is not a
+redistribution of the separate AudioSeal detector checkpoint.
+
+Changes made for irodoru distribution
+-------------------------------------
+The speech checkpoint and codec are converted to ONNX, split into inference
+graphs, and rewritten to portable ONNX operators. Weight normalization is
+removed for export. Tokenizer JSON and forced split rules are exported for the
+Rust engine. Deterministic codec encoding/decoding and the upstream Irodori
+watermark bypass are used. These converted files are modified derivatives,
+not unmodified upstream checkpoints. Do not represent exported audio as being
+protected by the original DACVAE or SilentCipher watermark.
+
+The license review covers published grants and notices. It does not establish
+ownership or clearance of every training recording or grant rights to imitate
+a person's voice. Follow the upstream usage conditions and obtain necessary
+permissions for reference recordings and other supplied content.

@@ -61,6 +61,10 @@ fn configuration(
             )
         );
     }
+    config["resources"].as_array_mut().unwrap().push(json!({
+        "src": stage.join("licenses"),
+        "target": "licenses",
+    }));
     Ok(config)
 }
 pub fn cli(args: &[String]) -> Result<()> {
@@ -99,6 +103,7 @@ pub fn cli(args: &[String]) -> Result<()> {
         fs::remove_dir_all(&stage)?;
     }
     fs::create_dir_all(&stage)?;
+    licenses::generate(&stage.join("licenses"))?;
     let binary_name = if windows { "irodoru.exe" } else { "irodoru" };
     let binary = stage.join(binary_name);
     fs::copy(release.join(binary_name), &binary)?;
@@ -188,7 +193,8 @@ mod tests {
             config["deb"]["files"][stage.join("libonnxruntime.so").to_str().unwrap()],
             "usr/bin/libonnxruntime.so"
         );
-        assert!(config["resources"].as_array().unwrap().is_empty());
+        assert_eq!(config["resources"][0]["src"], json!(stage.join("licenses")));
+        assert_eq!(config["resources"][0]["target"], "licenses");
         for format in ["deb", "appimage"] {
             assert_eq!(
                 config[format]["files"][root.join("pkgs/app/linux/irodoru.xml").to_str().unwrap()],
