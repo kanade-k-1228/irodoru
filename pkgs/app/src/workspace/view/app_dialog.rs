@@ -74,6 +74,7 @@ impl Studio {
             .child("カラーテーマ")
             .child(
                 Button::new("preferences-theme")
+                    .cursor_pointer()
                     .ghost()
                     .child(self.theme_track())
                     .on_click(cx.listener(|this, _, w, cx| this.toggle_theme(w, cx))),

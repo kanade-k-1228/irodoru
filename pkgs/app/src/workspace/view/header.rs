@@ -58,6 +58,7 @@ impl Studio {
     fn menu_trigger(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         Button::new("app-menu-trigger")
+            .cursor_pointer()
             .track_focus(&self.menu_trigger_focus)
             .focus_ring(false)
             .ghost()
@@ -127,6 +128,7 @@ impl Studio {
             )
             .child(
                 gpui_kit::base::Button::new("close-window")
+                    .cursor_pointer()
                     .accessibility_label("閉じる")
                     .child(icon("close"))
                     .flex()
@@ -137,6 +139,7 @@ impl Studio {
                     .rounded_none()
                     .hover(|s| s.bg(rgb(0xc42b1c)).text_color(rgb(0xffffff)))
                     .disabled(self.state.busy)
+                    .when(self.state.busy, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.close();
                         cx.notify();

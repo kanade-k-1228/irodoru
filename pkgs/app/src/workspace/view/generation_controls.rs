@@ -32,6 +32,7 @@ impl Studio {
             )
             .child(
                 Slider::new(&self.sliders[0])
+                    .when(!disabled, |el| el.cursor_pointer())
                     .bg(self.accent())
                     .text_color(self.accent())
                     .h(px(16.))
@@ -81,6 +82,7 @@ impl Studio {
                 el.child(
                     button("generate-all", "すべて生成")
                         .disabled(disabled || !self.can_generate())
+                        .when(disabled || !self.can_generate(), |el| el.cursor_default())
                         .on_click(cx.listener(|this, _, w, cx| this.generate(true, false, w, cx))),
                 )
             })
@@ -120,6 +122,7 @@ impl Studio {
             .child(
                 button("reset-settings", "既定設定に戻す")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| {
                         if let Some(r) = this.state.selected_row_mut() {
                             r.settings = None;
@@ -132,6 +135,7 @@ impl Studio {
             .child(
                 tool("duplicate-line", "copy", "行を複製")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| this.add(true, w, cx))),
             )
             .into_any_element()
@@ -158,6 +162,7 @@ impl Studio {
             )
             .child(
                 Slider::new(state)
+                    .when(!disabled, |el| el.cursor_pointer())
                     .bg(self.accent())
                     .text_color(self.accent())
                     .disabled(disabled),

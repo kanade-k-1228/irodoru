@@ -68,8 +68,7 @@ impl Studio {
             .px(px(if narrow { 4. } else { 8. }))
             .when(selected, |el| el.bg(p.control))
             .text_color(if selected { p.ink } else { p.muted })
-            .cursor_pointer()
-            .hover(|s| s.bg(p.hover))
+            .when(!disabled, |el| el.cursor_pointer().hover(|s| s.bg(p.hover)))
             .child(self.avatar(Some(c), 32.))
             .when(!narrow, |el| {
                 el.child(div().text_xs().overflow_hidden().child(c.name.clone()))
@@ -112,12 +111,14 @@ impl Studio {
                 tool("add-character", "plus", "キャラを追加")
                     .size(px(32.))
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| this.edit_character(None, w, cx))),
             )
             .child(
                 tool("edit-character", "edit", "キャラを編集")
                     .size(px(32.))
                     .disabled(disabled || active.is_none())
+                    .when(disabled || active.is_none(), |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.edit_character(active.clone(), w, cx)
                     })),

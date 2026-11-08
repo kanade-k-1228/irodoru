@@ -85,6 +85,12 @@ impl Studio {
                         || !self.can_generate()
                         || self.fields.text.read(cx).value().trim().is_empty(),
                 )
+                .when(
+                    disabled
+                        || !self.can_generate()
+                        || self.fields.text.read(cx).value().trim().is_empty(),
+                    |el| el.cursor_default(),
+                )
                 .on_click(cx.listener(|this, _, w, cx| this.generate(false, false, w, cx))),
             )
             .child(
@@ -107,6 +113,7 @@ impl Studio {
                     .border_color(p.line)
                     .bg(p.control)
                     .disabled(disabled || !self.can_generate())
+                    .when(disabled || !self.can_generate(), |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| this.generate(false, true, w, cx))),
             )
             .into_any_element()
@@ -182,6 +189,7 @@ impl Studio {
             .child(
                 tool(("export", i), "download", "WAVを保存")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(
                         cx.listener(move |this, _, w, cx| {
                             this.export(export.clone(), false, w, cx)
@@ -191,6 +199,7 @@ impl Studio {
             .child(
                 tool(("copy-take", i), "plus", "台本に追加")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
                         let row = editor::row_from_take(&copy, &this.state.snapshot.characters);
                         let id = row.id.clone();
@@ -201,6 +210,7 @@ impl Studio {
             .child(
                 tool(("delete-take", i), "trash", "音声を削除")
                     .disabled(disabled)
+                    .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.playback = None;
                         this.audio_id = None;

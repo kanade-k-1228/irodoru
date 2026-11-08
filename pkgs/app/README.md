@@ -105,6 +105,13 @@ it should not make the view aware of database connections or queries.
 
 ## Extending and verifying
 
+Application icons live in `icons/`. Windows builds embed `icon.ico` in the executable
+through `build.rs` and `windows/app.rc`, using resource ID 1 for GPUI's window and
+taskbar icon. This also covers the portable ZIP distribution. Linux windows embed
+`128x128.png` for X11 and use the `irodoru` app ID to match the packaged desktop
+entry on Wayland. `packager.json` supplies the PNG/ICNS icons for Linux packages and
+the macOS app bundle. Keep these assets in sync when changing the application logo.
+
 Add data contracts to `domain` only when they cross capabilities. Keep feature-only
 state and commands in `workspace`. Add input rules to `editor` or state transitions,
 then a small view adapter. Add I/O commands to `protocol` and implement them in the
