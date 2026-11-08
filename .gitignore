@@ -12,5 +12,6 @@ pkgs/engine/script/*.log
 /voices/
 .claude/
 /pkgs/app/gen/
+/pkgs/app/src-tauri/gen/
 /pkgs/app/resources/models/
 /model-assets/
