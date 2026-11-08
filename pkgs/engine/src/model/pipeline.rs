@@ -17,10 +17,6 @@ use super::{
 const MIN_SECONDS: f64 = 0.5;
 const MAX_SECONDS: f64 = 30.0;
 
-#[cfg(test)]
-#[path = "feature_cache_test.rs"]
-mod feature_cache_test;
-
 pub struct SynthParams {
     pub text: String,
     pub caption: Option<String>,
@@ -90,8 +86,6 @@ pub struct TTSModel {
     duration: Graph,
     sampler: Sampler,
     caption_cache: ConditionCache<String>,
-    #[cfg(test)]
-    encode_counts: [usize; 3],
 }
 
 impl TTSModel {
@@ -122,8 +116,6 @@ impl TTSModel {
                 CacheConfig::default().caption_bytes_per_model,
                 1024,
             ),
-            #[cfg(test)]
-            encode_counts: [0; 3],
         })
     }
 
@@ -256,10 +248,6 @@ impl TTSModel {
     }
 
     fn encode_text(&mut self, text: &str, caption: bool) -> Result<Condition> {
-        #[cfg(test)]
-        {
-            self.encode_counts[usize::from(caption)] += 1;
-        }
         let (tok, max_len, proj) = if caption {
             let m = self.manifest.max_caption_len;
             (&self.caption_tokenizer, m, &mut self.caption_proj)
@@ -288,10 +276,6 @@ impl TTSModel {
     }
 
     pub fn encode_speaker(&mut self, latent: &ArrayD<f32>, codec: &Codec) -> Result<Condition> {
-        #[cfg(test)]
-        {
-            self.encode_counts[2] += 1;
-        }
         let mut t = latent.shape()[1];
         if self.manifest.max_ref_seconds > 0.0 {
             let max_steps = ((self.manifest.max_ref_seconds * codec.sample_rate as f64

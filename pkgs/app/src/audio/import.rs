@@ -240,4 +240,17 @@ mod tests {
             assert_eq!((image.width(), image.height()), (128, 128));
         }
     }
+
+    #[test]
+    fn invalid_and_oversized_images_fail() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("bad.png");
+        std::fs::write(&p, b"not a png").unwrap();
+        assert!(import_icon(&p).is_err());
+        std::fs::File::create(&p)
+            .unwrap()
+            .set_len(10 * 1024 * 1024 + 1)
+            .unwrap();
+        assert!(import_icon(&p).unwrap_err().to_string().contains("10 MB"));
+    }
 }

@@ -248,24 +248,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
-    fn preprocess_stats() {
-        let path = std::env::var("IRODORI_TEST_WAV").unwrap();
-        let wav = Audio::from_wav(&std::fs::read(path).unwrap()).unwrap();
-        let len_in = wav.samples.len();
-        let r = wav.resample(48_000);
-        let lufs = r.loudness().unwrap();
-        let mut n = Audio::new(r.samples.clone(), 48_000);
-        n.normalize_loudness(-16.0).unwrap();
-        println!(
-            "len_in={len_in} len_out={} r[1000..1004]={:?} lufs={lufs:.6} n[1000..1004]={:?}",
-            r.samples.len(),
-            &r.samples[1000..1004],
-            &n.samples[1000..1004]
-        );
-    }
-
-    #[test]
     fn resample_identity_and_length() {
         let x: Vec<f32> = (0..44_100).map(|i| (i as f32 * 0.01).sin()).collect();
         assert_eq!(Audio::new(x.clone(), 48_000).resample(48_000).samples, x);
