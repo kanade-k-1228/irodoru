@@ -68,7 +68,7 @@ export const Header = ({ project }: { project: ReturnType<typeof useLibrary> }) 
         <div className="basis-full px-2 py-1 text-xs text-muted">
           {project.loading
             ? "プロジェクトを読み込み中…"
-            : "プロジェクトZIPを新規作成するか、既存のZIPを開いてください。"}
+            : "プロジェクト（.iro）を新規作成するか、既存のプロジェクトを開いてください。"}
         </div>
       )}
     </header>

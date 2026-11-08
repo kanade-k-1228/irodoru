@@ -7,5 +7,5 @@ export type ScriptRow = { takeId?: string, id: string, text: string, characterId
 export type EditorState = { rows: Array<ScriptRow>, preferences: GenerationSettings, activeCharacter: string, };
 export type SynthesisInput = { text: string, seed: number | null, num_steps: number | null, duration_scale: number, cfg_scale_text: number, cfg_scale_speaker: number, cfg_scale_caption: number, };
 export type TakeRequest = { row_id: string, character_id: string, additional_prompt: string | null, request: SynthesisInput, };
-export type InferenceStatus = { "state": "loading" } | { "state": "ready" } | { "state": "generating" } | { "state": "error", error: string, };
+export type InferenceStatus = { "state": "loading" } | { "state": "checking", checked: number, total: number, } | { "state": "downloading", downloaded: number, total: number, } | { "state": "extracting", extracted: number, total: number, } | { "state": "ready" } | { "state": "generating" } | { "state": "error", error: string, };
 export type ProjectStatus = { id: string | null, name: string | null, state: "closed" | "saving" | "saved" | "error", error: string | null, };

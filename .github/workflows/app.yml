@@ -24,6 +24,9 @@ jobs:
     uses: ./.github/workflows/verify.yml
 
   models:
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/models.yml
 
   build:
@@ -99,8 +102,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v8
         with:
-          name: app-models
-          path: pkgs/app/src-tauri/resources/models
+          name: app-model-manifest
+          path: pkgs/app/src-tauri/resources
       - run: pnpm install --frozen-lockfile
       - name: Check desktop native code
         if: matrix.family == 'desktop'
@@ -132,7 +135,6 @@ jobs:
           New-Item -ItemType Directory -Force $stage, $bundle | Out-Null
           Copy-Item "$release/irodoru-desktop.exe" "$stage/irodoru.exe"
           Get-ChildItem "$release/*.dll" | Copy-Item -Destination $stage
-          Copy-Item "pkgs/app/src-tauri/resources/models" $stage -Recurse
           $version = (Get-Content "pkgs/app/src-tauri/tauri.conf.json" | ConvertFrom-Json).version
           Push-Location (Split-Path $stage)
           & "$env:ProgramFiles/7-Zip/7z.exe" a -tzip -mx=0 "$bundle/irodoru_$($version)_windows.zip" irodoru

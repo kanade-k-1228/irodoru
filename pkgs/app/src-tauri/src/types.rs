@@ -72,7 +72,27 @@ pub struct TakeRequest {
 #[serde(tag = "state", rename_all = "lowercase")]
 pub enum InferenceStatus {
     Loading,
+    Checking {
+        #[ts(type = "number")]
+        checked: u64,
+        #[ts(type = "number")]
+        total: u64,
+    },
+    Downloading {
+        #[ts(type = "number")]
+        downloaded: u64,
+        #[ts(type = "number")]
+        total: u64,
+    },
+    Extracting {
+        #[ts(type = "number")]
+        extracted: u64,
+        #[ts(type = "number")]
+        total: u64,
+    },
     Ready,
     Generating,
-    Error { error: String },
+    Error {
+        error: String,
+    },
 }

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 #[ignore = "requires anime + codec; set IRODORU_TEST_MODELS and run --release"]
 fn application_worker_generates_takes_and_previews_and_recovers() -> anyhow::Result<()> {
     let config = EngineConfig::anime(std::env::var("IRODORU_TEST_MODELS")?.into());
-    let inference = Inference::start_with(move || Ok(config))?;
+    let inference = Inference::start_with(move || Ok(config.clone()))?;
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         match inference.status() {

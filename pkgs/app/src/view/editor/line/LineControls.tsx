@@ -5,10 +5,10 @@ import { busyAtom, canGenerateAtom } from "@/logic/state/app.ts";
 import { generateSelectedRowAtom, runningRowAtom } from "@/logic/state/audio.ts";
 import {
   advancedSettingsOpenAtom,
-  defaultSettingsAtom,
   editSelectedRowAtom,
   focusRowAtom,
   insertSelectedRowAtom,
+  preferencesAtom,
   selectedCharacterAtom,
   selectedRowAtom,
   selectedRowIndexAtom,
@@ -21,7 +21,7 @@ export const LineControls = () => {
   const busy = useAtomValue(busyAtom);
   const idle = useAtomValue(canGenerateAtom);
   const character = useAtomValue(selectedCharacterAtom);
-  const defaults = useAtomValue(defaultSettingsAtom);
+  const defaults = useAtomValue(preferencesAtom);
   const running = useAtomValue(runningRowAtom) === row?.id;
   const onChange = useSetAtom(editSelectedRowAtom);
   const insert = useSetAtom(insertSelectedRowAtom);

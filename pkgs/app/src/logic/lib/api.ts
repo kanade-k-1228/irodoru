@@ -22,6 +22,7 @@ async function command<T>(name: string, args?: Record<string, unknown>): Promise
 export const fetchCharacters = () => command<Character[]>("fetch_characters");
 export const isMobile = () => command<boolean>("is_mobile");
 export const inferenceStatus = () => command<InferenceStatus>("inference_status");
+export const retryInference = () => command<void>("retry_inference");
 export const saveCharacter = (input: CharacterInput, id?: string, preview?: string) =>
   command<Character>("save_character", { input, id: id ?? null, preview: preview ?? null });
 export const removeCharacter = (id: string) => command<void>("remove_character", { id });
@@ -45,6 +46,8 @@ export const saveEditor = (editor: EditorState) => {
 };
 export const projectStatus = () => command<ProjectStatus>("project_status");
 export const chooseProject = (create: boolean) => command<boolean>("choose_project", { create });
+export const openProject = (path: string) => command<boolean>("open_project", { path });
+export const takeProjectOpenRequests = () => command<string[]>("take_project_open_requests");
 export const flushProject = () => command<void>("flush_project");
 export const exportTake = (id: string) => command<void>("export_take", { id });
 async function fetchWav(path: string, error: string, signal?: AbortSignal): Promise<Blob> {

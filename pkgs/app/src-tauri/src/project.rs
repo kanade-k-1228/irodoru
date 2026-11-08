@@ -460,30 +460,47 @@ mod tests {
     }
     #[test]
     fn archive_round_trip_is_portable_and_has_no_shared_or_draft_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let session = fixture(dir.path().join("first.zip"));
-        write_archive(&snapshot(&session).unwrap()).unwrap();
-        let moved = dir.path().join("renamed.zip");
-        std::fs::rename(&session.path, &moved).unwrap();
-        drop(session);
-        let reopened = Session::open(moved.clone()).unwrap();
-        assert_eq!(reopened.library.editor().unwrap().rows[0].text, "最初");
-        let character = reopened.library.characters().unwrap().remove(0);
-        assert!(
-            !reopened
-                .library
-                .voice(character.voice.as_ref().unwrap())
-                .unwrap()
-                .is_empty()
-        );
-        let zip = ZipArchive::new(File::open(moved).unwrap()).unwrap();
-        let names: Vec<_> = zip
-            .file_names()
-            .collect::<zip::result::ZipResult<_>>()
-            .unwrap();
-        assert!(names.iter().any(|name| name == "project.yaml"));
-        assert!(names.iter().any(|name| name.ends_with("/character.yaml")));
-        assert!(names.iter().all(|name| !name.starts_with('.')));
+        for extension in ["iro", "zip"] {
+            let dir = tempfile::tempdir().unwrap();
+            let session = fixture(dir.path().join(format!("first.{extension}")));
+            write_archive(&snapshot(&session).unwrap()).unwrap();
+            let moved = dir.path().join(format!("renamed.{extension}"));
+            std::fs::rename(&session.path, &moved).unwrap();
+            drop(session);
+            let reopened = Session::open(moved.clone()).unwrap();
+            assert_eq!(reopened.path, moved);
+            assert_eq!(reopened.library.editor().unwrap().rows[0].text, "最初");
+            let character = reopened.library.characters().unwrap().remove(0);
+            assert!(
+                !reopened
+                    .library
+                    .voice(character.voice.as_ref().unwrap())
+                    .unwrap()
+                    .is_empty()
+            );
+            let mut editor = reopened.library.editor().unwrap();
+            editor.rows[0].text = "更新".into();
+            reopened.library.save_editor(&editor).unwrap();
+            write_archive(&snapshot(&reopened).unwrap()).unwrap();
+            assert_eq!(
+                Session::open(moved.clone())
+                    .unwrap()
+                    .library
+                    .editor()
+                    .unwrap()
+                    .rows[0]
+                    .text,
+                "更新"
+            );
+            let zip = ZipArchive::new(File::open(moved).unwrap()).unwrap();
+            let names: Vec<_> = zip
+                .file_names()
+                .collect::<zip::result::ZipResult<_>>()
+                .unwrap();
+            assert!(names.iter().any(|name| name == "project.yaml"));
+            assert!(names.iter().any(|name| name.ends_with("/character.yaml")));
+            assert!(names.iter().all(|name| !name.starts_with('.')));
+        }
     }
     #[test]
     fn only_latest_audio_and_saved_character_preview_survive_reopening() {

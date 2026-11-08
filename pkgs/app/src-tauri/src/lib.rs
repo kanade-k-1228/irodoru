@@ -10,6 +10,8 @@ pub mod error;
 pub mod generation;
 pub mod library;
 pub mod project;
+#[cfg(any(feature = "desktop", test))]
+mod project_open;
 pub mod types;
 
 pub mod inference;

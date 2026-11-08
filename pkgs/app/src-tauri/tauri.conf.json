@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "io.github.kanade-k-1228.irodoru",
   "build": {
-    "beforeDevCommand": "pnpm -w models:check && pnpm --filter @irodoru/app dev --host 127.0.0.1 --port 1420 --strictPort",
+    "beforeDevCommand": "pnpm --filter @irodoru/app dev --host 127.0.0.1 --port 1420 --strictPort",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm -w models:check && pnpm --filter @irodoru/app build",
+    "beforeBuildCommand": "pnpm --filter @irodoru/app build",
     "frontendDist": "../dist",
     "features": ["desktop"]
   },
@@ -32,17 +32,35 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": ["iro"],
+        "name": "irodoru project",
+        "description": "irodoru project",
+        "mimeType": "application/x-irodoru-project",
+        "role": "Editor",
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "io.github.kanade-k-1228.irodoru.project",
+          "conformsTo": ["public.data"]
+        }
+      }
+    ],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "linux": {
       "appimage": {
-        "bundleMediaFramework": true
+        "bundleMediaFramework": true,
+        "files": {
+          "/usr/share/mime/packages/irodoru.xml": "linux/irodoru.xml"
+        }
       },
       "deb": {
-        "depends": ["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good"]
+        "depends": ["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good", "shared-mime-info", "desktop-file-utils"],
+        "desktopTemplate": "linux/irodoru.desktop",
+        "files": {
+          "/usr/share/mime/packages/irodoru.xml": "linux/irodoru.xml"
+        }
       }
-    },
-    "resources": {
-      "resources/models/": "models/"
     }
   }
 }

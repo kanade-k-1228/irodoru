@@ -17,7 +17,6 @@ import { activeCharacterAtom, activeCharacterIdAtom, charactersAtom, editingChar
 
 export const preferencesAtom = atom<GenerationSettings>(DEFAULT_PREFERENCES);
 export const advancedSettingsOpenAtom = atom(false);
-export const defaultSettingsAtom = atom((get) => get(preferencesAtom));
 export const rowsAtom = atom<ScriptRow[]>([]);
 export const rowAtomsAtom = splitAtom(rowsAtom, (row) => row.id);
 export const rowCountAtom = atom((get) => get(rowsAtom).length);
@@ -34,7 +33,6 @@ export const selectedCharacterAtom = atom((get) =>
 export const focusRowAtom = atom<string | null>(null);
 export const canAppendRowAtom = atom((get) => get(idleAtom) && get(rowCountAtom) < MAX_SCRIPT_ROWS);
 export const canAddRowAtom = atom((get) => get(canAppendRowAtom) && !!get(charactersAtom).length);
-export const hasScriptTextAtom = atom((get) => get(rowsAtom).some((row) => row.text.trim()));
 
 export const selectRowAtom = atom(null, (get, set, id: string, focus = false) => {
   const row = get(rowsAtom).find((row) => row.id === id);
@@ -62,7 +60,7 @@ export const appendCharacterRowAtom = atom(null, (get, set, characterId: string)
     set(errorAtom, `台本は${MAX_SCRIPT_ROWS}行までです`);
     return;
   }
-  const row = newRow(characterId, get(defaultSettingsAtom));
+  const row = newRow(characterId, get(preferencesAtom));
   set(rowsAtom, (all) => insertRow(all, row));
   set(selectRowAtom, row.id, true);
 });
@@ -72,7 +70,7 @@ export const insertSelectedRowAtom = atom(null, (get, set, mode: "new" | "duplic
   const selected = afterId ? get(rowsAtom).find((row) => row.id === afterId) : get(selectedRowAtom);
   if (afterId && !selected) return;
   const character = get(activeCharacterAtom) ?? get(charactersAtom)[0];
-  const defaults = get(defaultSettingsAtom);
+  const defaults = get(preferencesAtom);
   const row =
     mode === "duplicate" && selected ? duplicateRow(selected, defaults) : newRow("", selected?.settings ?? defaults);
   row.characterId = get(charactersAtom).some((item) => item.id === selected?.characterId)

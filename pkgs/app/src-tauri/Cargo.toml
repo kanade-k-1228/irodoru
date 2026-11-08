@@ -3,7 +3,7 @@ name = "irodoru-desktop"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Offline speech synthesis application with embedded anime model"
+description = "Offline speech synthesis application with downloadable anime model"
 default-run = "irodoru-desktop"
 
 [features]
@@ -28,6 +28,7 @@ tauri = { version = "2", optional = true, features = ["protocol-asset"] }
 tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-fs = { version = "2", optional = true }
 sha2 = "0.11"
+ureq = { version = "3.5", default-features = false, features = ["rustls"] }
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true, features = [] }

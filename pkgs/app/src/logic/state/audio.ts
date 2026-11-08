@@ -4,7 +4,7 @@ import { generateQueue } from "@/logic/lib/generation.ts";
 import { type ScriptRow, takeRequests } from "@/logic/lib/script.ts";
 import { busyAtom, errorAtom, idleAtom } from "./app.ts";
 import { charactersAtom } from "./characters.ts";
-import { defaultSettingsAtom, rowsAtom, selectedRowAtom, selectedRowIdAtom, updateRowAtom } from "./script.ts";
+import { preferencesAtom, rowsAtom, selectedRowAtom, selectedRowIdAtom, updateRowAtom } from "./script.ts";
 
 export const takesAtom = atom<Take[]>([]);
 export const selectedRowTakesAtom = atom((get) =>
@@ -22,7 +22,7 @@ export const generateRowsAtom = atom(null, async (get, set, rows: ScriptRow[]) =
   if (!get(idleAtom)) return;
   let queue: TakeRequest[];
   try {
-    queue = takeRequests(rows, get(charactersAtom), get(defaultSettingsAtom));
+    queue = takeRequests(rows, get(charactersAtom), get(preferencesAtom));
   } catch (error) {
     set(errorAtom, (error as Error).message);
     return;
@@ -62,7 +62,7 @@ export const generateSelectedRowAtom = atom(null, (get, set, random = false) => 
   const previous = get(selectedTakeAtom);
   let seed = crypto.getRandomValues(new Uint32Array(1))[0];
   if (String(seed) === previous?.seed || String(seed) === row.settings?.seed) seed = (seed + 1) >>> 0;
-  const settings = { ...(row.settings ?? get(defaultSettingsAtom)), seed: String(seed) };
+  const settings = { ...(row.settings ?? get(preferencesAtom)), seed: String(seed) };
   set(updateRowAtom, row.id, { settings });
   return set(generateRowsAtom, [{ ...row, settings }]);
 });

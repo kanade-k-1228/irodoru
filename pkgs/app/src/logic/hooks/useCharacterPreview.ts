@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { characterPreview, fetchPreviewAudio, previewCharacter, removePreview } from "@/logic/lib/api.ts";
 import { speechRequest } from "@/logic/lib/script.ts";
 import { busyAtom } from "@/logic/state/app.ts";
-import { defaultSettingsAtom } from "@/logic/state/script.ts";
+import { preferencesAtom } from "@/logic/state/script.ts";
 import type { CharacterPreviewProps } from "@/view/editor/character/CharacterPreview.tsx";
 
 export const useCharacterPreview = ({
@@ -15,7 +15,7 @@ export const useCharacterPreview = ({
   disabled,
   onError,
 }: CharacterPreviewProps) => {
-  const defaults = useAtomValue(defaultSettingsAtom);
+  const defaults = useAtomValue(preferencesAtom);
   const setBusy = useSetAtom(busyAtom);
   const [settings, setSettings] = useState(() => ({ ...defaults, numSteps: "", seed: defaults.seed || "1" }));
   const [generating, setGenerating] = useState(false);

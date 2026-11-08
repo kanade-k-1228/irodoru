@@ -2,6 +2,7 @@ use crate::{
     generation::{self, PreparedBatch},
     library::{Character, CharacterInput, Library, Take},
     project::{self, ProjectStatus, Saver, Session, SharedProject},
+    project_open::{self, ProjectOpenRequests},
     types::{EditorState, SynthesisInput, TakeRequest},
 };
 use std::sync::{
@@ -69,6 +70,10 @@ fn inference_status(state: State<Desktop>) -> crate::types::InferenceStatus {
     state.inference.status()
 }
 #[tauri::command]
+fn retry_inference(state: State<Desktop>) -> CommandResult<()> {
+    state.inference.retry().map_err(err)
+}
+#[tauri::command]
 fn project_status(state: State<Desktop>) -> CommandResult<ProjectStatus> {
     project::status(&state.project).map_err(err)
 }
@@ -87,6 +92,32 @@ async fn choose_project(
     state: State<'_, Desktop>,
     create: bool,
 ) -> CommandResult<bool> {
+    switch_project(app, state, create, None).await
+}
+
+#[tauri::command]
+fn take_project_open_requests(state: State<ProjectOpenRequests>) -> Vec<std::path::PathBuf> {
+    state.take()
+}
+
+#[tauri::command]
+async fn open_project(
+    app: tauri::AppHandle,
+    state: State<'_, Desktop>,
+    path: std::path::PathBuf,
+) -> CommandResult<bool> {
+    if !path.is_absolute() || !project_open::is_project(&path) {
+        return Err(".iro プロジェクトのパスが不正です".into());
+    }
+    switch_project(app, state, false, Some(path)).await
+}
+
+async fn switch_project(
+    app: tauri::AppHandle,
+    state: State<'_, Desktop>,
+    create: bool,
+    path: Option<std::path::PathBuf>,
+) -> CommandResult<bool> {
     if state.switching.swap(true, Ordering::SeqCst) {
         return Err("プロジェクトを切り替え中です".into());
     }
@@ -103,26 +134,34 @@ async fn choose_project(
         return Err("生成完了後にプロジェクトを切り替えてください".into());
     }
     flush_project(state.clone()).await?;
-    let dialog_app = app.clone();
-    let path = tauri::async_runtime::spawn_blocking(move || {
-        let dialog = dialog_app
-            .dialog()
-            .file()
-            .add_filter("irodoru project", &["zip"]);
-        if create {
-            dialog.set_file_name("project.zip").blocking_save_file()
-        } else {
-            dialog.blocking_pick_file()
-        }
-    })
-    .await
-    .map_err(err)?;
-    let Some(path) = path else {
-        return Ok(false);
+    let path = if let Some(path) = path {
+        path
+    } else {
+        let dialog_app = app.clone();
+        let path = tauri::async_runtime::spawn_blocking(move || {
+            let dialog = dialog_app.dialog().file();
+            if create {
+                dialog
+                    .add_filter("irodoru project", &["iro"])
+                    .set_file_name("project.iro")
+                    .blocking_save_file()
+            } else {
+                dialog
+                    .add_filter("irodoru project", &["iro", "zip"])
+                    .blocking_pick_file()
+            }
+        })
+        .await
+        .map_err(err)?;
+        let Some(path) = path else {
+            return Ok(false);
+        };
+        let path = path.into_path().map_err(|_| {
+            "この保存先はローカルファイルとして開けません。端末上のフォルダを選んでください"
+                .to_string()
+        })?;
+        path
     };
-    let path = path.into_path().map_err(|_| {
-        "この保存先はローカルファイルとして開けません。端末上のフォルダを選んでください".to_string()
-    })?;
     let session = tauri::async_runtime::spawn_blocking(move || {
         if create {
             Session::create(path)
@@ -343,11 +382,28 @@ async fn export_preview(
     })?;
     save_wav(app, wav, filename).await
 }
+#[cfg(desktop)]
+fn queue_project_opens(
+    app: &tauri::AppHandle,
+    paths: impl IntoIterator<Item = std::path::PathBuf>,
+) {
+    app.state::<ProjectOpenRequests>().push(paths);
+    let _ = app.emit("project-open-requested", ());
+}
+
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().manage(ProjectOpenRequests::default());
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        queue_project_opens(
+            app,
+            project_open::argument_paths(
+                args.into_iter().map(std::ffi::OsString::from),
+                std::path::Path::new(&cwd),
+            ),
+        );
         if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
             let _ = window.set_focus();
         }
     }));
@@ -355,6 +411,12 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.state::<ProjectOpenRequests>()
+                .push(project_open::argument_paths(
+                    std::env::args_os(),
+                    &std::env::current_dir()?,
+                ));
             let project: SharedProject = Arc::new(Mutex::new(None));
             let save_handle = app.handle().clone();
             let saver = Saver::start(project.clone(), move |status| {
@@ -367,19 +429,24 @@ pub fn run() {
                 switching: AtomicBool::new(false),
                 previews_running: AtomicUsize::new(0),
                 batch: Mutex::new(None),
-                inference: Arc::new(crate::inference::Inference::start_with(move || {
-                    Ok(irodoru_engine::EngineConfig::anime(
-                        crate::resources::models(&handle)?,
-                    ))
-                })?),
+                inference: Arc::new(crate::inference::Inference::start_with_progress(
+                    move |progress| {
+                        Ok(irodoru_engine::EngineConfig::anime(
+                            crate::resources::models(&handle, progress)?,
+                        ))
+                    },
+                )?),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             is_mobile,
             inference_status,
+            retry_inference,
             project_status,
             choose_project,
+            open_project,
+            take_project_open_requests,
             flush_project,
             fetch_characters,
             save_character,
@@ -401,6 +468,15 @@ pub fn run() {
             remove_preview,
             export_preview
         ])
-        .run(tauri::generate_context!())
-        .expect("desktop application failed");
+        .build(tauri::generate_context!())
+        .expect("desktop application failed")
+        .run(|_app, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                queue_project_opens(
+                    _app,
+                    urls.into_iter().filter_map(|url| url.to_file_path().ok()),
+                );
+            }
+        });
 }

@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "jotai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   chooseProject,
   fetchCharacters,
@@ -10,10 +10,13 @@ import {
   flushProject,
   isMobile,
   loadEditor,
+  openProject,
   projectStatus,
   saveEditor,
+  takeProjectOpenRequests,
 } from "@/logic/lib/api.ts";
 import type { ProjectStatus } from "@/logic/lib/desktop.d.ts";
+import { ProjectOpenRequests } from "@/logic/lib/projectOpenRequests.ts";
 import { busyAtom, errorAtom, readyAtom } from "@/logic/state/app.ts";
 import { generationErrorsAtom, takesAtom } from "@/logic/state/audio.ts";
 import { activeCharacterIdAtom, charactersAtom, editingCharacterAtom } from "@/logic/state/characters.ts";
@@ -26,6 +29,7 @@ export function useLibrary() {
   const [loading, setLoading] = useState(true);
   const session = useRef<string | null>(null);
   const transitioning = useRef(false);
+  const resumeRequests = useRef<() => void>(() => {});
   const pending = useRef<Promise<void>>(Promise.resolve());
   const error = useCallback((cause: unknown) => store.set(errorAtom, (cause as Error).message), [store]);
   const updateStatus = useCallback(
@@ -79,9 +83,9 @@ export function useLibrary() {
     setStatus(await projectStatus());
     store.set(readyAtom, true);
   }, [store]);
-  const choose = useCallback(
-    async (create: boolean) => {
-      if (transitioning.current || store.get(busyAtom) || store.get(editingCharacterAtom) !== undefined) return;
+  const switchProject = useCallback(
+    async (open: () => Promise<boolean>) => {
+      if (transitioning.current || store.get(busyAtom) || store.get(editingCharacterAtom) !== undefined) return false;
       transitioning.current = true;
       setLoading(true);
       store.set(readyAtom, false);
@@ -89,7 +93,7 @@ export function useLibrary() {
       try {
         await saveEditorNow();
         await pending.current;
-        if (await chooseProject(create)) {
+        if (await open()) {
           session.current = null;
           await load();
         }
@@ -99,9 +103,22 @@ export function useLibrary() {
         store.set(readyAtom, !!session.current);
         setLoading(false);
         transitioning.current = false;
+        resumeRequests.current();
       }
+      return true;
     },
     [store, saveEditorNow, load, error],
+  );
+  const requests = useMemo(
+    () =>
+      new ProjectOpenRequests(
+        takeProjectOpenRequests,
+        () => !transitioning.current && !store.get(busyAtom) && store.get(editingCharacterAtom) === undefined,
+        (path) => switchProject(() => openProject(path)),
+        error,
+        () => store.set(errorAtom, "ファイルを開く要求を受け付けました。処理やキャラクタ編集が完了したら開きます。"),
+      ),
+    [store, switchProject, error],
   );
   useEffect(() => {
     let disposed = false;
@@ -119,10 +136,14 @@ export function useLibrary() {
           if (!disposed) updateStatus(event.payload);
         }),
       );
+      track(await listen("project-open-requested", () => requests.refresh()));
       if (disposed) return;
       await load();
       if (disposed) return;
       for (const atom of [rowsAtom, preferencesAtom, activeCharacterIdAtom]) track(store.sub(atom, changed));
+      resumeRequests.current = () => void requests.resume();
+      for (const atom of [busyAtom, editingCharacterAtom]) track(store.sub(atom, resumeRequests.current));
+      requests.start();
       if (!(await isMobile())) {
         track(
           await getCurrentWindow().onCloseRequested(async (event) => {
@@ -145,6 +166,7 @@ export function useLibrary() {
             } finally {
               transitioning.current = false;
               store.set(readyAtom, !!session.current);
+              resumeRequests.current();
             }
           }),
         );
@@ -152,18 +174,20 @@ export function useLibrary() {
     })()
       .catch(error)
       .finally(() => {
-        if (!disposed) setLoading(false);
+        if (!disposed && !transitioning.current) setLoading(false);
       });
     return () => {
       disposed = true;
+      requests.stop();
+      resumeRequests.current = () => {};
       for (const fn of cleanup) fn();
     };
-  }, [store, saveEditorNow, save, load, updateStatus, error]);
+  }, [store, saveEditorNow, save, load, updateStatus, error, requests]);
   return {
     status,
     loading,
     save: () => void save().catch(error),
-    create: () => void choose(true),
-    open: () => void choose(false),
+    create: () => void switchProject(() => chooseProject(true)),
+    open: () => void switchProject(() => chooseProject(false)),
   };
 }

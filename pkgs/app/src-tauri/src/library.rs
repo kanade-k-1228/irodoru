@@ -128,14 +128,8 @@ impl Library {
         })
     }
     fn atomic_yaml(&self, path: &FsPath, value: &impl Serialize) -> Result<(), AppError> {
-        use std::io::Write;
-        let mut temp =
-            tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(AppError::internal)?;
-        serde_yaml::to_writer(&mut temp, value).map_err(AppError::internal)?;
-        temp.flush().map_err(AppError::internal)?;
-        temp.as_file().sync_all().map_err(AppError::internal)?;
-        temp.persist(path).map_err(AppError::internal)?;
-        Ok(())
+        let yaml = serde_yaml::to_string(value).map_err(AppError::internal)?;
+        atomic_bytes(path, yaml.as_bytes())
     }
     pub fn root(&self) -> &FsPath {
         &self.root
