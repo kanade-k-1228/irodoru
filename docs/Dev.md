@@ -57,9 +57,9 @@ cargo xtask package
 
 Linuxでは `patchelf`、Windowsでは7-Zipも必要です。`--no-bundle` を付けるとインストーラー化せずアプリディレクトリを作ります。アプリの配布物にモデルは含みません。
 
-`cargo xtask models distribute` でモデルZIPと配布マニフェストを作成します。`1.2.3` のようなタグをpushすると、app CIがモデルをGHCRへ公開し、マニフェストを組み込んだアプリとDockerイメージをビルドします。初回に公開アクセスの検証で止まったら、GHCRのモデルパッケージをPublicにして再実行してください。公開済みアプリが参照する古いモデルは削除しないでください。
+`cargo xtask models distribute` でモデルZIPと配布マニフェストを作成します。`1.2.3` のようなタグをpushすると、release workflowがappとdocker workflowを並列に呼び出します。appはモデルをGHCRへ公開してマニフェストを組み込んだアプリをビルドし、dockerは独立してDockerイメージをビルド・公開します。初回に公開アクセスの検証で止まったら、GHCRのモデルパッケージをPublicにして再実行してください。公開済みアプリが参照する古いモデルは削除しないでください。
 
-全チェック・ビルドの成功後、app CIの最後の `release` jobが各OSの配布物・チェックサム・Dockerのpull手順をまとめて添付し、GitHub Releaseを公開します。リリースノートはGitHubの自動生成機能を使い、分類は `.github/release.yml` で設定します。`1.2.3-beta.1` のようなタグはprereleaseになります。アップロード中はdraftにし、失敗時はCIを再実行できます。main・PRの通常ビルドではReleaseを作成しません。
+app・docker両方の成功後、release workflowの最後の `release` jobが各OSの配布物・チェックサム・Dockerのpull手順をまとめて添付し、GitHub Releaseを公開します。リリースノートはGitHubの自動生成機能を使い、分類は `.github/release.yml` で設定します。`1.2.3-beta.1` のようなタグはprereleaseになります。アップロード中はdraftにし、失敗時はCIを再実行できます。main・PRの通常ビルドではReleaseを作成しません。
 
 GHCRは `irodoru` と `irodoru-models` の2パッケージ構成です。`irodoru` のバージョンタグにはDockerイメージ、`cache-amd64`・`cache-arm64` タグにはCIのビルドキャッシュを保存します。キャッシュはmainのCIだけが更新します。`irodoru-models` はデスクトップアプリ用のモデルZIPを保存します。旧 `irodoru-ci-cache` は参照しないため、移行後のmain CIで新しいキャッシュが生成されたら削除できます。
 

@@ -1,0 +1,76 @@
+name: release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  app:
+    uses: ./.github/workflows/app.yml
+    permissions:
+      contents: read
+      packages: write
+
+  docker:
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      publish: true
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [app, docker]
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: irodoru-*
+          path: artifacts
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-container
+          path: release-assets
+      - name: Prepare app release assets
+        run: |
+          for artifact in artifacts/irodoru-*; do
+            target=${artifact##*/irodoru-}
+            mkdir -p "target/$target/release"
+            mv "$artifact" "target/$target/release/bundle"
+            cargo xtask release app "$target" release-assets
+          done
+      - name: Upload all assets and publish with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            args=(--verify-tag --generate-notes --draft)
+            version=${RELEASE_TAG%%+*}
+            if [[ "$version" == *-* ]]; then
+              args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "${args[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false
