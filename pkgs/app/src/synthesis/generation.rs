@@ -50,8 +50,8 @@ impl PreparedBatch {
 }
 
 pub fn prepare(library: &Library, requests: Vec<TakeRequest>) -> Result<Vec<PreparedTake>> {
-    if requests.is_empty() || requests.len() > 50 {
-        bail!("生成行数は1〜50行です");
+    if requests.is_empty() {
+        bail!("生成するセリフがありません");
     }
     requests
         .into_iter()
@@ -219,6 +219,26 @@ mod tests {
             },
         };
         (dir, library, req)
+    }
+
+    #[test]
+    fn batch_accepts_more_than_fifty_rows_in_order() {
+        let (_dir, library, request) = fixture();
+        let requests = (0..60)
+            .map(|i| TakeRequest {
+                row_id: format!("row-{i}"),
+                ..request.clone()
+            })
+            .collect();
+        let mut active = None;
+        let id = PreparedBatch::prepare(&mut active, &library, requests).unwrap();
+        let batch = active.as_mut().unwrap();
+        for i in 0..60 {
+            assert_eq!(batch.take(&id, i).unwrap().take.row_id, format!("row-{i}"));
+        }
+        assert!(batch.take(&id, 60).is_err());
+        PreparedBatch::finish(&mut active, &id);
+        assert!(active.is_none());
     }
 
     #[test]
