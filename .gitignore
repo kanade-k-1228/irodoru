@@ -9,8 +9,7 @@ target/
 .runtime/
 pkgs/engine/script/.venv/
 pkgs/engine/script/*.log
-voices/*
-!voices/.gitkeep
+/voices/
 .claude/
 /pkgs/app/gen/
 /pkgs/app/resources/models/
