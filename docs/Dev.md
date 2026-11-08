@@ -27,6 +27,8 @@ cargo xtask dev              # デスクトップアプリを起動
 | `xtask` | 開発・検証・配布コマンド |
 | `scripts`、`.github/workflows` | 配布の補助処理とCI |
 
+モデルの準備・検証・ZIP作成・GHCR公開はRustの `xtask` にまとめています。開発時は `cargo xtask models ...`、CIではreleaseビルドしたxtaskを使います。ONNXエクスポートのみ、PyTorchを使うPythonスクリプトを呼び出します。
+
 アプリ内は `desktop` が起動・ウィンドウ管理、`workspace` が編集状態とUI、`project` がプロジェクトの保存・寿命管理、`library` がファイル操作、`synthesis` がモデル管理と生成を担当します。共有データ型は `domain`、音声入出力は `audio`、設定は `preferences` に置きます。
 
 UI操作は `Command → Service → Worker`、結果は `Event → State → UI` の順に流れます。状態管理はGUIから独立させ、ファイル操作と推論はバックグラウンドで実行します。プロジェクトはウィンドウごとに持ち、推論エンジンとテーマ設定は共有します。

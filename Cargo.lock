@@ -9682,6 +9682,7 @@ dependencies = [
  "sha2 0.11.1",
  "tempfile",
  "toml_edit 0.25.18+spec-1.1.0",
+ "zip",
 ]
 
 [[package]]

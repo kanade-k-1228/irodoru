@@ -26,13 +26,103 @@ env:
 
 jobs:
   check:
-    uses: ./.github/workflows/verify.yml
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check workflow syntax and shell scripts
+        run: >-
+          docker run --rm
+          -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo xtask verify
+      - run: docker compose --profile local --profile wsl-gpu config --quiet
+      - uses: astral-sh/setup-uv@v7
+      - run: cargo xtask verify-export
 
   models:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/models.yml
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: models
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --locked --release -p xtask
+      # Cache only the prepared bundle (~3.4 GB), not unused portable exports.
+      # Both the exporter inputs and the bundle preparation code affect its contents.
+      - uses: actions/cache/restore@v6
+        id: models
+        with:
+          path: pkgs/app/resources/models
+          key: anime-bundle-v1-${{ hashFiles('pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/Cargo.toml') }}
+      - uses: astral-sh/setup-uv@v7
+        if: steps.models.outputs.cache-hit != 'true'
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - name: Export and prepare models on cache miss
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          uv sync --project pkgs/engine/script --frozen
+          uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
+          target/release/xtask models prepare
+      # Distribution verifies file checksums even when the bundle came from cache.
+      - name: Prepare one model ZIP for GHCR
+        env:
+          PUBLISH_MODELS: ${{ github.event_name == 'release' }}
+        run: |
+          args=()
+          if [[ "$PUBLISH_MODELS" == 'true' ]]; then
+            args+=(--repository "${GITHUB_REPOSITORY,,}-models")
+          fi
+          target/release/xtask models distribute "${args[@]}"
+      - uses: actions/cache/save@v6
+        if: steps.models.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: pkgs/app/resources/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
+      - uses: oras-project/setup-oras@v2
+        if: github.event_name == 'release'
+        with:
+          version: 1.3.6
+      - name: Authenticate to GHCR
+        if: github.event_name == 'release'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish models and verify public access before building apps
+        if: github.event_name == 'release'
+        run: target/release/xtask models publish
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-model-manifest
+          path: model-assets/model-distribution.json
+          if-no-files-found: error
+          retention-days: 1
+      # Test fixtures are downloaded outside app resources and never packaged.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-models
+          path: pkgs/app/resources/models/
+          compression-level: 0
+          retention-days: 1
 
   build:
     name: build (${{ matrix.platform }})
@@ -74,6 +164,8 @@ jobs:
           workspaces: . -> target
           key: ${{ matrix.target }}
           cache-on-failure: true
+          # PR caches cannot be reused by other PRs and evict the shared main cache.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v8
         with:
           name: app-model-manifest
@@ -90,7 +182,7 @@ jobs:
         run: |
           cargo clippy --locked -p irodoru-desktop --features desktop --all-targets -- -D warnings
           cargo test --locked -p irodoru-desktop
-          cargo test --locked --release --target "$TARGET" -p irodoru-desktop --test embedded -- --ignored
+          cargo test --locked --release --target "$TARGET" -p irodoru-desktop --features desktop --test embedded -- --ignored
       - name: Set release version
         if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
         env:

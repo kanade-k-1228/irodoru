@@ -19,9 +19,12 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY pkgs/engine ./pkgs/engine
 COPY pkgs/server ./pkgs/server
-# Cargo resolves all workspace members, but only compiles the server here.
-COPY pkgs/app ./pkgs/app
-COPY xtask ./xtask
+# Unused workspace members need manifests and placeholder targets for resolution.
+# UI and xtask source changes must not invalidate the server build cache.
+COPY pkgs/app/Cargo.toml ./pkgs/app/Cargo.toml
+COPY xtask/Cargo.toml ./xtask/Cargo.toml
+RUN mkdir -p pkgs/app/src xtask/src \
+    && touch pkgs/app/src/lib.rs pkgs/app/src/main.rs xtask/src/main.rs
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --locked --release -p irodori-server \
