@@ -1,32 +1,30 @@
 # irodoru
 
-キャラクターの声で台本を読み上げる音声合成アプリです。[Irodori-TTS](https://github.com/Aratako/Irodori-TTS) を使い、モデルの初回ダウンロード後はオフラインで動作します。
+A text-to-speech app for reading scripts in character voices, powered by [Irodori-TTS](https://github.com/Aratako/Irodori-TTS). It works offline after the first model download.
 
-## インストール
+## Install
 
-[Releases](https://github.com/kanade-k-1228/irodoru/releases) から、OSに合ったファイルをダウンロードしてください。
+Download the package for your OS from [Releases](https://github.com/kanade-k-1228/irodoru/releases):
 
-| OS | インストール・起動 |
-| --- | --- |
-| Windows x64 | ZIPを展開し、`irodoru.exe` を起動 |
-| macOS 15以降・Apple Silicon | DMGを開き、アプリを「アプリケーション」にコピー |
-| Linux x64 | debをインストール、またはAppImageに実行権限を付けて起動 |
+- **Windows x64:** Extract the ZIP and run `irodoru.exe`.
+- **macOS 15 or later, Apple Silicon:** Open the DMG and copy the app to Applications.
+- **Linux x64:** Install the deb, or make the AppImage executable and run it.
 
-初回起動時はモデル（約3.44 GB）をダウンロードするため、インターネット接続と十分な空き容量が必要です。分割された配布ファイルは、すべて取得して同梱の説明に従って結合してください。
+The first launch downloads about 3.44 GB of models. Allow enough disk space and an internet connection. For split packages, download all parts and follow the included assembly instructions.
 
-## まず使ってみる
+## Quick start
 
-1. 左上の **irodoru** メニューから「新規プロジェクト…」を選び、`.iro` ファイルを作ります。
-2. キャラクター一覧の「＋」で名前と声のプロンプトを設定し、保存します。
-3. キャラクター名をクリックして台本に行を追加し、セリフを入力して「生成」を押します。
-4. 生成した音声を再生し、プレーヤーのダウンロードアイコンからWAVで保存します。
+1. Open the **irodoru** menu at the top left and create a `.iro` project.
+2. Click **+** in the character list, enter a name and voice prompt, and save.
+3. Click the character name to add a script line, enter dialogue, and generate audio.
+4. Play the result or use the player's download icon to export a WAV file.
 
-台本や確定したキャラクター設定は自動保存されます。
+Script edits and saved character settings are saved automatically.
 
-- [詳しい使い方](docs/Usage.md)
-- [Dockerイメージの使い方](docs/Docker.md)
-- [開発者向け情報](docs/Dev.md)
+- [User guide](docs/Usage.md)
+- [Docker guide](docs/Docker.md)
+- [Development guide](docs/Dev.md)
 
-## ライセンス
+## License
 
-[MIT](LICENSE)。依存ライブラリとモデルには、それぞれのライセンスが適用されます。モデルの[利用制限](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)も確認してください。
+[MIT](LICENSE). Dependencies and models have their own licenses. See the model's [usage restrictions](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions).

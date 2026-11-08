@@ -1,31 +1,32 @@
-# Dockerイメージの使い方
+# Docker guide
 
-[README](../README.md) · [アプリの使い方](Usage.md) · [開発](Dev.md)
+[README](../README.md) · [User guide](Usage.md) · [Development](Dev.md)
 
-モデルを同梱したHTTP音声合成サーバーです。Dockerを用意し、[Releases](https://github.com/kanade-k-1228/irodoru/releases) に対応するバージョンタグを指定します。以下は `0.0.1` の例です。
+The Docker image runs an HTTP speech server with bundled models. Install Docker and use a version tag from [Releases](https://github.com/kanade-k-1228/irodoru/releases). These examples use `0.0.1`.
 
-## 起動・音声生成
+## Run and generate audio
 
 ```bash
 docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/kanade-k-1228/irodoru:0.0.1
 ```
 
-モデルの読み込み後、別のターミナルからリクエストします。
+Wait for the models to load, then send a request from another terminal:
 
 ```bash
 curl http://127.0.0.1:8080/ \
   -H 'content-type: application/json' \
-  -d '{"text":"こんにちは","caption":"落ち着いた声","seed":1}' \
+  -d '{"text":"Hello","caption":"A calm voice","seed":1}' \
   -o out.wav
 ```
 
-48 kHz・モノラルのWAVが保存されます。パラメーターの詳細は [OpenAPI](../pkgs/server/openapi.json) を参照してください。認証機能はないため、上の例では接続先をローカルに限定しています。停止は起動したターミナルで `Ctrl+C` です。
+- Output is a 48 kHz mono WAV. See [OpenAPI](../pkgs/server/openapi.json) for request parameters.
+- The server has no authentication. The example binds it to localhost.
+- Press `Ctrl+C` in the server terminal to stop it.
+- To select the CPU and thread count, append `serve --device cpu --threads 4` after the image name.
 
-CPUを明示してスレッド数を指定する場合は、イメージ名の後ろに `serve --device cpu --threads 4` を付けます。
+## Use another model
 
-## 別のモデルを使う
-
-リポジトリとPython・uvを用意し、モデルをエクスポートして読み取り専用でマウントします。以下はsmallモデルの例です。
+With the repository, Python, and uv installed, export a model and mount it read-only. This example uses the small model:
 
 ```bash
 uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models small
@@ -35,15 +36,17 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   ghcr.io/kanade-k-1228/irodoru:0.0.1
 ```
 
-## ローカルでビルド
+## Build locally
 
-リポジトリのルートで実行します。初回はモデルの取得・変換も行います。
+Run from the repository root. The first build also downloads and converts models.
 
 ```bash
 docker compose up --build -d
 docker compose logs -f backend
-# 停止
+# Stop the server
 docker compose down
 ```
 
-既存の `models/anime/` と `models/codec/` を使う場合は `docker compose --profile local up --build -d local`、停止は `docker compose --profile local down` です。WSL2のIntel GPU向けには `wsl-gpu` プロファイルと同名サービスがあり、Windows側のGPUドライバーと `/dev/dxg` が必要です。各サービスは同じポートを使うため、1つずつ起動してください。
+- To use existing `models/anime/` and `models/codec/`, run `docker compose --profile local up --build -d local`. Stop it with `docker compose --profile local down`.
+- For an Intel GPU on WSL2, use the `wsl-gpu` profile and service. This requires a Windows GPU driver and `/dev/dxg`.
+- Run one service at a time: they share the same port.
