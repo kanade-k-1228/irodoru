@@ -196,6 +196,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: cargo xtask package --target "$TARGET"
       - name: Verify lightweight packages and offline synthesis with external models
+        if: github.event_name == 'release'
         env:
           IRODORU_TEST_MODELS: ${{ runner.temp }}/irodoru-test-models
           TARGET: ${{ matrix.target }}
