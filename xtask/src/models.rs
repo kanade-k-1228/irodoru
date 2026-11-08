@@ -49,7 +49,12 @@ pub fn fingerprint(path: &Path) -> Result<(u64, String)> {
         hash.update(&buffer[..n]);
         size += n as u64;
     }
-    Ok((size, format!("{:x}", hash.finalize())))
+    let digest = hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok((size, digest))
 }
 pub fn files(directory: &Path) -> Result<Vec<PathBuf>> {
     let mut result = Vec::new();
@@ -213,6 +218,19 @@ pub fn cli(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fingerprint_matches_standard_sha256() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample");
+        fs::write(&path, b"abc").unwrap();
+        assert_eq!(
+            fingerprint(&path).unwrap(),
+            (
+                3,
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_owned()
+            )
+        );
+    }
     fn fixture(dir: &Path) {
         for (folder, names) in REQUIRED {
             fs::create_dir_all(dir.join(folder)).unwrap();
