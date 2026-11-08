@@ -16,7 +16,7 @@ fn set_version(root: &Path, tag: &str) -> Result<()> {
         .as_array_of_tables_mut()
         .context("Missing lock packages")?
         .iter_mut()
-        .find(|p| p["name"].as_str() == Some("irodoru-desktop"))
+        .find(|p| p["name"].as_str() == Some("irodoru"))
         .context("Missing app lock entry")?;
     package["version"] = toml_edit::value(version);
     app["package"]["version"] = toml_edit::value(version);
@@ -244,7 +244,7 @@ mod tests {
         fs::create_dir_all(dir.path().join("pkgs/app")).unwrap();
         fs::write(
             dir.path().join("pkgs/app/Cargo.toml"),
-            "[package]\nname = \"irodoru-desktop\"\nversion = \"0.1.0\"\n",
+            "[package]\nname = \"irodoru\"\nversion = \"0.1.0\"\n",
         )
         .unwrap();
         fs::write(
@@ -252,7 +252,7 @@ mod tests {
             "{\"version\":\"0.1.0\"}",
         )
         .unwrap();
-        fs::write(dir.path().join("Cargo.lock"),"version = 4\n[[package]]\nname = \"irodoru-desktop\"\nversion = \"0.1.0\"\n[[package]]\nname = \"other\"\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(dir.path().join("Cargo.lock"),"version = 4\n[[package]]\nname = \"irodoru\"\nversion = \"0.1.0\"\n[[package]]\nname = \"other\"\nversion = \"0.1.0\"\n").unwrap();
         set_version(dir.path(), "v1.2.3-beta.1").unwrap();
         let lock = fs::read_to_string(dir.path().join("Cargo.lock")).unwrap();
         assert!(lock.contains("version = \"1.2.3-beta.1\""));

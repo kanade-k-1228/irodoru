@@ -75,7 +75,7 @@ impl Studio {
                                 preview: draft.preview.clone(),
                             };
                             this.state.saving_draft = true;
-                            this.send(command, true);
+                            this.send(command);
                         }
                         cx.notify();
                     })),
@@ -365,7 +365,7 @@ impl Studio {
                     .disabled(disabled)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.audio_id = None;
-                        this.send(Command::CharacterAudio(id.clone()), true);
+                        this.send(Command::CharacterAudio(id.clone()));
                         cx.notify();
                     })),
             )

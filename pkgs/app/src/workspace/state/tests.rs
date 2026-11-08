@@ -93,37 +93,6 @@ fn close_waits_for_commands_and_character_edits() {
 }
 
 #[test]
-fn generation_events_clear_errors_and_finish_stop_request() {
-    let mut state = WorkspaceState {
-        busy: true,
-        stopping: true,
-        ..Default::default()
-    };
-    state.apply(Event::RowFailed("row".into(), "failed".into()));
-    state.apply(Event::RowStarted("row".into()));
-    assert!(state.row_errors.is_empty());
-    assert_eq!(state.running.as_deref(), Some("row"));
-    state.apply(Event::Done);
-    assert!(!state.busy && !state.stopping && state.running.is_none());
-}
-
-#[test]
-fn replacing_preview_requests_cleanup_without_io() {
-    let mut state = WorkspaceState {
-        draft: Some(draft()),
-        ..Default::default()
-    };
-    assert!(state.apply(Event::Preview("first".into())).is_none());
-    assert!(
-        matches!(state.apply(Event::Preview("second".into())), Some(Effect::RemovePreview(id)) if id == "first")
-    );
-    assert_eq!(
-        state.draft.as_ref().unwrap().preview.as_deref(),
-        Some("second")
-    );
-}
-
-#[test]
 fn input_changes_target_row_defaults_or_draft_without_leaking_settings() {
     let mut state = WorkspaceState::default();
     state

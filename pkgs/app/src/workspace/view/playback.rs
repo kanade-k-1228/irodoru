@@ -13,6 +13,6 @@ impl Studio {
         }
         self.playback = None;
         self.audio_id = Some(key);
-        self.send(Command::Audio { id, preview }, true);
+        self.send(Command::Audio { id, preview });
     }
 }

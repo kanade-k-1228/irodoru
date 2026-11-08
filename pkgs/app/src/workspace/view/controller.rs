@@ -5,7 +5,8 @@ use crate::workspace::state::Effect;
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn send(&mut self, command: Command, busy: bool) {
+    pub(super) fn send(&mut self, command: Command) {
+        let busy = !command.is_passive();
         if let Some(service) = &self.service {
             match service.send(command) {
                 Ok(()) => {
@@ -24,10 +25,7 @@ impl Studio {
         }
         if self.state.status.id.is_some() {
             self.state.status.state = "saving".into();
-            self.send(
-                Command::SaveEditor(self.state.snapshot.editor.clone()),
-                false,
-            );
+            self.send(Command::SaveEditor(self.state.snapshot.editor.clone()));
         }
     }
     pub(super) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -43,7 +41,7 @@ impl Studio {
         for event in events {
             match self.state.apply(event) {
                 Some(Effect::SyncInputs) => self.sync_fields(window, cx),
-                Some(Effect::RemovePreview(id)) => self.send(Command::RemovePreview(id), false),
+                Some(Effect::RemovePreview(id)) => self.send(Command::RemovePreview(id)),
                 Some(Effect::PlayAudio(bytes)) => match Playback::new(bytes) {
                     Ok(p) => self.playback = Some(p),
                     Err(e) => {
@@ -79,6 +77,6 @@ impl Studio {
             return;
         }
         self.autosave();
-        self.send(Command::Flush { close: true }, true);
+        self.send(Command::Flush { close: true });
     }
 }

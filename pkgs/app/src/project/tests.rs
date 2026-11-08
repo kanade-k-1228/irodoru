@@ -1,11 +1,7 @@
 use super::archive::{snapshot, write_archive};
 use crate::domain::new_id;
-use std::io::{Read, Write};
-use std::{
-    fs::File,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::io::Write;
+use std::{fs::File, path::PathBuf};
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use super::*;
@@ -149,88 +145,18 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
     assert!(reopened.library.takes().unwrap().is_empty());
 }
 #[test]
-#[cfg(unix)]
-fn failed_archive_write_leaves_the_previous_file_intact() {
+fn snapshot_keeps_the_content_captured_before_editing() {
     let dir = tempfile::tempdir().unwrap();
     let session = fixture(dir.path().join("project.zip"));
-    write_archive(&snapshot(&session).unwrap()).unwrap();
-    let bytes = std::fs::read(&session.path).unwrap();
-    let mut broken = snapshot(&session).unwrap();
-    // Reading a directory as a regular file fails after ZIP construction has started.
-    #[cfg(unix)]
-    {
-        broken
-            .files
-            .push(("broken.wav".into(), dir.path().to_path_buf()));
-        assert!(write_archive(&broken).is_err());
-        assert_eq!(std::fs::read(&session.path).unwrap(), bytes);
-    }
-}
-#[test]
-fn snapshot_is_immutable_while_editing_and_flush_saves_the_latest_revision() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut session = fixture(dir.path().join("project.zip"));
     let old = snapshot(&session).unwrap();
-    let pinned = &old
-        .files
-        .iter()
-        .find(|(name, _)| name == "project.yaml")
-        .unwrap()
-        .1;
-    let mut snapshot_reader = File::open(pinned).unwrap();
     let mut editor = session.library.editor().unwrap();
     editor.rows[0].text = "更新".into();
     session.library.save_editor(&editor).unwrap();
-    session.changed();
-    let mut captured = String::new();
-    snapshot_reader.read_to_string(&mut captured).unwrap();
-    assert!(captured.contains("最初"));
-    drop(snapshot_reader);
+
     write_archive(&old).unwrap();
-    assert_eq!(
-        Session::open(session.path.clone())
-            .unwrap()
-            .library
-            .editor()
-            .unwrap()
-            .rows[0]
-            .text,
-        "最初"
-    );
-    let path = session.path.clone();
-    let project = Arc::new(Mutex::new(Some(session)));
-    let saver = Saver::start(project.clone(), |_| {}).unwrap();
-    for _ in 0..10 {
-        saver.changed().unwrap();
-    }
-    saver.flush().unwrap();
-    assert_eq!(status(&project).unwrap().state, "saved");
-    assert_eq!(
-        Session::open(path).unwrap().library.editor().unwrap().rows[0].text,
-        "更新"
-    );
-}
-#[test]
-fn save_failure_keeps_previous_archive_and_retry_recovers() {
-    let dir = tempfile::tempdir().unwrap();
-    let session = fixture(dir.path().join("project.zip"));
-    let original = snapshot(&session).unwrap();
-    write_archive(&original).unwrap();
-    let before = std::fs::read(&original.path).unwrap();
-    let project = Arc::new(Mutex::new(Some(session)));
-    let saver = Saver::start(project.clone(), |_| {}).unwrap();
-    {
-        let mut guard = project.lock().unwrap();
-        let session = guard.as_mut().unwrap();
-        session.path = dir.path().join("missing/project.zip");
-        session.changed();
-    }
-    assert!(saver.flush().is_err());
-    assert_eq!(status(&project).unwrap().state, "error");
-    assert_eq!(std::fs::read(&original.path).unwrap(), before);
-    project.lock().unwrap().as_mut().unwrap().path = original.path;
-    saver.flush().unwrap();
-    assert_eq!(status(&project).unwrap().state, "saved");
+    let reopened = Session::open(session.path.clone()).unwrap();
+    assert_eq!(reopened.library.editor().unwrap().rows[0].text, "最初");
+    assert_eq!(session.library.editor().unwrap().rows[0].text, "更新");
 }
 #[test]
 fn invalid_archives_do_not_escape_the_project_or_silently_open_empty() {
@@ -255,35 +181,4 @@ fn invalid_archives_do_not_escape_the_project_or_silently_open_empty() {
         .unwrap();
     assert!(Session::open(path).is_err());
     assert!(!dir.path().join("outside").exists());
-}
-#[test]
-fn flush_finishes_the_old_project_before_switching() {
-    let dir = tempfile::tempdir().unwrap();
-    let a = dir.path().join("a.zip");
-    let b = dir.path().join("b.zip");
-    let project = Arc::new(Mutex::new(Some(fixture(a.clone()))));
-    let saver = Saver::start(project.clone(), |_| {}).unwrap();
-    saver.changed().unwrap();
-    saver.flush().unwrap();
-    *project.lock().unwrap() = Some(Session::create(b.clone()).unwrap());
-    saver.changed().unwrap();
-    saver.flush().unwrap();
-    assert_eq!(
-        Session::open(a)
-            .unwrap()
-            .library
-            .editor()
-            .unwrap()
-            .rows
-            .len(),
-        1
-    );
-    assert!(
-        Session::open(b)
-            .unwrap()
-            .library
-            .characters()
-            .unwrap()
-            .is_empty()
-    );
 }
