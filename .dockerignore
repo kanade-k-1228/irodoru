@@ -9,5 +9,5 @@ target/
 pkgs/engine/script/.venv/
 pkgs/engine/script/*.log
 .git/
-pkgs/app/src-tauri/resources/
-pkgs/app/src-tauri/gen/
+pkgs/app/resources/
+pkgs/app/gen/

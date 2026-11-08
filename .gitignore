@@ -3,6 +3,7 @@ dist/
 __pycache__/
 models/
 library/
+!pkgs/app/src/library/
 target/
 .runtime/
 pkgs/engine/script/.venv/
@@ -10,5 +11,6 @@ pkgs/engine/script/*.log
 voices/*
 !voices/.gitkeep
 .claude/
-/pkgs/app/src-tauri/gen/
-/pkgs/app/src-tauri/resources/models/
+/pkgs/app/gen/
+/pkgs/app/resources/models/
+/model-assets/

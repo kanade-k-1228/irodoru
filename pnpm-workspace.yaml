@@ -1,4 +1,0 @@
-packages:
-  - pkgs/app
-allowBuilds:
-  esbuild: true

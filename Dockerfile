@@ -20,7 +20,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY pkgs/engine ./pkgs/engine
 COPY pkgs/server ./pkgs/server
 # Cargo resolves all workspace members, but only compiles the server here.
-COPY pkgs/app/src-tauri ./pkgs/app/src-tauri
+COPY pkgs/app ./pkgs/app
+COPY xtask ./xtask
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --locked --release -p irodori-server \

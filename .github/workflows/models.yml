@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
@@ -24,10 +26,8 @@ jobs:
         run: |
           uv sync --project pkgs/engine/script --frozen
           uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .node-version
-      - run: node scripts/models.mts prepare
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask models prepare
       - name: Prepare one model ZIP for GHCR
         env:
           PUBLISH_MODELS: ${{ github.event_name == 'release' }}
@@ -36,9 +36,7 @@ jobs:
           if [[ "$PUBLISH_MODELS" == 'true' ]]; then
             args+=(--repository "${GITHUB_REPOSITORY,,}-models")
           fi
-          node scripts/models.mts distribute \
-            --source pkgs/app/src-tauri/resources/models \
-            --destination model-assets "${args[@]}"
+          cargo xtask models distribute --destination model-assets "${args[@]}"
       - uses: oras-project/setup-oras@v2
         if: github.event_name == 'release'
         with:
@@ -50,10 +48,17 @@ jobs:
         run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
       - name: Publish models and verify public access before building apps
         if: github.event_name == 'release'
-        run: node scripts/models.mts publish --destination model-assets
+        run: cargo xtask models publish --destination model-assets
       - uses: actions/upload-artifact@v7
         with:
           name: app-model-manifest
           path: model-assets/model-distribution.json
           if-no-files-found: error
+          retention-days: 1
+      # Test fixtures are downloaded outside app resources and never packaged.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-models
+          path: pkgs/app/resources/models/
+          compression-level: 0
           retention-days: 1
