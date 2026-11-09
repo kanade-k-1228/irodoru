@@ -30,7 +30,7 @@ impl Studio {
             .is_some_and(|s| matches!(s.status(), InferenceStatus::Ready))
             && self.state.status.id.is_some()
     }
-    pub(super) fn avatar(&self, character: Option<&Character>, size: f32) -> AnyElement {
+    pub(super) fn avatar(&self, character: Option<&Character>, size: f32) -> Div {
         let p = self.palette();
         let color = character_color(character.map(|c| c.color.as_str()), p.accent);
         div()
@@ -59,7 +59,6 @@ impl Studio {
                         .into_any_element()
                 },
             )
-            .into_any_element()
     }
 }
 pub(super) fn character_icon(data: Option<&str>) -> Option<std::sync::Arc<Image>> {

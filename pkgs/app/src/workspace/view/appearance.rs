@@ -108,7 +108,13 @@ pub(super) fn apply(light: bool, cx: &mut App) {
 }
 pub(super) fn icon(name: &str) -> Icon {
     let data: &[u8] = match name {
+        "menu" => include_bytes!("../../../icons/ui/menu.svg"),
+        "model" => include_bytes!("../../../icons/ui/box.svg"),
+        "app-window" => include_bytes!("../../../icons/ui/app-window.svg"),
+        "palette" => include_bytes!("../../../icons/ui/palette.svg"),
+        "info" => include_bytes!("../../../icons/ui/info.svg"),
         "chevron-down" => include_bytes!("../../../icons/ui/chevron-down.svg"),
+        "chevrons-right" => include_bytes!("../../../icons/ui/chevrons-right.svg"),
         "minus" => include_bytes!("../../../icons/ui/minus.svg"),
         "square" => include_bytes!("../../../icons/ui/square.svg"),
         "audio" => include_bytes!("../../../icons/ui/audio.svg"),
@@ -121,7 +127,6 @@ pub(super) fn icon(name: &str) -> Icon {
         "edit" => include_bytes!("../../../icons/ui/edit.svg"),
         "trash" => include_bytes!("../../../icons/ui/trash.svg"),
         "close" => include_bytes!("../../../icons/ui/close.svg"),
-        "grip" => include_bytes!("../../../icons/ui/grip.svg"),
         "up" => include_bytes!("../../../icons/ui/up.svg"),
         "down" => include_bytes!("../../../icons/ui/down.svg"),
         "play" => include_bytes!("../../../icons/ui/play.svg"),

@@ -7,6 +7,8 @@ gpui_kit::actions!(
         OpenProject,
         SaveProject,
         Preferences,
-        CloseWindow
+        CloseWindow,
+        MenuNext,
+        MenuPrevious
     ]
 );

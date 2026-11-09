@@ -31,7 +31,7 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
                    state.apply(Event) → Effect → GPUI/device adapter
 ```
 
-- Build named, stateless view sections in the existing `Studio` context. Keep list iteration separate from item rendering, with script rows and insertion controls as siblings.
+- Build named, stateless view sections in the existing `Studio` context. Keep list iteration separate from item rendering, with script rows and insertion gaps as siblings.
 - Keep containers needed for layout, scrolling, or hit testing. Put editing adapters in `editing.rs` and preserve input entities, element IDs, and focus handles.
 - Run storage and inference on workers with owned command data. Only the UI thread drains notifications and updates GPUI entities; its weak-entity timer stops when the window closes.
 - Use `Command::is_passive` to keep editing available without emitting `Done`. The view and worker share this policy; callers do not supply a separate busy flag.
@@ -44,7 +44,7 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
 - Autosave uses immutable snapshots and one debounced writer. Replace the archive only after the new ZIP is written successfully. Flush pending saves before switching or dropping a project, and report explicit flush failures before closing its window.
 - Native file-open events and forwarded launches create independent windows. A per-user instance lock and bounded atomic request inbox preserve launches until the owning process can handle them. A project path can belong to only one window.
 - New-window requests are GPUI events handled by `desktop`. Project state is local to each window; theme settings and inference are shared.
-- `synthesis::Inference` owns shared model initialization. All windows share one inference worker, including model preparation progress and retry. Release builds verify a revisioned cache and download a GHCR ZIP when needed; models remain outside the app package.
+- `synthesis::Inference` owns shared model initialization. All windows share one inference worker, including model preparation progress, retry, and model source changes. The footer and model settings modal read the same shared state. Local model selections are validated and saved on the inference worker to `models.yaml`, independently of theme settings, and applied by dropping the entire old `Engine` instance before constructing a new one on its owning worker. No engine instance is shared behind a lock. Release builds verify a revisioned cache and download a GHCR ZIP when needed; models remain outside the app package.
 - `project` and `library` use domain values and audio validation without depending on workspace views or the inference engine. The generation coordinator publishes completed takes through the repository.
 
 ## Application icons

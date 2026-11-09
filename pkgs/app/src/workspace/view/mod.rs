@@ -7,13 +7,6 @@ use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::*;
 
-#[derive(Clone)]
-struct DragRow(String);
-impl Render for DragRow {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().p_2().bg(rgb(0x41a2ec)).child("行を移動")
-    }
-}
 struct Fields {
     text: Entity<TextareaState>,
     description: Entity<TextareaState>,
@@ -23,6 +16,7 @@ struct Fields {
     name: Entity<InputState>,
     sample: Entity<TextareaState>,
     color: Entity<ColorPickerState>,
+    model_directory: Entity<InputState>,
 }
 pub(crate) struct Studio {
     state: WorkspaceState,
@@ -41,8 +35,13 @@ pub(crate) struct Studio {
     menu_focus: FocusHandle,
     menu_trigger_focus: FocusHandle,
     menu_open: bool,
+    project_menu: bool,
     menu_index: usize,
     dialog_open: bool,
+    model_dialog_open: bool,
+    model_picker_open: bool,
+    model_error: Option<String>,
+    model_trigger_focus: FocusHandle,
 }
 
 mod bindings;
@@ -58,6 +57,7 @@ mod character_view;
 mod app_dialog;
 mod app_menu;
 mod header;
+mod model_settings;
 
 pub(crate) mod actions;
 pub(crate) enum WindowRequest {

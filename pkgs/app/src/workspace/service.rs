@@ -55,6 +55,12 @@ impl Service {
     pub fn retry_models(&self) -> Result<()> {
         self.inference.retry()
     }
+    pub fn model_directory(&self) -> Option<std::path::PathBuf> {
+        self.inference.model_directory()
+    }
+    pub fn configure_models(&self, directory: Option<std::path::PathBuf>) -> Result<()> {
+        self.inference.configure_models(directory)
+    }
     pub fn status(&self) -> InferenceStatus {
         self.inference.status()
     }

@@ -2,10 +2,10 @@ use crate::domain::InferenceStatus;
 use anyhow::{Context, Result, ensure};
 use std::path::{Path, PathBuf};
 
-fn local_models(path: &Path) -> Result<PathBuf> {
+pub(crate) fn local_models(path: &Path) -> Result<PathBuf> {
     ensure!(
         path.join("anime/manifest.json").is_file() && path.join("codec/codec.json").is_file(),
-        "開発用モデルが見つかりません: {}。cargo xtask models prepare を実行してください",
+        "モデルが見つかりません: {}。anime/manifest.json と codec/codec.json を含むフォルダを選択してください",
         path.display()
     );
     Ok(path.canonicalize()?)
@@ -13,6 +13,17 @@ fn local_models(path: &Path) -> Result<PathBuf> {
 
 /// Development overrides are explicit; release builds use a verified, revisioned cache.
 pub fn models_with_progress(progress: &dyn Fn(InferenceStatus)) -> Result<PathBuf> {
+    let settings = crate::preferences::ModelSettings::load()?;
+    models_with_directory(settings.directory.as_deref(), progress)
+}
+
+pub(crate) fn models_with_directory(
+    directory: Option<&Path>,
+    progress: &dyn Fn(InferenceStatus),
+) -> Result<PathBuf> {
+    if let Some(path) = directory {
+        return local_models(path);
+    }
     if let Some(path) = std::env::var_os("IRODORU_MODELS") {
         return local_models(Path::new(&path));
     }

@@ -168,7 +168,7 @@ impl Studio {
             )
             .when(self.advanced, |el| {
                 el.child(div().text_xs().text_color(p.muted).child(format!(
-                    "seed {} · {} steps · {:.1}秒で生成",
+                    "シード {} · {} ステップ · {:.1}秒で生成",
                     take.seed,
                     take.num_steps,
                     take.elapsed_ms as f64 / 1000.

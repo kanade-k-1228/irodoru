@@ -31,6 +31,7 @@ impl Studio {
             seed: input("ランダム", window, cx),
             steps: input("モデル既定（40）", window, cx),
             name: input("キャラクター名", window, cx),
+            model_directory: input("モデルフォルダのパス", window, cx),
             sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };
@@ -249,8 +250,13 @@ impl Studio {
             menu_focus: cx.focus_handle(),
             menu_trigger_focus: cx.focus_handle(),
             menu_open: false,
+            project_menu: false,
             menu_index: 0,
             dialog_open: false,
+            model_dialog_open: false,
+            model_picker_open: false,
+            model_error: None,
+            model_trigger_focus: cx.focus_handle(),
         };
         if let Some(path) = path {
             studio.send(Command::Open {
