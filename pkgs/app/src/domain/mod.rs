@@ -12,3 +12,10 @@ pub(crate) use id::valid_id;
 pub use script::{EditorState, GenerationSettings, ScriptRow};
 pub use speech::{InferenceStatus, SynthesisInput, TakeRequest};
 pub use take::Take;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AudioSource {
+    Take(String),
+    Preview(String),
+    CharacterPreview(String),
+}

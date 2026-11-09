@@ -20,7 +20,8 @@ If you already have models, replace the first two commands with `cargo xtask mod
 ## Repository layout
 
 - `pkgs/app`: Rust/GPUI desktop app. See [application architecture](../pkgs/app/README.md) for module boundaries and state flow.
-- `pkgs/engine`: Shared speech engine using ONNX Runtime, with optional OpenVINO support.
+- `pkgs/engine`: Shared speech engine using ONNX Runtime, with optional OpenVINO support. Consumers use the public types at the crate root; graph, codec, model, and cache internals stay private.
+- `pkgs/model-bundle`: Distribution manifest types, required files, and path/size/hash validation shared by the app and xtask. It has no filesystem, network, GUI, or inference dependencies.
 - `pkgs/engine/script`: Python model export and validation.
 - `pkgs/server`: Axum HTTP API using the same engine as the app.
 - `xtask`: Development, verification, packaging, and model distribution commands.

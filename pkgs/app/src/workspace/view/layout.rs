@@ -1,4 +1,5 @@
 use super::Studio;
+use super::app_menu::MenuAction;
 use super::appearance::{icon, tool};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -10,31 +11,27 @@ impl Render for Studio {
         div()
             .relative()
             .track_focus(&self.focus)
-            .on_action(
-                cx.listener(|this, _: &super::actions::NewWindow, w, cx| {
-                    this.menu_select(0, w, cx)
-                }),
-            )
-            .on_action(
-                cx.listener(|this, _: &super::actions::NewProject, w, cx| {
-                    this.menu_select(1, w, cx)
-                }),
-            )
+            .on_action(cx.listener(|this, _: &super::actions::NewWindow, w, cx| {
+                this.menu_select(MenuAction::NewWindow, w, cx)
+            }))
+            .on_action(cx.listener(|this, _: &super::actions::NewProject, w, cx| {
+                this.menu_select(MenuAction::NewProject, w, cx)
+            }))
             .on_action(cx.listener(|this, _: &super::actions::OpenProject, w, cx| {
-                this.menu_select(2, w, cx)
+                this.menu_select(MenuAction::OpenProject, w, cx)
             }))
             .on_action(cx.listener(|this, _: &super::actions::SaveProject, w, cx| {
-                this.menu_select(3, w, cx)
+                this.menu_select(MenuAction::SaveProject, w, cx)
             }))
             .on_action(cx.listener(|this, _: &super::actions::Preferences, w, cx| {
-                this.menu_select(5, w, cx)
+                this.menu_select(MenuAction::Preferences, w, cx)
             }))
             .on_action(cx.listener(|this, _: &super::actions::CloseWindow, w, cx| {
-                this.menu_select(7, w, cx)
+                this.menu_select(MenuAction::CloseWindow, w, cx)
             }))
-            .on_action(
-                cx.listener(|this, _: &super::actions::Quit, w, cx| this.menu_select(7, w, cx)),
-            )
+            .on_action(cx.listener(|this, _: &super::actions::Quit, w, cx| {
+                this.menu_select(MenuAction::CloseWindow, w, cx)
+            }))
             .size_full()
             .flex()
             .flex_col()

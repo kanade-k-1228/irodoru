@@ -3,7 +3,7 @@ use crate::{
     domain::TakeRequest, domain::new_id, project::Project, synthesis::Inference,
     synthesis::generation,
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -55,21 +55,20 @@ impl Worker {
 
     fn snapshot(&self) -> Result<()> {
         let snapshot = self.project.read(|s| {
+            let characters = s.library.characters()?;
             Ok(Snapshot {
-                character_previews: s
-                    .library
-                    .characters()?
-                    .into_iter()
+                character_previews: characters
+                    .iter()
                     .filter_map(|c| match s.library.character_preview_path(&c.id) {
-                        Ok(Some(_)) => Some(Ok(c.id)),
+                        Ok(Some(_)) => Some(Ok(c.id.clone())),
                         Ok(None) => None,
                         Err(e) => Some(Err(e)),
                     })
                     .collect::<Result<_, _>>()?,
                 editor: s.library.editor()?,
-                characters: s.library.characters()?,
                 takes: s.library.takes()?,
-                voices: s.library.voices()?,
+                voices: s.library.voices(&characters)?,
+                characters,
             })
         })?;
         self.events.send(Event::Status(self.project.status()?))?;
@@ -86,9 +85,25 @@ impl Worker {
             irodoru_engine::SynthOutput,
         )>,
     ) -> Result<()> {
-        let prepared = self
-            .project
-            .read(|s| generation::prepare(&s.library, requests))?;
+        let prepared = self.project.read(|s| {
+            let inputs = requests
+                .into_iter()
+                .map(|request| {
+                    let character = s.library.character(&request.character_id)?;
+                    let reference_audio = character
+                        .voice
+                        .as_ref()
+                        .map(|v| s.library.voice(v))
+                        .transpose()?;
+                    Ok(generation::GenerationInput {
+                        request,
+                        character,
+                        reference_audio,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            generation::prepare(inputs)
+        })?;
         for prepared in prepared {
             if self.stop.load(Ordering::SeqCst) {
                 break;
@@ -162,7 +177,7 @@ impl Worker {
             }
             Command::ImportIcon(path) => {
                 self.events
-                    .send(Event::Icon(crate::audio::import_icon(&path)?))?;
+                    .send(Event::Icon(crate::icons::import_icon(&path)?))?;
             }
             Command::Generate(requests) => {
                 let inference = self.inference.clone();
@@ -173,9 +188,10 @@ impl Worker {
                 description,
                 voice,
             } => {
-                let prepared = self
-                    .project
-                    .read(|s| generation::prepare_preview(&s.library, input, description, voice))?;
+                let prepared = self.project.read(|s| {
+                    let reference_audio = voice.as_ref().map(|v| s.library.voice(v)).transpose()?;
+                    generation::prepare_preview(input, description, voice, reference_audio)
+                })?;
                 let (take, wav) =
                     generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
                 self.project
@@ -185,38 +201,12 @@ impl Worker {
             Command::RemovePreview(id) => {
                 self.project.read(|s| Ok(s.previews.delete_take(&id)?))?;
             }
-            Command::Audio { id, preview } => {
-                let wav = self.project.read(|s| {
-                    Ok(if preview {
-                        s.previews.audio(&id)?
-                    } else {
-                        s.library.audio(&id)?
-                    })
-                })?;
+            Command::Audio(source) => {
+                let wav = self.project.read(|s| s.audio(&source))?;
                 self.events.send(Event::Audio(wav))?;
             }
-            Command::ExportCharacter { id, path } => {
-                let source = self
-                    .project
-                    .read(|s| Ok(s.library.character_preview_path(&id)?))?
-                    .context("サンプル音声がありません")?;
-                crate::files::atomic_bytes(&path, &std::fs::read(source)?)?;
-            }
-            Command::CharacterAudio(id) => {
-                let path = self
-                    .project
-                    .read(|s| Ok(s.library.character_preview_path(&id)?))?
-                    .context("サンプル音声がありません")?;
-                self.events.send(Event::Audio(std::fs::read(path)?))?;
-            }
-            Command::Export { id, preview, path } => {
-                let wav = self.project.read(|s| {
-                    Ok(if preview {
-                        s.previews.audio(&id)?
-                    } else {
-                        s.library.audio(&id)?
-                    })
-                })?;
+            Command::Export { source, path } => {
+                let wav = self.project.read(|s| s.audio(&source))?;
                 crate::files::atomic_bytes(&path, &wav)?;
             }
         }
@@ -251,7 +241,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (mut w, rx) = worker();
         w.execute(Command::Open {
-            path: dir.path().join("old.zip"),
+            path: dir.path().join("old.iro"),
             create: true,
         })
         .unwrap();
@@ -270,13 +260,13 @@ mod tests {
         assert!(w.execute(Command::Flush { close: true }).is_err());
         assert!(
             w.execute(Command::Open {
-                path: dir.path().join("new.zip"),
+                path: dir.path().join("new.iro"),
                 create: true
             })
             .is_err()
         );
         assert!(!rx.try_iter().any(|event| matches!(event, Event::Close)));
-        assert!(!dir.path().join("new.zip").exists());
+        assert!(!dir.path().join("new.iro").exists());
         std::fs::remove_dir(&yaml).unwrap();
         std::fs::write(&yaml, original).unwrap();
         w.execute(Command::SaveEditor(EditorState::default()))
@@ -285,11 +275,45 @@ mod tests {
         assert!(rx.try_iter().any(|event| matches!(event, Event::Close)));
     }
     #[test]
+    fn zip_commands_preserve_the_open_project_and_emit_no_replacement_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut worker, events) = worker();
+        worker
+            .execute(Command::Open {
+                path: dir.path().join("project.IRO"),
+                create: true,
+            })
+            .unwrap();
+        worker.project.flush().unwrap();
+        let id = worker.project.status().unwrap().id;
+        events.try_iter().for_each(drop);
+        let zip = dir.path().join("legacy.zip");
+        std::fs::copy(dir.path().join("project.IRO"), &zip).unwrap();
+        let bytes = std::fs::read(&zip).unwrap();
+        for create in [false, true] {
+            assert!(
+                worker
+                    .execute(Command::Open {
+                        path: zip.clone(),
+                        create
+                    })
+                    .is_err()
+            );
+            assert_eq!(worker.project.status().unwrap().id, id);
+            assert!(
+                !events
+                    .try_iter()
+                    .any(|event| matches!(event, Event::Snapshot(_)))
+            );
+            assert_eq!(std::fs::read(&zip).unwrap(), bytes);
+        }
+    }
+    #[test]
     fn stop_finishes_current_row_and_failed_regeneration_keeps_audio() {
         let dir = tempfile::tempdir().unwrap();
         let (mut w, _rx) = worker();
         w.execute(Command::Open {
-            path: dir.path().join("project.zip"),
+            path: dir.path().join("project.iro"),
             create: true,
         })
         .unwrap();
@@ -324,6 +348,18 @@ mod tests {
             .unwrap();
         let requests =
             crate::workspace::editor::requests(&rows, &[character], &Default::default()).unwrap();
+        let mut invalid = requests.clone();
+        invalid[1].character_id = "missing".into();
+        assert!(
+            w.generate_with(invalid, |_| panic!("validate the entire queue first"))
+                .is_err()
+        );
+        assert!(
+            w.project
+                .read(|s| Ok(s.library.takes()?))
+                .unwrap()
+                .is_empty()
+        );
         let mut calls = 0;
         w.generate_with(requests.clone(), |job| {
             calls += 1;

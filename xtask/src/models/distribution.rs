@@ -1,33 +1,11 @@
-use super::*;
+use super::{copy_hashed, fingerprint, hex, read_bundle, separate_directories};
+use crate::json_write;
+use anyhow::{Context, Result};
+use irodoru_model_bundle::{Archive, Distribution, Entry, MAX_ARCHIVE_SIZE, valid_repository};
+use sha2::{Digest, Sha256};
+use std::{fs, path::Path};
 use zip::{CompressionMethod, DateTime, ZipWriter, write::SimpleFileOptions};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct Distribution {
-    schema: u32,
-    model: String,
-    revision: String,
-    repository: Option<String>,
-    archive: Archive,
-    files: Vec<Entry>,
-}
-#[derive(Debug, Serialize, Deserialize)]
-struct Archive {
-    format: String,
-    asset: String,
-    size: u64,
-    sha256: String,
-}
-fn valid_repository(repository: &str) -> bool {
-    let parts: Vec<_> = repository.split('/').collect();
-    let edge = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit();
-    repository.len() <= 255
-        && parts.len() == 2
-        && parts.iter().all(|part| {
-            part.bytes().next().is_some_and(edge)
-                && part.bytes().last().is_some_and(edge)
-                && part.bytes().all(|b| edge(b) || b"._-".contains(&b))
-        })
-}
 fn create_archive(
     source: &Path,
     output: &mut fs::File,
@@ -86,16 +64,17 @@ pub(super) fn distribute(
     let manifest = Distribution {
         schema: 2,
         model: "anime".into(),
-        revision,
+        revision: Some(revision),
         repository,
-        archive: Archive {
+        archive: Some(Archive {
             format: "zip".into(),
             asset: asset.clone(),
             size,
             sha256,
-        },
+        }),
         files: index.files,
     };
+    manifest.validate()?;
     let temporary = tempfile::NamedTempFile::new_in(&destination)?;
     json_write(temporary.path(), &manifest)?;
     temporary.persist(destination.join("model-distribution.json"))?;
@@ -122,23 +101,12 @@ pub(super) fn publish(
         .repository
         .as_deref()
         .context("Missing GHCR repository")?;
-    let revision = &distribution.revision;
+    distribution.validate()?;
+    let revision = distribution.revision.as_deref().unwrap();
+    let archive = distribution.archive.as_ref().unwrap();
     anyhow::ensure!(
-        distribution.schema == 2
-            && distribution.model == "anime"
-            && valid_repository(repository)
-            && valid_sha256(revision),
-        "Model distribution is not ready for GHCR publication"
-    );
-    validate_files(&distribution.files)?;
-    let archive = distribution.archive;
-    anyhow::ensure!(
-        archive.format == "zip" && archive.asset == format!("{revision}-models.zip"),
+        archive.asset == format!("{revision}-models.zip"),
         "Invalid model archive"
-    );
-    anyhow::ensure!(
-        archive.size > 0 && archive.size <= MAX_ARCHIVE_SIZE && valid_sha256(&archive.sha256),
-        "Invalid model archive size or digest (GHCR layer limit: 10 GB)"
     );
     anyhow::ensure!(
         fingerprint(&directory.join(&archive.asset))? == (archive.size, archive.sha256.clone()),

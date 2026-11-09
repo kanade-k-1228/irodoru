@@ -4,10 +4,7 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{
-    AppError, Character, CharacterInput, DEFAULT_CHARACTER_COLOR, DEFAULT_SAMPLE_TEXT, Take,
-    new_id, valid_id,
-};
+use crate::domain::{AppError, Character, CharacterInput, Take, new_id, valid_id};
 use crate::files::atomic_bytes;
 
 pub struct Library {
@@ -49,14 +46,12 @@ impl Library {
         })
     }
     fn atomic_yaml(&self, path: &FsPath, value: &impl Serialize) -> Result<(), AppError> {
-        use std::io::Write;
-        let mut temp =
-            tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(AppError::internal)?;
-        serde_yaml::to_writer(&mut temp, value).map_err(AppError::internal)?;
-        temp.flush().map_err(AppError::internal)?;
-        temp.as_file().sync_all().map_err(AppError::internal)?;
-        temp.persist(path).map_err(AppError::internal)?;
-        Ok(())
+        atomic_bytes(
+            path,
+            serde_yaml::to_string(value)
+                .map_err(AppError::internal)?
+                .as_bytes(),
+        )
     }
     pub fn root(&self) -> &FsPath {
         &self.root
@@ -99,12 +94,8 @@ impl Library {
             },
         )
     }
-    pub fn voices(&self) -> Result<Vec<String>, AppError> {
-        let mut names: Vec<_> = self
-            .characters()?
-            .into_iter()
-            .filter_map(|c| c.voice)
-            .collect();
+    pub fn voices(&self, characters: &[Character]) -> Result<Vec<String>, AppError> {
+        let mut names: Vec<_> = characters.iter().filter_map(|c| c.voice.clone()).collect();
         for entry in std::fs::read_dir(self.root.join(".imports")).map_err(AppError::internal)? {
             let path = entry.map_err(AppError::internal)?.path();
             if path.extension().is_some_and(|e| e == "wav") {
@@ -144,9 +135,6 @@ impl Library {
         temp.as_file().sync_all().map_err(AppError::internal)?;
         temp.persist_noclobber(path).map_err(AppError::internal)?;
         Ok(())
-    }
-    pub fn audio_path(&self, id: &str) -> Result<PathBuf, AppError> {
-        Ok(self.take_dir(id)?.join("audio.wav"))
     }
     pub fn character(&self, id: &str) -> Result<Character, AppError> {
         check_id(id)?;
@@ -224,35 +212,12 @@ impl Library {
 
     fn save_character(&self, id: String, input: CharacterInput) -> Result<Character, AppError> {
         check_id(&id)?;
-        let name = input.name.trim().to_owned();
-        if name.is_empty() || name.chars().count() > 64 || input.description.chars().count() > 2000
-        {
-            return Err(AppError::invalid(
-                "name must be 1–64 characters; description at most 2000",
-            ));
-        }
-        if let Some(voice) = input.voice.as_ref().filter(|s| !s.is_empty()) {
+        let character = input.normalize(id)?;
+        if let Some(voice) = &character.voice {
             self.voice(voice)?;
         }
-        let color = input
-            .color
-            .unwrap_or_else(|| DEFAULT_CHARACTER_COLOR.into());
-        if color.len() != 7
-            || !color.starts_with('#')
-            || !color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
-        {
-            return Err(AppError::invalid("color must be #RRGGBB"));
-        }
-        let sample_text = input
-            .sample_text
-            .unwrap_or_else(|| DEFAULT_SAMPLE_TEXT.into());
-        if sample_text.chars().count() > 1000 {
-            return Err(AppError::invalid(
-                "sample_text must be at most 1000 characters",
-            ));
-        }
-        let icon = input.icon.filter(|icon| !icon.is_empty());
-        if let Some(value) = &icon {
+        let icon = &character.icon;
+        if let Some(value) = icon {
             let data = value
                 .strip_prefix("data:image/png;base64,")
                 .filter(|data| data.len() <= 150_000)
@@ -261,15 +226,6 @@ impl Library {
                 return Err(AppError::invalid("invalid character icon"));
             }
         }
-        let character = Character {
-            icon,
-            color: color.to_ascii_lowercase(),
-            sample_text,
-            id,
-            name,
-            description: input.description.trim().into(),
-            voice: input.voice.filter(|v| !v.is_empty()),
-        };
         let dir = self.root.join("characters").join(&character.id);
         std::fs::create_dir_all(&dir).map_err(AppError::internal)?;
         let mut stored = character.clone();
@@ -374,13 +330,6 @@ impl Library {
         Ok(dir)
     }
 
-    pub fn export_filename(&self, id: &str) -> Result<String, AppError> {
-        let take: Take = read_yaml(&self.take_dir(id)?.join("meta.yaml"))?;
-        Ok(take
-            .filename
-            .filter(|name| valid_wav_filename(name))
-            .unwrap_or_else(|| format!("irodoru-{id}.wav")))
-    }
     pub fn audio(&self, id: &str) -> Result<Vec<u8>, AppError> {
         std::fs::read(self.take_dir(id)?.join("audio.wav")).map_err(AppError::internal)
     }
@@ -395,12 +344,6 @@ impl Library {
         }
         self.write_editor(&editor)
     }
-}
-
-pub fn valid_wav_filename(name: &str) -> bool {
-    name.len() == 68
-        && name.ends_with(".wav")
-        && name.as_bytes()[..64].iter().all(u8::is_ascii_hexdigit)
 }
 
 #[cfg(test)]

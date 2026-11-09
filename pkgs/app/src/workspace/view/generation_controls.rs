@@ -31,7 +31,7 @@ impl Studio {
                 ),
             )
             .child(
-                Slider::new(&self.sliders[0])
+                Slider::new(&self.sliders.speed)
                     .when(!disabled, |el| el.cursor_pointer())
                     .bg(self.accent())
                     .text_color(self.accent())
@@ -61,11 +61,13 @@ impl Studio {
             .text_color(p.muted)
             .child(self.generation_inputs())
             .children(
-                self.sliders
-                    .iter()
-                    .skip(1)
-                    .zip(["CFG 文", "CFG 声", "CFG 説明"])
-                    .map(|(state, label)| self.guidance_slider(state, label, cx)),
+                [
+                    (&self.sliders.text, "CFG 文"),
+                    (&self.sliders.speaker, "CFG 声"),
+                    (&self.sliders.caption, "CFG 説明"),
+                ]
+                .into_iter()
+                .map(|(state, label)| self.guidance_slider(state, label, cx)),
             )
             .when(self.state.draft.is_none(), |el| {
                 el.child(
@@ -124,12 +126,9 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, w, cx| {
-                        if let Some(r) = this.state.selected_row_mut() {
-                            r.settings = None;
+                        if this.state.reset_row_settings() {
+                            this.edited(w, cx);
                         }
-                        this.autosave();
-                        this.sync_fields(w, cx);
-                        cx.notify();
                     })),
             )
             .child(

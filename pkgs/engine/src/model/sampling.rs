@@ -1,3 +1,4 @@
+use crate::backend::{Graph, Input, Runtime};
 use std::path::Path;
 
 use anyhow::{Result, bail};
@@ -5,10 +6,7 @@ use ndarray::{Array, ArrayD, Axis, IxDyn, Slice, concatenate};
 use rand::{SeedableRng, rngs::StdRng};
 use rand_distr::{Distribution, StandardNormal};
 
-use super::{
-    condition::Condition,
-    onnx::{Graph, Input, Runtime},
-};
+use super::condition::Condition;
 
 const RF_INIT_SCALE: f32 = 0.999;
 

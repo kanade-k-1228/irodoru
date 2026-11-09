@@ -109,7 +109,7 @@ fn input_changes_target_row_defaults_or_draft_without_leaking_settings() {
     assert!(state.change(Field::Seed, "42".into()));
     assert_eq!(state.settings_value().seed, "42");
     assert_eq!(state.snapshot.editor.preferences.seed, defaults);
-    state.defaults = true;
+    state.selected = None;
     state.change(Field::Seed, "7".into());
     assert_eq!(state.snapshot.editor.preferences.seed, "7");
     assert!(state.edit_character(None));
@@ -119,4 +119,117 @@ fn input_changes_target_row_defaults_or_draft_without_leaking_settings() {
     assert_eq!(state.settings_value().seed, "9");
     assert_eq!(state.snapshot.editor.preferences.seed, "7");
     assert!(!state.select("blocked".into()));
+}
+
+fn character() -> crate::domain::Character {
+    CharacterInput {
+        name: "声".into(),
+        description: "明るい声".into(),
+        voice: None,
+        color: None,
+        sample_text: None,
+        icon: None,
+    }
+    .normalize("character".into())
+    .unwrap()
+}
+
+#[test]
+fn row_commands_preserve_selection_settings_and_audio_ownership() {
+    let mut state = WorkspaceState::default();
+    state.snapshot.characters.push(character());
+    state.snapshot.editor.preferences.seed = "17".into();
+    assert!(state.add_row(false));
+    let first = state.selected.clone().unwrap();
+    state.change(Field::Text, "こんにちは".into());
+    state.change(Field::Prompt, "小声で".into());
+    state.selected_row_mut().unwrap().take_id = Some("audio".into());
+    assert!(state.add_row(true));
+    let duplicate = state.selected.clone().unwrap();
+    assert_ne!(first, duplicate);
+    let row = state.selected_row_mut().unwrap();
+    assert_eq!(row.text, "こんにちは");
+    assert_eq!(row.prompt.as_deref(), Some("小声で"));
+    assert_eq!(row.settings.as_ref().unwrap().seed, "17");
+    assert!(row.take_id.is_none());
+    assert_eq!(state.move_row(None), Some(0));
+    assert_eq!(state.selected.as_deref(), Some(duplicate.as_str()));
+    assert!(state.remove_row());
+    assert_eq!(state.selected.as_deref(), Some(first.as_str()));
+    assert!(!state.remove_row());
+    assert_eq!(
+        state.snapshot.editor.rows[0].take_id.as_deref(),
+        Some("audio")
+    );
+    assert!(state.insert_after(first));
+    assert_eq!(state.snapshot.editor.rows.len(), 2);
+    assert!(state.snapshot.editor.rows[1].text.is_empty());
+    assert!(state.append_character_row("another".into()));
+    assert_eq!(state.snapshot.editor.rows[2].character_id, "another");
+    assert_eq!(state.snapshot.editor.active_character, "another");
+}
+
+#[test]
+fn busy_and_draft_states_block_row_edits_and_keep_defaults() {
+    let mut state = WorkspaceState::default();
+    state.add_row(false);
+    let id = state.selected.clone();
+    state.busy = true;
+    assert!(!state.add_row(true));
+    assert!(!state.remove_row());
+    assert!(!state.change(Field::Text, "blocked".into()));
+    assert!(!state.change_generation(GenerationField::Speed, 2.0));
+    state.busy = false;
+    state.change_generation(GenerationField::Speed, 2.0);
+    assert_eq!(state.settings_value().duration_scale, 0.5);
+    assert_eq!(state.snapshot.editor.preferences.duration_scale, 1.0);
+    assert!(state.reset_row_settings());
+    assert_eq!(state.settings_value().duration_scale, 1.0);
+    state.edit_character(None);
+    assert!(!state.draft.as_ref().unwrap().is_dirty());
+    assert!(!state.change_generation(GenerationField::Speed, 0.5));
+    assert_eq!(state.settings_value().duration_scale, 2.0);
+    state.change(Field::Name, "新しい声".into());
+    assert!(state.draft.as_ref().unwrap().is_dirty());
+    assert!(!state.add_row(false));
+    assert!(!state.change(Field::Text, "hidden edit".into()));
+    assert!(state.snapshot.editor.rows[0].text.is_empty());
+    assert!(!state.remove_row());
+    assert!(state.generate(true).unwrap().is_none());
+    assert_eq!(state.selected, id);
+    state.draft.as_mut().unwrap().preview = Some("draft-audio".into());
+    assert!(
+        matches!(state.discard_character(), Some(crate::workspace::protocol::Command::RemovePreview(id)) if id == "draft-audio")
+    );
+    assert_eq!(state.settings_value().duration_scale, 1.0);
+    assert_eq!(state.snapshot.editor.preferences.duration_scale, 1.0);
+}
+
+#[test]
+fn generation_validates_all_rows_before_returning_a_command() {
+    use crate::workspace::protocol::Command;
+    let mut state = WorkspaceState::default();
+    state.snapshot.characters.push(character());
+    state.add_row(false);
+    state.change(Field::Text, "一行目".into());
+    state.add_row(true);
+    state.change(Field::Text, "二行目".into());
+    state.change(Field::Steps, "invalid".into());
+    assert!(state.randomize_selected_row(9).unwrap());
+    assert!(state.generate(true).is_err());
+    assert_eq!(state.settings_value().seed, "9");
+    state.reset_row_settings();
+    let Some(Command::Generate(requests)) = state.generate(true).unwrap() else {
+        panic!("expected generation command");
+    };
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].request.text, "一行目");
+    assert_eq!(requests[1].request.text, "二行目");
+    assert!(state.randomize_selected_row(42).unwrap());
+    let Some(Command::Generate(requests)) = state.generate(false).unwrap() else {
+        panic!("expected selected row");
+    };
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].request.seed, Some(42));
+    assert!(state.snapshot.editor.preferences.seed.is_empty());
 }

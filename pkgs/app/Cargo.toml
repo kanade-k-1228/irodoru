@@ -11,6 +11,7 @@ default = []
 desktop = ["dep:gpui-kit", "dep:rodio", "dep:rfd"]
 
 [dependencies]
+irodoru-model-bundle = { path = "../model-bundle" }
 irodoru-engine = { path = "../engine" }
 anyhow = "1"
 url = "2"

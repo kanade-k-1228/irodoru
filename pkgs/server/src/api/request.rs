@@ -2,7 +2,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::error::AppError;
+use irodoru_engine::AppError;
 use irodoru_engine::{SynthesisRequest, TTSJob};
 
 /// The JSON body. Omitted fields take the defaults applied in `TTSJob::try_from`.

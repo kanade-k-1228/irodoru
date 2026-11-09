@@ -71,7 +71,7 @@ jobs:
         id: models
         with:
           path: pkgs/app/resources/models
-          key: anime-bundle-v1-${{ hashFiles('licenses/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/Cargo.toml') }}
+          key: anime-bundle-v1-${{ hashFiles('licenses/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/src/models/**', 'pkgs/model-bundle/**', 'xtask/Cargo.toml') }}
       - uses: astral-sh/setup-uv@v7
         if: steps.models.outputs.cache-hit != 'true'
         with:

@@ -1,11 +1,6 @@
 use super::error::ApiError;
-use crate::generation::GenerationConditions;
-use crate::{
-    engine::{Engine, TTSJob},
-    error::AppError,
-    inference::SynthOutput,
-};
 use axum::{Router, extract::DefaultBodyLimit};
+use irodoru_engine::{AppError, Engine, GenerationConditions, SynthOutput, TTSJob};
 use std::sync::{Arc, Mutex};
 pub(crate) trait Synthesis: Send {
     fn synthesize(&mut self, job: TTSJob) -> Result<(GenerationConditions, SynthOutput), AppError>;

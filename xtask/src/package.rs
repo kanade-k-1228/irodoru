@@ -1,5 +1,7 @@
-use super::*;
+use crate::{json_write, licenses, option, root, run};
+use anyhow::{Context, Result};
 use serde_json::{Value, json};
+use std::{fs, path::Path, process::Command};
 fn platform() -> &'static str {
     if cfg!(windows) {
         "x86_64-pc-windows-msvc"

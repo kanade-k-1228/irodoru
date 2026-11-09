@@ -1,14 +1,18 @@
-pub mod backend;
+mod backend;
 mod cache;
-pub mod config;
-pub mod engine;
-pub mod error;
-pub mod model;
-pub mod output;
-pub mod request;
+mod config;
+mod engine;
+mod error;
+mod model;
+mod output;
+mod request;
+pub use backend::{
+    Runtime,
+    device::{DeviceInfo, DevicePreference},
+};
 pub use config::{CacheConfig, EngineConfig};
 pub use engine::Engine;
 pub use error::AppError;
-pub use model::{Audio, DevicePreference, SynthOutput};
+pub use model::{Audio, SynthOutput, SynthParams};
 pub use output::GenerationConditions;
 pub use request::{SynthesisRequest, TTSJob};

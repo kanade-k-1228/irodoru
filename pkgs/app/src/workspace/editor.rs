@@ -15,7 +15,7 @@ pub fn new_row(character_id: String, settings: GenerationSettings) -> ScriptRow 
         take_id: None,
     }
 }
-pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool) -> Result<String> {
+pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool) -> String {
     let index = selected.and_then(|id| editor.rows.iter().position(|r| r.id == id));
     let source = index.map(|i| &editor.rows[i]);
     let mut row = new_row(
@@ -34,7 +34,7 @@ pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool)
     editor
         .rows
         .insert(index.map_or(editor.rows.len(), |i| i + 1), row);
-    Ok(id)
+    id
 }
 /// Move a row after another row, or to the beginning when `after` is absent.
 pub fn move_row(rows: &mut Vec<ScriptRow>, id: &str, after: Option<&str>) -> Option<usize> {
@@ -136,10 +136,10 @@ mod tests {
     #[test]
     fn duplicate_has_new_identity_and_no_audio() {
         let mut e = EditorState::default();
-        let first = insert(&mut e, None, false).unwrap();
+        let first = insert(&mut e, None, false);
         e.rows[0].text = "こんにちは".into();
         e.rows[0].take_id = Some("old".into());
-        let second = insert(&mut e, Some(&first), true).unwrap();
+        let second = insert(&mut e, Some(&first), true);
         assert_ne!(first, second);
         assert_eq!(e.rows[1].text, "こんにちは");
         assert!(e.rows[1].take_id.is_none());
@@ -166,9 +166,9 @@ mod tests {
     #[test]
     fn reorder_and_delete_keep_neighbor_and_final_row() {
         let mut e = EditorState::default();
-        let a = insert(&mut e, None, false).unwrap();
-        let b = insert(&mut e, None, false).unwrap();
-        let c = insert(&mut e, None, false).unwrap();
+        let a = insert(&mut e, None, false);
+        let b = insert(&mut e, None, false);
+        let c = insert(&mut e, None, false);
         assert_eq!(move_row(&mut e.rows, &a, Some(&c)), Some(2));
         assert_eq!(
             e.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
@@ -183,10 +183,10 @@ mod tests {
     fn move_row_preserves_content_and_ignores_unchanged_or_invalid_positions() {
         let mut e = EditorState::default();
         assert_eq!(move_row(&mut e.rows, "missing", None), None);
-        let a = insert(&mut e, None, false).unwrap();
+        let a = insert(&mut e, None, false);
         assert_eq!(move_row(&mut e.rows, &a, None), None);
         assert_eq!(move_row(&mut e.rows, &a, Some(&a)), None);
-        let b = insert(&mut e, None, false).unwrap();
+        let b = insert(&mut e, None, false);
         e.rows[1].text = "移動する台詞".into();
         e.rows[1].character_id = "character".into();
         e.rows[1].take_id = Some("generated-audio".into());
@@ -276,7 +276,7 @@ mod regression_tests {
     fn random_seed_targets_row_and_preserves_defaults() {
         let mut editor = EditorState::default();
         editor.preferences.seed = "42".into();
-        let id = insert(&mut editor, None, false).unwrap();
+        let id = insert(&mut editor, None, false);
         randomize_row(&mut editor, &id, Some(43), 42).unwrap();
         assert_eq!(editor.preferences.seed, "42");
         assert_eq!(editor.rows[0].settings.as_ref().unwrap().seed, "44");

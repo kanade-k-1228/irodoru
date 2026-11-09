@@ -6,6 +6,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+irodoru-model-bundle = { path = "../pkgs/model-bundle" }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

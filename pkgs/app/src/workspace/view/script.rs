@@ -235,8 +235,9 @@ impl Studio {
                                     .border_1()
                                     .border_color(p.line)
                                     .on_click(cx.listener(move |this, _, w, cx| {
-                                        this.state.selected = Some(after.clone());
-                                        this.add(false, w, cx);
+                                        if this.state.insert_after(after.clone()) {
+                                            this.edited(w, cx);
+                                        }
                                     })),
                             ),
                     )

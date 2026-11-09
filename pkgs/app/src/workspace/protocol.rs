@@ -1,5 +1,7 @@
 use crate::{
-    domain::{Character, CharacterInput, EditorState, SynthesisInput, Take, TakeRequest},
+    domain::{
+        AudioSource, Character, CharacterInput, EditorState, SynthesisInput, Take, TakeRequest,
+    },
     project,
 };
 use std::path::PathBuf;
@@ -13,10 +15,6 @@ pub struct Snapshot {
     pub voices: Vec<String>,
 }
 pub enum Command {
-    ExportCharacter {
-        id: String,
-        path: PathBuf,
-    },
     Open {
         path: PathBuf,
         create: bool,
@@ -41,14 +39,9 @@ pub enum Command {
         voice: Option<String>,
     },
     RemovePreview(String),
-    Audio {
-        id: String,
-        preview: bool,
-    },
-    CharacterAudio(String),
+    Audio(AudioSource),
     Export {
-        id: String,
-        preview: bool,
+        source: AudioSource,
         path: PathBuf,
     },
 }

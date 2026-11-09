@@ -1,4 +1,4 @@
-use super::{Fields, Studio, appearance};
+use super::{Fields, GenerationSliders, Studio, appearance};
 use crate::preferences::Settings;
 use crate::workspace::protocol::Command;
 use crate::workspace::service::Service;
@@ -13,6 +13,7 @@ use std::time::Duration;
 impl Studio {
     pub(crate) fn new(
         path: Option<std::path::PathBuf>,
+        inference: Result<std::sync::Arc<crate::synthesis::Inference>, String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -35,7 +36,7 @@ impl Studio {
             sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };
-        let sliders = vec![
+        let [speed, text, speaker, caption] = [
             cx.new(|_| {
                 SliderState::new()
                     .min(0.5)
@@ -65,6 +66,12 @@ impl Studio {
                     .default_value(3.0)
             }),
         ];
+        let sliders = GenerationSliders {
+            speed,
+            text,
+            speaker,
+            caption,
+        };
         let seek = cx.new(|_| SliderState::new().min(0.0).max(1.0).step(0.001));
         let mut subscriptions = Vec::new();
         for (entity, field) in [
@@ -89,10 +96,9 @@ impl Studio {
                 if let ColorPickerEvent::Change(Some(color)) = event
                     && !this.sync
                     && !this.state.busy
-                    && let Some(draft) = &mut this.state.draft
                 {
                     let c: Rgba = (*color).into();
-                    draft.input.color = Some(format!(
+                    this.state.set_draft_color(format!(
                         "#{:02x}{:02x}{:02x}",
                         (c.r * 255.).round() as u8,
                         (c.g * 255.).round() as u8,
@@ -108,10 +114,7 @@ impl Studio {
             |this, input, event, window, cx| {
                 if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
                     let value = input.read(cx).value().to_string();
-                    if let Some(row) = this.state.selected_row_mut() {
-                        row.text = value;
-                        this.autosave();
-                    }
+                    this.changed(Field::Text, value);
                     cx.notify();
                 }
                 if let InputEvent::PressEnter {
@@ -140,31 +143,22 @@ impl Studio {
             &fields.description,
             window,
             |this, input, event, _, cx| {
-                if matches!(event, InputEvent::Change)
-                    && !this.sync
-                    && !this.state.busy
-                    && let Some(draft) = &mut this.state.draft
-                {
-                    draft.input.description = input.read(cx).value().to_string();
+                if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
+                    this.changed(Field::Description, input.read(cx).value().to_string());
                     cx.notify();
                 }
             },
         ));
-        for (index, slider) in sliders.iter().enumerate() {
+        for (field, slider) in sliders.iter() {
             subscriptions.push(
                 cx.subscribe_in(slider, window, move |this, _, event, _, cx| {
                     if let SliderEvent::Change(SliderValue::Single(value)) = event
                         && !this.sync
                         && !this.state.busy
                     {
-                        let settings = this.state.generation_settings_mut();
-                        match index {
-                            0 => settings.set_speed(f64::from(*value)),
-                            1 => settings.cfg_text = *value,
-                            2 => settings.cfg_speaker = *value,
-                            _ => settings.cfg_caption = *value,
-                        };
-                        this.autosave();
+                        if this.state.change_generation(field, *value) {
+                            this.autosave();
+                        }
                         cx.notify();
                     }
                 }),
@@ -200,9 +194,12 @@ impl Studio {
             cx,
         );
         appearance::apply(settings.theme.is_light(), cx);
-        let (service, error) = match Service::start() {
-            Ok(s) => (Some(s), None),
-            Err(e) => (None, Some(format!("{e:#}"))),
+        let (service, inference, error) = match inference {
+            Ok(inference) => match Service::start(inference.clone()) {
+                Ok(service) => (Some(service), Some(inference), None),
+                Err(error) => (None, Some(inference), Some(format!("{error:#}"))),
+            },
+            Err(error) => (None, None, Some(error)),
         };
         let weak = cx.entity().downgrade();
         window.on_window_should_close(cx, move |_, cx| {
@@ -232,6 +229,7 @@ impl Studio {
         .detach();
         let mut studio = Self {
             service,
+            inference,
             state: WorkspaceState {
                 error,
                 ..Default::default()
@@ -297,9 +295,10 @@ impl Studio {
         self.fields
             .steps
             .update(cx, |f, cx| f.set_value(s.num_steps, window, cx));
-        for (slider, value) in
+        for ((_, slider), value) in
             self.sliders
                 .iter()
+                .into_iter()
                 .zip([speed, s.cfg_text, s.cfg_speaker, s.cfg_caption])
         {
             slider.update(cx, |s, cx| s.set_value(value, window, cx));

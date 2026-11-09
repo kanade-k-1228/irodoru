@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::inference::DevicePreference;
+use irodoru_engine::DevicePreference;
 
 /// Irodori-TTS HTTP server.
 #[derive(Parser)]

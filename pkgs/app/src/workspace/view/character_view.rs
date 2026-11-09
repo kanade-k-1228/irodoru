@@ -1,7 +1,7 @@
 //! Character editor composition, followed by each form section.
 use super::Studio;
 use super::appearance::{button, icon, tool};
-use crate::workspace::protocol::Command;
+use crate::domain::AudioSource;
 use crate::workspace::state::Draft;
 use gpui_kit::component::Disableable;
 use gpui_kit::component::Sizable;
@@ -73,13 +73,7 @@ impl Studio {
                         el.cursor_default()
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(draft) = &this.state.draft {
-                            let command = Command::SaveCharacter {
-                                id: draft.id.clone(),
-                                input: draft.input.clone(),
-                                preview: draft.preview.clone(),
-                            };
-                            this.state.saving_draft = true;
+                        if let Some(command) = this.state.save_character() {
                             this.send(command);
                         }
                         cx.notify();
@@ -134,9 +128,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(draft) = &mut this.state.draft {
-                            draft.input.voice = Some(voice.clone());
-                        }
+                        this.state.set_draft_voice(Some(voice.clone()));
                         cx.notify();
                     }))
             }))
@@ -159,9 +151,7 @@ impl Studio {
                             .disabled(disabled)
                             .when(disabled, |el| el.cursor_default())
                             .on_click(cx.listener(|this, _, _, cx| {
-                                if let Some(draft) = &mut this.state.draft {
-                                    draft.input.icon = Some(String::new());
-                                }
+                                this.state.set_draft_icon(String::new());
                                 cx.notify();
                             })),
                     )
@@ -268,9 +258,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(draft) = &mut this.state.draft {
-                            draft.input.voice = None;
-                        }
+                        this.state.set_draft_voice(None);
                         cx.notify();
                     })),
             )
@@ -310,8 +298,7 @@ impl Studio {
                 el.child(
                     self.audio_player(
                         ("preview-audio", 0),
-                        id,
-                        true,
+                        AudioSource::Preview(id),
                         self.playback
                             .as_ref()
                             .map(|p| p.duration as f64)
@@ -323,9 +310,11 @@ impl Studio {
             .when(preview.is_none(), |el| {
                 el.when_some(saved, |el, id| el.child(self.saved_preview_actions(id, cx)))
             })
-            .when(self.playback.is_some() && self.audio_id.is_none(), |el| {
-                el.child(self.saved_preview_player(cx))
-            })
+            .when(
+                self.playback.is_some()
+                    && matches!(self.audio_id, Some(AudioSource::CharacterPreview(_))),
+                |el| el.child(self.saved_preview_player(cx)),
+            )
             .into_any_element()
     }
 
@@ -378,8 +367,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.audio_id = None;
-                        this.send(Command::CharacterAudio(id.clone()));
+                        this.start_audio(AudioSource::CharacterPreview(id.clone()));
                         cx.notify();
                     })),
             )
@@ -388,7 +376,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
-                        this.export_character(export.clone(), w, cx)
+                        this.export(AudioSource::CharacterPreview(export.clone()), w, cx)
                     })),
             )
             .into_any_element()
