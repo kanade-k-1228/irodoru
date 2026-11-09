@@ -66,7 +66,7 @@ Release flow:
 
 1. Push a tag such as `1.2.3`. The release workflow runs the app and Docker workflows in parallel.
 2. The app workflow publishes models to GHCR and builds apps with the distribution manifest. The Docker workflow builds and publishes its image independently.
-3. After both succeed, the final `release` job publishes a GitHub Release with OS packages and Docker pull instructions. Use the SHA-256 digest shown by GitHub for each asset to verify downloads; separate checksum files are not generated.
+3. After both succeed, the final `release` job publishes a GitHub Release with OS packages. Docker usage is documented in [Docker.md](Docker.md). Use the SHA-256 digest shown by GitHub for each asset to verify downloads; separate checksum files are not generated.
 
 App assets use `irodoru_<version>_<os>_<arch>.<extension>`, for example `irodoru_0.0.4_windows_x64.zip`, `irodoru_0.0.4_macos_arm64.dmg`, and `irodoru_0.0.4_linux_x64.deb` or `.AppImage`. The version comes from the release tag, including prerelease suffixes. Split downloads append `.part001`, `.part002`, etc. Prepare these names with `cargo xtask release app TAG TARGET DEST`.
 

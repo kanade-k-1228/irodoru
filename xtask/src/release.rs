@@ -153,38 +153,7 @@ pub fn cli(args: &[String]) -> Result<()> {
                 1024 * 1024 * 1024,
             )?;
         }
-        Some("container") if args.len() == 2 => {
-            let image = env::var("IMAGE")?.to_lowercase();
-            let version = env::var("IMAGE_TAG")?;
-            let manifest: serde_json::Value = serde_json::from_slice(&output(
-                "docker",
-                &[
-                    "buildx",
-                    "imagetools",
-                    "inspect",
-                    &format!("{image}:{version}"),
-                    "--format",
-                    "{{json .Manifest}}",
-                ],
-            )?)?;
-            let digest = manifest["digest"].as_str().context("Missing digest")?;
-            anyhow::ensure!(
-                digest.starts_with("sha256:")
-                    && digest.len() == 71
-                    && digest[7..].chars().all(|c| c.is_ascii_hexdigit()),
-                "Invalid container digest"
-            );
-            let destination = Path::new(&args[1]);
-            fs::create_dir_all(destination)?;
-            let path = destination.join("container-image.txt");
-            fs::write(
-                &path,
-                format!(
-                    "irodoru synthesis server (linux/amd64, linux/arm64)\n\ndocker pull {image}:{version}\ndocker pull {image}@{digest}\n\ndocker run --rm -p 127.0.0.1:8080:8080 {image}:{version}\n"
-                ),
-            )?;
-        }
-        _ => bail!("Usage: cargo xtask release version TAG | app TAG TARGET DEST | container DEST"),
+        _ => bail!("Usage: cargo xtask release version TAG | app TAG TARGET DEST"),
     }
     Ok(())
 }
