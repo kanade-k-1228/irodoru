@@ -144,7 +144,7 @@ fn main() -> Result<()> {
             ],
         )?,
         None | Some("help" | "--help") => println!(
-            "cargo xtask dev | models export/prepare/check/distribute/publish | licenses [--destination DIR] | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] | release version/app | verify | verify-export"
+            "cargo xtask dev | models export/prepare/check/distribute/publish | licenses [--destination DIR] | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] [--licenses-dir DIR] | release version/app | verify | verify-export"
         ),
         _ => bail!("Unknown task; run cargo xtask help"),
     }

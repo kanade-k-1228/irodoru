@@ -103,7 +103,11 @@ pub fn cli(args: &[String]) -> Result<()> {
         fs::remove_dir_all(&stage)?;
     }
     fs::create_dir_all(&stage)?;
-    licenses::generate(&stage.join("licenses"))?;
+    if let Some(source) = option(args, "--licenses-dir")? {
+        licenses::copy_bundle(Path::new(&source), &stage.join("licenses"))?;
+    } else {
+        licenses::generate(&stage.join("licenses"))?;
+    }
     let binary_name = if windows { "irodoru.exe" } else { "irodoru" };
     let binary = stage.join(binary_name);
     fs::copy(release.join(binary_name), &binary)?;

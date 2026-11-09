@@ -329,6 +329,68 @@ pub(super) fn generate(destination: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Reuse a bundle produced for these dependencies by the shared CI job.
+pub(super) fn copy_bundle(source: &Path, destination: &Path) -> Result<()> {
+    validate_destination(destination)?;
+    anyhow::ensure!(
+        fs::read_to_string(source.join(".irodoru-license-bundle"))? == "1\n",
+        "Invalid license bundle marker"
+    );
+    for name in [
+        "LICENSE",
+        "THIRD-PARTY-NOTICES.txt",
+        "THIRD-PARTY-SOURCES.txt",
+    ] {
+        anyhow::ensure!(source.join(name).is_file(), "Missing license file: {name}");
+    }
+    for name in ["sources", "model"] {
+        anyhow::ensure!(
+            fs::read_dir(source.join(name))?.next().is_some(),
+            "Empty license directory: {name}"
+        );
+    }
+    let parent = destination
+        .parent()
+        .context("Missing license destination parent")?;
+    fs::create_dir_all(parent)?;
+    anyhow::ensure!(
+        !parent.canonicalize()?.starts_with(source.canonicalize()?),
+        "License destination must be outside the source bundle"
+    );
+    let temporary = tempfile::tempdir_in(parent)?;
+    copy_files(source, temporary.path())?;
+    if destination.exists() {
+        fs::remove_dir_all(destination)?;
+    }
+    fs::rename(temporary.keep(), destination)?;
+    println!("Reused license bundle: {}", destination.display());
+    Ok(())
+}
+
+fn copy_files(source: &Path, destination: &Path) -> Result<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        let path = destination.join(entry.file_name());
+        if kind.is_dir() {
+            fs::create_dir(&path)?;
+            copy_files(&entry.path(), &path)?;
+        } else {
+            anyhow::ensure!(
+                kind.is_file(),
+                "License bundle must contain only regular files"
+            );
+            anyhow::ensure!(
+                entry.metadata()?.len() > 0,
+                "Empty license file: {}",
+                entry.path().display()
+            );
+            fs::copy(entry.path(), path)?;
+        }
+    }
+    Ok(())
+}
+
 fn validate_destination(destination: &Path) -> Result<()> {
     if let Ok(metadata) = fs::symlink_metadata(destination) {
         anyhow::ensure!(
@@ -359,6 +421,41 @@ pub(super) fn cli(args: &[String]) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+    #[test]
+    fn reuse_copies_complete_bundle_and_preserves_destination_on_invalid_input() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let source = dir.path().join("source");
+        let destination = dir.path().join("destination");
+        fs::create_dir_all(source.join("sources"))?;
+        fs::create_dir(source.join("model"))?;
+        fs::write(source.join(".irodoru-license-bundle"), "1\n")?;
+        let files = [
+            "LICENSE",
+            "THIRD-PARTY-NOTICES.txt",
+            "THIRD-PARTY-SOURCES.txt",
+            "sources/example.crate",
+            "model/NOTICE.txt",
+        ];
+        for name in files {
+            fs::write(source.join(name), name)?;
+        }
+        copy_bundle(&source, &destination)?;
+        for name in files {
+            assert_eq!(
+                fs::read(destination.join(name))?,
+                fs::read(source.join(name))?
+            );
+        }
+        fs::write(source.join("THIRD-PARTY-NOTICES.txt"), "")?;
+        assert!(copy_bundle(&source, &destination).is_err());
+        assert_eq!(
+            fs::read_to_string(destination.join("THIRD-PARTY-NOTICES.txt"))?,
+            "THIRD-PARTY-NOTICES.txt"
+        );
+        fs::remove_dir_all(source.join("sources"))?;
+        assert!(copy_bundle(&source, &destination).is_err());
+        Ok(())
+    }
     #[test]
     fn notices_include_vendored_sources_and_reject_empty_reports() -> Result<()> {
         let dir = tempfile::tempdir()?;
