@@ -246,4 +246,28 @@ mod tests {
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn runtime_and_sessions_can_be_recreated_with_different_thread_counts() {
+        let dir = std::env::temp_dir().join(format!("irodori-reload-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("identity.onnx");
+        std::fs::write(&path, IDENTITY).unwrap();
+        for threads in [1, 2, 1] {
+            let runtime = Runtime::discover(threads, DevicePreference::Cpu, None).unwrap();
+            for mut graph in [
+                runtime.load(&path).unwrap(),
+                runtime.load_spinning(&path).unwrap(),
+            ] {
+                let input =
+                    ndarray::Array::from_shape_vec(ndarray::IxDyn(&[1, 2]), vec![0.25, -0.5])
+                        .unwrap();
+                let [actual] = graph
+                    .run(&[("inputs", Input::F32(&input))], ["outputs"])
+                    .unwrap();
+                assert_eq!(actual, input);
+            }
+            // All Runtime/Graph handles drop here before the next discovery.
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

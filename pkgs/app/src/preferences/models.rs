@@ -3,9 +3,12 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelSettings {
     pub directory: Option<PathBuf>,
+    /// Display name only; the source ZIP is not needed after import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_name: Option<String>,
 }
 
 impl ModelSettings {
@@ -52,6 +55,7 @@ mod tests {
         let directory = dir.path().join("日本語のモデル");
         ModelSettings {
             directory: Some(directory.clone()),
+            archive_name: Some("モデル.zip".into()),
         }
         .save_to(&path)
         .unwrap();
@@ -59,8 +63,25 @@ mod tests {
             ModelSettings::load_from(&path).unwrap().directory,
             Some(directory)
         );
+        assert_eq!(
+            ModelSettings::load_from(&path)
+                .unwrap()
+                .archive_name
+                .as_deref(),
+            Some("モデル.zip")
+        );
         ModelSettings::default().save_to(&path).unwrap();
         assert!(ModelSettings::load_from(&path).unwrap().directory.is_none());
         assert_eq!(std::fs::read_to_string(theme).unwrap(), "theme: light\n");
+    }
+
+    #[test]
+    fn existing_directory_only_settings_remain_readable() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("models.yaml");
+        std::fs::write(&path, "directory: /existing/models\n").unwrap();
+        let settings = ModelSettings::load_from(&path).unwrap();
+        assert_eq!(settings.directory, Some(PathBuf::from("/existing/models")));
+        assert!(settings.archive_name.is_none());
     }
 }

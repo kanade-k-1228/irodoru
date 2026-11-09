@@ -1,4 +1,4 @@
-use crate::domain::InferenceStatus;
+use crate::{domain::InferenceStatus, preferences::ModelSettings};
 use anyhow::{Context, Result, bail};
 use irodoru_engine::{Engine, EngineConfig, GenerationConditions, SynthOutput, TTSJob};
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ enum Command {
 }
 struct ModelState {
     status: InferenceStatus,
-    directory: Option<PathBuf>,
+    settings: ModelSettings,
 }
 
 pub struct Inference {
@@ -30,20 +30,24 @@ impl Inference {
     pub(crate) fn start_with_progress(
         config: impl Fn(&dyn Fn(InferenceStatus)) -> Result<EngineConfig> + Send + 'static,
     ) -> Result<Self> {
-        Self::start_configured(None, move |_, progress| config(progress), Ok)
+        Self::start_configured(
+            ModelSettings::default(),
+            move |_, progress| config(progress),
+            |_| Ok(()),
+        )
     }
 
     pub fn start_configured(
-        directory: Option<PathBuf>,
+        settings: ModelSettings,
         config: impl Fn(Option<&Path>, &dyn Fn(InferenceStatus)) -> Result<EngineConfig>
         + Send
         + 'static,
-        configure_directory: impl Fn(Option<PathBuf>) -> Result<Option<PathBuf>> + Send + 'static,
+        save_settings: impl Fn(&ModelSettings) -> Result<()> + Send + 'static,
     ) -> Result<Self> {
         let (sender, receiver) = mpsc::sync_channel::<Command>(1);
         let state = Arc::new(Mutex::new(ModelState {
             status: InferenceStatus::Loading,
-            directory,
+            settings,
         }));
         let worker_state = state.clone();
         std::thread::Builder::new()
@@ -51,7 +55,7 @@ impl Inference {
             .spawn(move || {
                 let progress = |status| worker_state.lock().unwrap().status = status;
                 let load = || {
-                    let directory = worker_state.lock().unwrap().directory.clone();
+                    let directory = worker_state.lock().unwrap().settings.directory.clone();
                     let config = config(directory.as_deref(), &progress)?;
                     progress(InferenceStatus::Loading);
                     Engine::load(&config)
@@ -69,20 +73,44 @@ impl Inference {
                     }
                     match receiver.recv() {
                         Ok(Command::Retry) => initialize = true,
-                        Ok(Command::Configure(directory)) => {
-                            let configure = || -> Result<()> {
-                                let directory = configure_directory(directory)?;
-                                worker_state.lock().unwrap().directory = directory;
-                                Ok(())
+                        Ok(Command::Configure(archive)) => {
+                            initialize = false;
+                            let mut configure = || -> Result<ModelSettings> {
+                                let imported = archive
+                                    .as_deref()
+                                    .map(|path| super::model_import::import(path, &progress))
+                                    .transpose()?;
+                                let settings = ModelSettings {
+                                    directory: imported.as_ref().map(|dir| dir.path().to_owned()),
+                                    archive_name: archive
+                                        .as_ref()
+                                        .and_then(|path| path.file_name())
+                                        .map(|name| name.to_string_lossy().into_owned()),
+                                };
+                                switch_engine(
+                                    &mut engine,
+                                    || {
+                                        let config =
+                                            config(settings.directory.as_deref(), &progress)?;
+                                        progress(InferenceStatus::Loading);
+                                        Engine::load(&config)
+                                    },
+                                    || save_settings(&settings),
+                                )?;
+                                if let Some(imported) = imported {
+                                    let _ = imported.keep();
+                                }
+                                Ok(settings)
                             };
                             match configure() {
-                                Ok(()) => initialize = true,
-                                Err(error) => {
-                                    initialize = false;
-                                    progress(InferenceStatus::Error {
-                                        error: format!("{error:#}"),
-                                    });
+                                Ok(settings) => {
+                                    let mut state = worker_state.lock().unwrap();
+                                    state.settings = settings;
+                                    state.status = InferenceStatus::Ready;
                                 }
+                                Err(error) => progress(InferenceStatus::Error {
+                                    error: format!("{error:#}"),
+                                }),
                             }
                         }
                         Ok(Command::Synthesize(job, reply)) => {
@@ -103,11 +131,18 @@ impl Inference {
     pub fn status(&self) -> InferenceStatus {
         self.state.lock().unwrap().status.clone()
     }
-    pub fn model_directory(&self) -> Option<PathBuf> {
-        self.state.lock().unwrap().directory.clone()
+    pub fn model_name(&self) -> Option<String> {
+        let state = self.state.lock().unwrap();
+        state.settings.directory.as_ref().map(|_| {
+            state
+                .settings
+                .archive_name
+                .clone()
+                .unwrap_or_else(|| "ローカルモデル（旧設定）".into())
+        })
     }
 
-    pub fn configure_models(&self, directory: Option<PathBuf>) -> Result<()> {
+    pub fn configure_models(&self, archive: Option<PathBuf>) -> Result<()> {
         let mut state = self.state.lock().unwrap();
         if !matches!(
             state.status,
@@ -116,7 +151,7 @@ impl Inference {
             bail!("モデルの準備・音声生成が完了してから変更してください");
         }
         self.sender
-            .try_send(Command::Configure(directory))
+            .try_send(Command::Configure(archive))
             .context("モデル設定の変更を受け付けられません")?;
         state.status = InferenceStatus::Loading;
         Ok(())
@@ -158,6 +193,19 @@ fn restart_engine<T>(engine: &mut Option<T>, load: impl FnOnce() -> Result<T>) -
     Ok(())
 }
 
+// Publish neither the replacement engine nor its settings if validation/loading fails.
+fn switch_engine<T>(
+    engine: &mut Option<T>,
+    load: impl FnOnce() -> Result<T>,
+    save: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    drop(engine.take());
+    let replacement = load()?;
+    save()?;
+    *engine = Some(replacement);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,85 +241,89 @@ mod tests {
         wait_error(&inference);
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
     }
-    fn model_folder() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("anime")).unwrap();
-        std::fs::create_dir_all(dir.path().join("codec")).unwrap();
-        std::fs::write(dir.path().join("anime/manifest.json"), "{}").unwrap();
-        std::fs::write(dir.path().join("codec/codec.json"), "{}").unwrap();
-        dir
-    }
-
     #[test]
-    fn model_source_switch_reset_and_invalid_folder() {
+    fn invalid_import_keeps_saved_source_and_retry_uses_it() {
+        let previous = ModelSettings {
+            directory: Some(PathBuf::from("previous-models")),
+            archive_name: Some("previous.zip".into()),
+        };
         let loaded = Arc::new(Mutex::new(Vec::new()));
         let observed = loaded.clone();
-        let saved = Arc::new(Mutex::new(Vec::new()));
-        let persisted = saved.clone();
         let inference = Inference::start_configured(
-            None,
+            previous.clone(),
             move |directory, _| {
                 observed.lock().unwrap().push(directory.map(Path::to_owned));
                 bail!("test: stop before loading real models")
             },
-            move |directory| {
-                let directory = directory
-                    .as_deref()
-                    .map(super::super::resources::local_models)
-                    .transpose()?;
-                persisted.lock().unwrap().push(directory.clone());
-                Ok(directory)
-            },
+            |_| panic!("an invalid import must not persist settings"),
         )
         .unwrap();
         wait_error(&inference);
-        let folder = model_folder();
-        let canonical = folder.path().canonicalize().unwrap();
+        let source = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(source.path(), b"not a zip").unwrap();
         inference
-            .configure_models(Some(folder.path().to_owned()))
+            .configure_models(Some(source.path().to_owned()))
             .unwrap();
         wait_error(&inference);
-        assert_eq!(inference.model_directory(), Some(canonical.clone()));
-        assert_eq!(*saved.lock().unwrap(), vec![Some(canonical.clone())]);
+        assert_eq!(inference.state.lock().unwrap().settings, previous);
+        assert_eq!(inference.model_name().as_deref(), Some("previous.zip"));
+        assert_eq!(loaded.lock().unwrap().len(), 1);
+        inference.retry().unwrap();
+        wait_error(&inference);
         assert_eq!(
-            loaded.lock().unwrap().last(),
-            Some(&Some(canonical.clone()))
+            *loaded.lock().unwrap(),
+            vec![previous.directory.clone(), previous.directory]
         );
-
-        let invalid = tempfile::tempdir().unwrap();
-        inference
-            .configure_models(Some(invalid.path().to_owned()))
-            .unwrap();
-        wait_error(&inference);
-        assert_eq!(inference.model_directory(), Some(canonical));
-        assert_eq!(saved.lock().unwrap().len(), 1);
-        assert_eq!(loaded.lock().unwrap().len(), 2);
-
-        inference.configure_models(None).unwrap();
-        wait_error(&inference);
-        assert!(inference.model_directory().is_none());
-        assert_eq!(saved.lock().unwrap().last(), Some(&None));
-        assert_eq!(loaded.lock().unwrap().last(), Some(&None));
     }
 
     #[test]
-    fn failed_settings_save_keeps_previous_model_source() {
+    fn failed_default_load_does_not_reset_saved_selection() {
+        let previous = ModelSettings {
+            directory: Some(PathBuf::from("previous-models")),
+            archive_name: Some("previous.zip".into()),
+        };
         let inference = Inference::start_configured(
-            None,
-            |_, _| bail!("test: no models"),
-            |_| bail!("settings are read-only"),
+            previous.clone(),
+            |_, _| bail!("test: default model unavailable"),
+            |_| panic!("failed loading must not persist settings"),
         )
         .unwrap();
         wait_error(&inference);
-        let folder = model_folder();
-        inference
-            .configure_models(Some(folder.path().to_owned()))
-            .unwrap();
+        inference.configure_models(None).unwrap();
         wait_error(&inference);
-        assert!(inference.model_directory().is_none());
+        assert_eq!(inference.state.lock().unwrap().settings, previous);
+    }
+
+    #[test]
+    fn selection_is_saved_only_after_loading_and_installed_only_after_saving() {
+        let mut engine = Some(1);
+        let saved = std::cell::Cell::new(false);
         assert!(
-            matches!(inference.status(), InferenceStatus::Error { error } if error.contains("read-only"))
+            switch_engine(
+                &mut engine,
+                || bail!("invalid model"),
+                || {
+                    saved.set(true);
+                    Ok(())
+                }
+            )
+            .is_err()
         );
+        assert!(!saved.get());
+        assert!(engine.is_none());
+        assert!(switch_engine(&mut engine, || Ok(2), || bail!("read-only settings")).is_err());
+        assert!(engine.is_none());
+        switch_engine(
+            &mut engine,
+            || Ok(3),
+            || {
+                saved.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(saved.get());
+        assert_eq!(engine, Some(3));
     }
 
     #[test]
