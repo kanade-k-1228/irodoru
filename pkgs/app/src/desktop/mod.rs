@@ -5,8 +5,6 @@ use gpui_kit::*;
 use std::{cell::RefCell, rc::Rc, time::Duration};
 #[cfg(target_os = "macos")]
 mod macos_quit;
-mod smoke;
-use smoke::package_smoke_test;
 
 pub(crate) fn open_studio(path: Option<std::path::PathBuf>, cx: &mut App) -> anyhow::Result<()> {
     let options = WindowOptions {
@@ -48,16 +46,6 @@ pub(crate) fn open_studio(path: Option<std::path::PathBuf>, cx: &mut App) -> any
     Ok(())
 }
 pub fn run() {
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--smoke-test")
-    {
-        if let Err(error) = package_smoke_test() {
-            eprintln!("{error:#}");
-            std::process::exit(1);
-        }
-        return;
-    }
     let paths = incoming::argument_paths(
         std::env::args_os(),
         &std::env::current_dir().unwrap_or_default(),

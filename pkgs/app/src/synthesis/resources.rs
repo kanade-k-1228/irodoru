@@ -11,10 +11,6 @@ fn local_models(path: &Path) -> Result<PathBuf> {
     Ok(path.canonicalize()?)
 }
 
-pub fn models() -> Result<PathBuf> {
-    models_with_progress(&|_| {})
-}
-
 /// Development overrides are explicit; release builds use a verified, revisioned cache.
 pub fn models_with_progress(progress: &dyn Fn(InferenceStatus)) -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("IRODORU_MODELS") {

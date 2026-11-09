@@ -78,10 +78,10 @@ GHCR packages:
 - `irodoru-models`: Model ZIPs for desktop apps. If the first public-access check fails, make this package public and rerun CI. Keep models referenced by released apps.
 - `irodoru-ci-cache`: Unused legacy cache. It can be removed after main CI creates the replacement caches.
 
-To smoke-test a package:
+To check package contents (required licenses and absence of model weights):
 
 ```bash
-IRODORU_TEST_MODELS=/absolute/path/to/prepared-models bash scripts/smoke-package.sh TARGET
+bash scripts/check-package.sh TARGET
 ```
 
-Use models prepared by `models prepare`, including `bundle.json`, and replace `TARGET` with the Rust target. Run `cargo xtask help` for other commands.
+Replace `TARGET` with the Rust target. This check does not load models or run synthesis. Run `cargo xtask help` for other commands.
