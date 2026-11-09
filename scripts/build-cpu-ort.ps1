@@ -13,10 +13,17 @@ git -C $source checkout --detach $commit
 if ($LASTEXITCODE -ne 0) { throw 'ORT checkout failed' }
 git -C $source submodule update --init --recursive
 if ($LASTEXITCODE -ne 0) { throw 'ORT submodule checkout failed' }
-# No DirectML, shared libraries, reduced operator set, or dynamic CRT.
-& "$source/build.bat" --config Release --parallel 2 --skip_tests --build_dir "$Output/build" --enable_msvc_static_runtime --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_USE_MIMALLOC=OFF onnxruntime_USE_FULL_PROTOBUF=OFF
-if ($LASTEXITCODE -ne 0) { throw 'CPU ORT build failed' }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+$version = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion
+if (-not $version) { throw 'Visual Studio C++ tools are required' }
+$generator = switch (([Version]$version).Major) {
+    17 { 'Visual Studio 17 2022' }
+    18 { 'Visual Studio 18 2026' }
+    default { throw "Unsupported Visual Studio version: $version" }
+}
+# No DirectML, shared libraries, reduced operator set, or dynamic CRT.
+& "$source/build.bat" --cmake_generator $generator --config Release --parallel 2 --skip_tests --build_dir "$Output/build" --enable_msvc_static_runtime --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_USE_MIMALLOC=OFF onnxruntime_USE_FULL_PROTOBUF=OFF
+if ($LASTEXITCODE -ne 0) { throw 'CPU ORT build failed' }
 $lib = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1
 if (-not $lib) { throw 'MSVC lib.exe is required' }
 # Flatten the built static libraries including transitive dependencies. Tests
