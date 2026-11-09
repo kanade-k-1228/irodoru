@@ -70,12 +70,19 @@ impl Library {
     pub fn save_editor(&self, state: &crate::domain::EditorState) -> Result<(), AppError> {
         let takes = self.takes()?;
         let mut editor = state.clone();
-        // Audio ownership is authoritative in the backend, including while UI saves are queued.
+        let saved = self.editor()?;
+        // Keep explicit take selection authoritative while older UI saves are queued.
         for row in &mut editor.rows {
-            row.take_id = takes
+            row.take_id = saved
+                .rows
                 .iter()
-                .find(|take| take.row_id == row.id)
-                .map(|take| take.id.clone());
+                .find(|saved| saved.id == row.id)
+                .and_then(|saved| saved.take_id.clone())
+                .filter(|id| {
+                    takes
+                        .iter()
+                        .any(|take| &take.id == id && take.row_id == row.id)
+                });
         }
         self.write_editor(&editor)?;
         for take in takes {
@@ -311,16 +318,35 @@ impl Library {
         let mut editor = self.editor()?;
         for row in &mut editor.rows {
             if row.id == take.row_id {
-                row.take_id = Some(take.id.clone());
+                take.restore_row(row, &editor.preferences);
             }
         }
         self.write_editor(&editor)?;
-        for previous in self.takes()? {
-            if previous.row_id == take.row_id && previous.id != take.id {
-                self.delete_take(&previous.id)?;
-            }
-        }
         Ok(())
+    }
+
+    pub fn select_take(&self, row_id: &str, take_id: Option<&str>) -> Result<(), AppError> {
+        let take = if let Some(id) = take_id {
+            let take: Take = read_yaml(&self.take_dir(id)?.join("meta.yaml"))?;
+            if take.row_id != row_id {
+                return Err(AppError::invalid("このセリフのテイクではありません"));
+            }
+            Some(take)
+        } else {
+            None
+        };
+        let mut editor = self.editor()?;
+        let row = editor
+            .rows
+            .iter_mut()
+            .find(|row| row.id == row_id)
+            .ok_or_else(|| AppError::invalid("セリフが見つかりません"))?;
+        if let Some(take) = take {
+            take.restore_row(row, &editor.preferences);
+        } else {
+            row.take_id = None;
+        }
+        self.write_editor(&editor)
     }
 
     fn take_dir(&self, id: &str) -> Result<PathBuf, AppError> {

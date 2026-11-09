@@ -200,6 +200,8 @@ impl Studio {
         let disabled = self.state.busy;
         button("import-icon", "")
             .size(px(44.))
+            .rounded_full()
+            .overflow_hidden()
             .when(
                 draft.input.icon.as_ref().is_none_or(|i| i.is_empty()),
                 |el| {
@@ -212,7 +214,7 @@ impl Studio {
             )
             .when_some(
                 super::components::character_icon(draft.input.icon.as_deref()),
-                |el, image| el.child(img(image).size(px(40.))),
+                |el, image| el.child(img(image).size(px(40.)).rounded_full()),
             )
             .disabled(disabled)
             .when(disabled, |el| el.cursor_default())

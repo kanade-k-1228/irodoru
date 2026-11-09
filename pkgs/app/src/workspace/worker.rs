@@ -163,6 +163,11 @@ impl Worker {
                     .change(|s| Ok(s.library.delete_character(&id)?))?;
                 self.snapshot()?;
             }
+            Command::SelectTake { row_id, take_id } => {
+                self.project
+                    .change(|s| Ok(s.library.select_take(&row_id, take_id.as_deref())?))?;
+                self.snapshot()?;
+            }
             Command::DeleteTake(id) => {
                 self.project.change(|s| Ok(s.library.delete_take(&id)?))?;
                 self.snapshot()?;
@@ -204,6 +209,13 @@ impl Worker {
             Command::Audio(source) => {
                 let wav = self.project.read(|s| s.audio(&source))?;
                 self.events.send(Event::Audio(wav))?;
+            }
+            Command::ExportScript { parent, naming } => {
+                if let Some(error) = &self.editor_error {
+                    anyhow::bail!("台本を保存できないため書き出せません: {error}");
+                }
+                let (directory, count) = self.project.read(|s| s.export_script(&parent, naming))?;
+                self.events.send(Event::Exported { directory, count })?;
             }
             Command::Export { source, path } => {
                 let wav = self.project.read(|s| s.audio(&source))?;

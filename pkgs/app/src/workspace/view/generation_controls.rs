@@ -42,15 +42,14 @@ impl Studio {
             .child(
                 div()
                     .flex()
-                    .justify_between()
-                    .child("×0.5（ゆっくり）")
-                    .child("×2.0（速く）"),
+                    .child(div().flex_1().child("×0.5（÷2）"))
+                    .child(div().flex_1().text_center().child("×1.0"))
+                    .child(div().flex_1().text_right().child("×2.0")),
             )
             .into_any_element()
     }
     pub(super) fn advanced_controls(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy || self.state.status.id.is_none();
         div()
             .flex()
             .flex_col()
@@ -59,35 +58,34 @@ impl Studio {
             .pb_3()
             .text_xs()
             .text_color(p.muted)
-            .child(self.generation_inputs())
-            .children(
-                [
-                    (&self.sliders.text, "CFG 文"),
-                    (&self.sliders.speaker, "CFG 声"),
-                    (&self.sliders.caption, "CFG 説明"),
-                ]
-                .into_iter()
-                .map(|(state, label)| self.guidance_slider(state, label, cx)),
-            )
-            .when(self.state.draft.is_none(), |el| {
-                el.child(
-                    Input::new(&self.fields.prompt)
-                        .small()
-                        .bg(p.control)
-                        .disabled(disabled),
+            .when(self.advanced, |el| {
+                el.child(self.generation_inputs()).children(
+                    [
+                        (&self.sliders.text, "CFG 文"),
+                        (&self.sliders.speaker, "CFG 声"),
+                        (&self.sliders.caption, "CFG 説明"),
+                    ]
+                    .into_iter()
+                    .map(|(state, label)| self.guidance_slider(state, label, cx)),
                 )
             })
             .when(self.state.draft.is_none(), |el| {
                 el.child(self.line_settings_actions(cx))
             })
-            .when(self.state.draft.is_none(), |el| {
-                el.child(
-                    button("generate-all", "すべて生成")
-                        .disabled(disabled || !self.can_generate())
-                        .when(disabled || !self.can_generate(), |el| el.cursor_default())
-                        .on_click(cx.listener(|this, _, w, cx| this.generate(true, false, w, cx))),
-                )
-            })
+            .into_any_element()
+    }
+
+    pub(super) fn line_prompt(&self) -> AnyElement {
+        div()
+            .px_3()
+            .pt_3()
+            .pb_2()
+            .child(
+                Input::new(&self.fields.prompt)
+                    .small()
+                    .bg(self.palette().control)
+                    .disabled(self.state.busy || self.state.status.id.is_none()),
+            )
             .into_any_element()
     }
 

@@ -80,7 +80,7 @@ fn archive_round_trip_is_portable_and_has_no_shared_or_draft_files() {
     }
 }
 #[test]
-fn only_latest_audio_and_saved_character_preview_survive_reopening() {
+fn take_history_selection_and_character_preview_survive_reopening() {
     let dir = tempfile::tempdir().unwrap();
     let session = fixture(dir.path().join("project.iro"));
     let character = session.library.characters().unwrap().remove(0);
@@ -90,6 +90,7 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
         .unwrap();
     let take = crate::domain::Take {
         filename: None,
+        conditions: None,
         id: new_id(),
         row_id: "line".into(),
         character_id: Some(character.id.clone()),
@@ -133,14 +134,14 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
             .audio(&AudioSource::Preview(take.id.clone()))
             .is_err()
     );
-    assert_eq!(reopened.library.takes().unwrap().len(), 1);
+    assert_eq!(reopened.library.takes().unwrap().len(), 2);
     assert_eq!(
         reopened.library.editor().unwrap().rows[0]
             .take_id
             .as_deref(),
         Some(latest.id.as_str())
     );
-    assert!(reopened.library.audio(&take.id).is_err());
+    assert_eq!(reopened.library.audio(&take.id).unwrap(), wav);
     assert_eq!(reopened.library.audio(&latest.id).unwrap(), wav);
     assert_eq!(
         std::fs::read(
@@ -153,6 +154,34 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
         .unwrap(),
         wav
     );
+    reopened
+        .library
+        .select_take(&take.row_id, Some(&take.id))
+        .unwrap();
+    reopened.library.save_editor(&stale_editor).unwrap();
+    assert_eq!(
+        reopened.library.editor().unwrap().rows[0]
+            .take_id
+            .as_deref(),
+        Some(take.id.as_str())
+    );
+    write_archive(&snapshot(&reopened).unwrap()).unwrap();
+    let reopened = Session::open(reopened.path.clone()).unwrap();
+    assert_eq!(
+        reopened.library.editor().unwrap().rows[0]
+            .take_id
+            .as_deref(),
+        Some(take.id.as_str())
+    );
+    assert!(
+        reopened
+            .library
+            .select_take("another-row", Some(&take.id))
+            .is_err()
+    );
+    reopened.library.select_take(&take.row_id, None).unwrap();
+    reopened.library.save_editor(&stale_editor).unwrap();
+    assert!(reopened.library.editor().unwrap().rows[0].take_id.is_none());
     reopened.library.save_editor(&Default::default()).unwrap();
     assert!(reopened.library.takes().unwrap().is_empty());
 }
@@ -193,4 +222,113 @@ fn invalid_archives_do_not_escape_the_project_or_silently_open_empty() {
         .unwrap();
     assert!(Session::open(path).is_err());
     assert!(!dir.path().join("outside").exists());
+}
+
+#[test]
+fn script_export_uses_selected_takes_in_order_without_overwriting() {
+    let root = tempfile::tempdir().unwrap();
+    let session = fixture(root.path().join("script.iro"));
+    let character = session.library.characters().unwrap().remove(0);
+    let wav = session
+        .library
+        .voice(character.voice.as_ref().unwrap())
+        .unwrap();
+    let mut second_wav = wav.clone();
+    *second_wav.last_mut().unwrap() ^= 1;
+    let mut editor = session.library.editor().unwrap();
+    let mut second_row = editor.rows[0].clone();
+    second_row.id = "second".into();
+    editor.rows.push(second_row);
+    session.library.save_editor(&editor).unwrap();
+    let first = crate::domain::Take {
+        filename: None,
+        conditions: None,
+        id: new_id(),
+        row_id: "line".into(),
+        character_id: Some(character.id),
+        character_name: character.name,
+        description: character.description,
+        additional_prompt: String::new(),
+        voice: character.voice,
+        text: "音声".into(),
+        model: "anime".into(),
+        seed: 42,
+        num_steps: 1,
+        elapsed_ms: 1,
+        audio_seconds: 0.001,
+        created_at: 1,
+    };
+    session.library.save_take(&first, &wav).unwrap();
+    let newer = crate::domain::Take {
+        id: new_id(),
+        created_at: 2,
+        ..first.clone()
+    };
+    session.library.save_take(&newer, &second_wav).unwrap();
+    session
+        .library
+        .select_take("line", Some(&first.id))
+        .unwrap();
+    let second = crate::domain::Take {
+        id: new_id(),
+        row_id: "second".into(),
+        ..first.clone()
+    };
+    session.library.save_take(&second, &second_wav).unwrap();
+    let mut editor = session.library.editor().unwrap();
+    editor.rows.reverse();
+    session.library.save_editor(&editor).unwrap();
+
+    let output = tempfile::tempdir().unwrap();
+    let (directory, count) = session
+        .export_script(output.path(), ExportNaming::Number)
+        .unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(
+        std::fs::read(directory.join("001.wav")).unwrap(),
+        second_wav
+    );
+    assert_eq!(std::fs::read(directory.join("002.wav")).unwrap(), wav);
+    let (another, _) = session
+        .export_script(output.path(), ExportNaming::Number)
+        .unwrap();
+    assert_ne!(directory, another);
+    assert_eq!(std::fs::read(directory.join("002.wav")).unwrap(), wav);
+    for (naming, filename) in [
+        (ExportNaming::Character, "001_さくら.wav"),
+        (ExportNaming::Dialogue, "001_音声.wav"),
+        (ExportNaming::CharacterDialogue, "001_さくら_音声.wav"),
+    ] {
+        let (named, _) = session.export_script(output.path(), naming).unwrap();
+        assert_eq!(std::fs::read(named.join(filename)).unwrap(), second_wav);
+    }
+    let unusual = crate::domain::Take {
+        id: new_id(),
+        character_name: "../CON:声\\名前".into(),
+        text: "長いセリフ/\n".repeat(40),
+        ..second.clone()
+    };
+    session.library.save_take(&unusual, &second_wav).unwrap();
+    let (safe, _) = session
+        .export_script(output.path(), ExportNaming::CharacterDialogue)
+        .unwrap();
+    let names = std::fs::read_dir(&safe)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(names.len(), 2);
+    assert!(
+        names
+            .iter()
+            .all(|name| name.len() < 200 && !name.contains(['/', '\\', ':', '\n']))
+    );
+    session.library.select_take("line", None).unwrap();
+    assert!(
+        session
+            .export_script(output.path(), ExportNaming::Number)
+            .unwrap_err()
+            .to_string()
+            .contains("2行目")
+    );
+    assert_eq!(std::fs::read_dir(output.path()).unwrap().count(), 6);
 }

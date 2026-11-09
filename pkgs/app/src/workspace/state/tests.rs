@@ -161,7 +161,7 @@ fn row_commands_preserve_selection_settings_and_audio_ownership() {
         state.snapshot.editor.rows[0].take_id.as_deref(),
         Some("audio")
     );
-    assert!(state.insert_after(first));
+    assert!(state.insert_at(Some(&first), false));
     assert_eq!(state.snapshot.editor.rows.len(), 2);
     assert!(state.snapshot.editor.rows[1].text.is_empty());
     assert!(state.append_character_row("another".into()));
@@ -232,4 +232,95 @@ fn generation_validates_all_rows_before_returning_a_command() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].request.seed, Some(42));
     assert!(state.snapshot.editor.preferences.seed.is_empty());
+}
+
+#[test]
+fn insertion_gaps_add_and_duplicate_at_start_middle_and_end() {
+    let mut state = WorkspaceState::default();
+    state.snapshot.characters.push(character());
+    state.add_row(false);
+    let source = state.selected.clone().unwrap();
+    state.change(Field::Text, "元のセリフ".into());
+    state.change(Field::Prompt, "小声".into());
+    state.selected_row_mut().unwrap().take_id = Some("original-audio".into());
+    state
+        .selected_row_mut()
+        .unwrap()
+        .settings
+        .as_mut()
+        .unwrap()
+        .seed = "42".into();
+    assert!(state.insert_at(None, true));
+    let copy = &state.snapshot.editor.rows[0];
+    assert_ne!(copy.id, source);
+    assert_eq!(state.selected.as_ref(), Some(&copy.id));
+    assert_eq!(copy.text, "元のセリフ");
+    assert_eq!(copy.prompt.as_deref(), Some("小声"));
+    assert_eq!(copy.settings.as_ref().unwrap().seed, "42");
+    assert!(copy.take_id.is_none());
+    assert!(state.insert_at(Some(&source), true));
+    assert_eq!(state.snapshot.editor.rows[2].text, "元のセリフ");
+    assert!(state.insert_at(Some(&source), false));
+    assert!(state.snapshot.editor.rows[2].text.is_empty());
+    assert!(state.insert_at(None, false));
+    assert!(state.snapshot.editor.rows[0].text.is_empty());
+    let count = state.snapshot.editor.rows.len();
+    let selected = state.selected.clone();
+    assert!(!state.insert_at(Some("missing"), true));
+    state.busy = true;
+    assert!(!state.insert_at(None, false));
+    assert!(!state.insert_at(None, true));
+    assert_eq!(state.snapshot.editor.rows.len(), count);
+    assert_eq!(state.selected, selected);
+    assert_eq!(
+        state
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .find(|r| r.id == source)
+            .unwrap()
+            .take_id
+            .as_deref(),
+        Some("original-audio")
+    );
+}
+
+#[test]
+fn character_duplication_preserves_settings_and_uses_unique_bounded_names() {
+    use crate::workspace::protocol::Command;
+    let mut state = WorkspaceState::default();
+    state.status.id = Some("project".into());
+    let mut original = character();
+    original.name = "あ".repeat(64);
+    original.voice = Some("reference.wav".into());
+    original.icon = Some("data:image/png;base64,icon".into());
+    state.snapshot.editor.active_character = original.id.clone();
+    state.snapshot.characters.push(original.clone());
+    for index in 1..=2 {
+        let Some(Command::SaveCharacter { id, input, preview }) = state.duplicate_character()
+        else {
+            panic!("expected a new character command");
+        };
+        assert!(id.is_none());
+        assert!(preview.is_none());
+        assert_eq!(input.name, format!("{} - {index}", "あ".repeat(60)));
+        assert_eq!(input.description, original.description);
+        assert_eq!(input.voice, original.voice);
+        assert_eq!(input.icon, original.icon);
+        assert_eq!(input.color.as_ref(), Some(&original.color));
+        assert_eq!(input.sample_text.as_ref(), Some(&original.sample_text));
+        let duplicate = input.normalize(format!("copy-{index}")).unwrap();
+        state.snapshot.editor.active_character = duplicate.id.clone();
+        state.snapshot.characters.push(duplicate);
+    }
+    assert!(state.snapshot.characters[0] == original);
+    state.busy = true;
+    assert!(state.duplicate_character().is_none());
+    state.busy = false;
+    state.draft = Some(draft());
+    assert!(state.duplicate_character().is_none());
+    state.draft = None;
+    state.status.id = None;
+    assert!(state.duplicate_character().is_none());
 }

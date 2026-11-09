@@ -286,6 +286,7 @@ mod regression_tests {
         let take = crate::domain::Take {
             id: new_id(),
             filename: None,
+            conditions: None,
             row_id: new_id(),
             character_id: Some(new_id()),
             character_name: "削除済み".into(),

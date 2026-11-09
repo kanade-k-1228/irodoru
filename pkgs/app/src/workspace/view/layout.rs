@@ -1,6 +1,8 @@
 use super::Studio;
 use super::app_menu::MenuAction;
-use super::appearance::{icon, tool};
+use super::appearance::{button, icon, tool};
+use gpui_kit::component::Disableable;
+use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -46,7 +48,7 @@ impl Render for Studio {
                 el.child(self.error_banner(error, cx))
             })
             .child(self.script(cx))
-            .child(self.editor_panel(window, cx))
+            .child(self.character_panel(window, cx))
             .child(self.footer(cx))
             .when(self.menu_open, |el| el.child(self.app_menu(cx)))
     }
@@ -76,14 +78,16 @@ impl Studio {
             .into_any_element()
     }
 
-    fn editor_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn character_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let narrow = window.viewport_size().width < px(640.);
         div()
             .flex()
-            .h(px(
+            .h(px(if self.state.draft.is_some() {
                 (f32::from(window.viewport_size().height) * 0.5).min(360.)
-            ))
+            } else {
+                136.
+            }))
             .flex_shrink_0()
             .min_h_0()
             .border_t_1()
@@ -93,23 +97,35 @@ impl Studio {
             .child(if self.state.draft.is_some() {
                 self.character_editor(narrow, cx)
             } else {
-                self.line_editor(narrow, cx)
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        button("create-character", "キャラクターを作成")
+                            .icon(icon("plus"))
+                            .disabled(self.state.busy || self.state.status.id.is_none())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.edit_character(None, window, cx);
+                            })),
+                    )
+                    .into_any_element()
             })
             .into_any_element()
     }
 
     fn footer(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
+        let studio = cx.entity().downgrade();
         div()
             .flex()
             .items_center()
-            .gap_2()
             .flex_shrink_0()
             .border_t_1()
             .border_color(p.line)
             .bg(p.panel)
-            .px_2()
-            .py_1()
+            .h(px(32.))
             .text_xs()
             .line_height(px(16.))
             .text_color(p.muted)
@@ -120,7 +136,10 @@ impl Studio {
                     .flex_1()
                     .min_w_0()
                     .cursor_pointer()
-                    .rounded(px(4.))
+                    .h_full()
+                    .px_2()
+                    .flex()
+                    .items_center()
                     .hover(|style| style.bg(p.hover))
                     .overflow_hidden()
                     .text_ellipsis()
@@ -140,9 +159,41 @@ impl Studio {
             )
             .child(self.model_status_button(cx))
             .child(
-                tool("footer-settings", "settings", "設定")
+                tool("footer-export", "download", "セリフごとにWAVを書き出す")
+                    .w(px(32.))
+                    .h_full()
+                    .rounded_none()
+                    .border_l_1()
+                    .border_color(p.line)
+                    .flex_shrink_0()
+                    .disabled(
+                        self.state.busy
+                            || self.state.draft.is_some()
+                            || self.state.status.id.is_none()
+                            || self.state.snapshot.editor.rows.is_empty(),
+                    )
+                    .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, _| {
+                        for naming in crate::project::ExportNaming::ALL {
+                            let studio = studio.clone();
+                            menu = menu.item(PopupMenuItem::new(naming.label()).on_click(
+                                move |_, window, cx| {
+                                    let _ = studio.update(cx, |this, cx| {
+                                        this.export_script(naming, window, cx)
+                                    });
+                                },
+                            ));
+                        }
+                        menu
+                    }),
+            )
+            .child(
+                tool("footer-settings", "gear", "設定")
                     .track_focus(&self.menu_trigger_focus)
-                    .size(px(24.))
+                    .w(px(32.))
+                    .h_full()
+                    .rounded_none()
+                    .border_l_1()
+                    .border_color(p.line)
                     .flex_shrink_0()
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.menu_select(MenuAction::Preferences, window, cx);

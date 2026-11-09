@@ -104,9 +104,8 @@ impl Session {
                 bail!("生成音声が見つかりません");
             }
         }
-        let mut generated = std::collections::HashSet::new();
         for take in &takes {
-            if !rows.contains(&take.row_id) || !generated.insert(&take.row_id) {
+            if !rows.contains(&take.row_id) {
                 bail!("生成音声と台本が一致しません");
             }
             crate::audio::validate_wav(&self.library.audio(&take.id)?)?;

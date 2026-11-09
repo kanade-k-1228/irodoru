@@ -23,6 +23,8 @@
 
 ![Character editor with name, voice prompt, and sample text](imgs/character.png)
 
+Use the duplicate button next to the pencil icon to copy the selected character. Its settings and icon are preserved, and the name receives an unused suffix such as ` - 1`.
+
 Characters belong to their project. Optional assets:
 
 - **Reference audio:** WAV, MP3, FLAC, Ogg Vorbis, or AAC/M4A; 1–60 seconds. Imports are converted to 48 kHz mono WAV.
@@ -30,17 +32,19 @@ Characters belong to their project. Optional assets:
 
 ## Edit a script
 
-- Click a character name to append a line for that character. Select a line and edit its dialogue in the lower center field.
-- Hover between lines or after the last line to reveal a **+** button as wide as the dialogue field. Click it to insert an empty line there; otherwise, only the connecting line is shown.
-- To move a selected line, hover over its destination gap and click **»** in the character-icon column. Use the gap before the first line to move it to the beginning. The selected line stays selected and changes are saved automatically.
-- Click the selected line's trash icon to delete it and its generated audio. The last line cannot be deleted.
+- The **+** button at the end of the script is always visible and adds an empty line at the end.
+- Click a character name to select it, then use the **+** at the end of the script to add a line for that character. Click a script line to edit its dialogue directly in that row.
+- Hover over a gap before, between, or after script lines to reveal an add-only **+** button.
+- Use the icon buttons inside the right edge of a dialogue field to add above with **＋**, duplicate that row immediately below, or delete it. Each button acts on its own row. Duplicates retain the dialogue, character, and generation settings without sharing generated audio. The last line cannot be deleted.
+- Drag a row’s character icon to move the row. A horizontal line marks the destination; dragging near the top or bottom scrolls the script.
+- The play button inside the left edge of each dialogue field plays or pauses that row’s generated audio. It is disabled until audio exists. Only the right-side action buttons are separated from the dialogue by a vertical line.
 - Press `Enter` to add the next line or `Shift+Enter` for a line break. During Japanese input, `Enter` confirms the IME composition.
 
 ## Generate and export audio
 
 - Select a line and generate audio. Speed ranges from **0.5× to 2.0×**; advanced settings include the seed and step count. Start with the defaults.
-- Use the lower-right player to play, pause, or seek. Click its download icon to export WAV.
-- Regeneration replaces existing audio only after it succeeds.
+- Select a dialogue bubble to show a split editor below the text: the character name and take checklist on the left, and generation parameters and buttons on the right. Check a take to use it for that dialogue; the choice is saved with the project. Use the take player inside the bubble to play, pause, or seek. Click its download icon to export WAV.
+- Successful generation adds a new selected take and retains earlier takes for comparison.
 - If the first model download fails, retry it. Prepared models are reused for offline generation.
 
 ## Settings and shortcuts
@@ -51,7 +55,7 @@ Click the settings icon at the far right of the footer to open **Settings**, swi
 
 Use `⌘` instead of `Ctrl` on macOS.
 
-On macOS, the app uses the native menu bar and window title bar, without the custom app header. Windows and Linux retain the custom header.
+On macOS, the app uses the native menu bar and window title bar, without the custom app header. Windows and Linux retain the custom header. Window position, size, and maximized/fullscreen state are remembered when closing a window. On the next launch, the saved placement is restored if it fits a connected display; otherwise it opens centered at 960×700. Additional windows use GPUI’s cascading placement.
 
 - New window: `Ctrl+Shift+N`
 - New project: `Ctrl+N`
@@ -67,3 +71,7 @@ The footer provides three separate modals: **File**, **Model**, and **Settings**
 The model icon at the right of the footer shows preparation and download progress, readiness, or an error. Click it to open model settings, inspect the error details, or retry preparation.
 
 To use local models, choose a folder or enter its path and click **Apply**. The folder must contain both `anime/manifest.json` and `codec/codec.json`. The selection is saved for future launches and shared across windows. **Restore default** returns to automatic model resolution (including development overrides). Model folders can be changed when preparation and generation are idle.
+
+Each new take stores its resolved generation conditions, including the seed, steps, speed, CFG, model, text, caption, and reference identity. Selecting a take restores its dialogue, additional prompt, and editable generation parameters. Older takes restore the parameters they recorded; missing speed and CFG values keep the current settings.
+
+Use the export button immediately left of the footer gear to export one WAV per dialogue. Choose a naming rule (number, number + character, number + dialogue, or number + character + dialogue), then select an output folder. Names use the selected take’s recorded character and dialogue; unsupported filename characters are replaced and long names are shortened. A new `irodoru-export` folder (with a numeric suffix if needed) contains `001.wav`, `002.wav`, and so on in script order, using each row’s selected take. If any row has no selected audio, export reports its row number before writing.

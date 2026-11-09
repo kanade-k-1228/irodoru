@@ -49,6 +49,7 @@ pub(crate) struct Studio {
     subscriptions: Vec<Subscription>,
     advanced: bool,
     script_scroll: ScrollHandle,
+    script_drag_scroll: gpui_kit::component::scroll::AutoScroll,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,

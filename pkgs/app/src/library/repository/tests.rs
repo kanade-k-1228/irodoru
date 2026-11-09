@@ -33,12 +33,13 @@ fn character_edits_preserve_existing_settings() {
 }
 
 #[test]
-fn regeneration_replaces_audio_and_character_deletion_keeps_it() {
+fn regeneration_retains_takes_and_character_deletion_keeps_them() {
     let dir = tempfile::tempdir().unwrap();
     let library = Library::open(dir.path()).unwrap();
     let character = library.create_character(character_input("さくら")).unwrap();
     let first = Take {
         filename: None,
+        conditions: None,
         id: new_id(),
         row_id: "row".into(),
         character_id: Some(character.id.clone()),
@@ -63,11 +64,11 @@ fn regeneration_replaces_audio_and_character_deletion_keeps_it() {
     library.save_take(&second, b"second wav").unwrap();
     library.delete_character(&character.id).unwrap();
 
-    assert_eq!(library.takes().unwrap().len(), 1);
-    assert!(library.audio(&first.id).is_err());
+    assert_eq!(library.takes().unwrap().len(), 2);
+    assert_eq!(library.audio(&first.id).unwrap(), b"first wav");
     assert_eq!(library.audio(&second.id).unwrap(), b"second wav");
     library.delete_take(&second.id).unwrap();
-    assert!(library.takes().unwrap().is_empty());
+    assert_eq!(library.takes().unwrap().len(), 1);
 }
 
 #[test]

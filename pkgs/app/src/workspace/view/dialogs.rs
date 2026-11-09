@@ -116,6 +116,45 @@ impl Studio {
         })
         .detach();
     }
+    pub(super) fn export_script(
+        &mut self,
+        naming: crate::project::ExportNaming,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state.busy || self.state.draft.is_some() || self.state.status.id.is_none() {
+            return;
+        }
+        if let Err(error) =
+            crate::project::export_rows(&self.state.snapshot.editor, &self.state.snapshot.takes)
+        {
+            self.state.error = Some(error.to_string());
+            cx.notify();
+            return;
+        }
+        self.autosave();
+        self.state.busy = true;
+        cx.spawn_in(window, async move |this, cx| {
+            let folder = rfd::AsyncFileDialog::new()
+                .set_title("セリフごとのWAVの書き出し先")
+                .pick_folder()
+                .await;
+            let _ = this.update_in(cx, |this, _, cx| {
+                if let Some(folder) = folder {
+                    this.send(Command::ExportScript {
+                        parent: folder.path().to_owned(),
+                        naming,
+                    });
+                } else {
+                    this.state.busy = false;
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     pub(super) fn cancel_character(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.busy {
             return;

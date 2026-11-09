@@ -42,6 +42,10 @@ pub enum Effect {
     SyncInputs,
     RemovePreview(String),
     PlayAudio(Vec<u8>),
+    Exported {
+        directory: std::path::PathBuf,
+        count: usize,
+    },
     CloseWindow,
 }
 
@@ -156,6 +160,9 @@ impl WorkspaceState {
                 }
             }
             Event::Audio(bytes) => return Some(Effect::PlayAudio(bytes)),
+            Event::Exported { directory, count } => {
+                return Some(Effect::Exported { directory, count });
+            }
             Event::Close => return Some(Effect::CloseWindow),
         }
         None

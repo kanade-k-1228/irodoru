@@ -98,6 +98,7 @@ fn prepare_one(
         job,
         take: Take {
             filename: None,
+            conditions: None,
             id: new_id(),
             row_id: req.row_id,
             character_id: Some(character.id),
@@ -125,7 +126,8 @@ pub fn synthesize(
     let wav = conditions.to_wav(&output.audio)?;
     let mut take = prepared.take;
     take.filename = Some(conditions.filename()?);
-    take.model = conditions.model;
+    take.model = conditions.model.clone();
+    take.conditions = Some(conditions);
     take.seed = output.seed;
     take.num_steps = output.num_steps;
     take.elapsed_ms = started.elapsed().as_millis() as u64;
@@ -251,7 +253,19 @@ mod tests {
 
     #[test]
     fn snapshot_survives_character_removal_and_saves_resolved_output() {
-        let (_dir, library, request) = fixture();
+        let (dir, library, mut request) = fixture();
+        request.request.duration_scale = 1.25;
+        request.request.cfg_scale_text = 2.0;
+        request.request.cfg_scale_speaker = 4.0;
+        request.request.cfg_scale_caption = 6.0;
+        let mut row = crate::workspace::editor::new_row(String::new(), Default::default());
+        row.id = request.row_id.clone();
+        library
+            .save_editor(&crate::domain::EditorState {
+                rows: vec![row],
+                ..Default::default()
+            })
+            .unwrap();
         let character = request.character_id.clone();
         let prepared = prepare(vec![input(&library, request)]).unwrap().remove(0);
         library.delete_character(&character).unwrap();
@@ -278,5 +292,37 @@ mod tests {
         assert!(take.filename.as_ref().unwrap().ends_with(".wav"));
         library.save_take(&take, &bytes).unwrap();
         assert_eq!(library.audio(&take.id).unwrap(), bytes);
+        let library = Library::open(dir.path()).unwrap();
+        let saved = library.takes().unwrap().remove(0);
+        let conditions = saved.conditions.as_ref().unwrap();
+        assert_eq!(conditions.duration_scale, 1.25);
+        assert_eq!(conditions.cfg_scale_caption, 6.0);
+        assert_eq!(conditions.caption.as_deref(), Some("落ち着いた声\n小声で"));
+        let mut editor = library.editor().unwrap();
+        editor.rows[0].text = "書き換えたセリフ".into();
+        editor.rows[0].settings = Some(Default::default());
+        editor.rows[0].prompt = None;
+        library.save_editor(&editor).unwrap();
+        library.select_take(&take.row_id, Some(&take.id)).unwrap();
+        let editor = library.editor().unwrap();
+        let row = &editor.rows[0];
+        let settings = row.settings.as_ref().unwrap();
+        assert_eq!(row.text, "こんにちは");
+        assert_eq!(row.prompt.as_deref(), Some("小声で"));
+        assert_eq!(settings.seed, "42");
+        assert_eq!(settings.num_steps, "40");
+        assert_eq!(settings.duration_scale, 1.25);
+        assert_eq!(
+            (
+                settings.cfg_text,
+                settings.cfg_speaker,
+                settings.cfg_caption
+            ),
+            (2.0, 4.0, 6.0)
+        );
+        assert_eq!(
+            serde_json::to_value(&library.takes().unwrap()[0].conditions).unwrap(),
+            serde_json::to_value(&saved.conditions).unwrap()
+        );
     }
 }

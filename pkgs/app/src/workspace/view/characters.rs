@@ -24,6 +24,34 @@ impl Studio {
                     .min_h_0()
                     .overflow_y_scroll()
                     .p_1()
+                    .when(self.state.snapshot.characters.is_empty(), |el| {
+                        let message = if self.state.status.id.is_none() {
+                            if narrow {
+                                "左下からファイルを開く"
+                            } else {
+                                "左下のファイルからプロジェクトを作成するか、開いてください。"
+                            }
+                        } else if self.state.draft.is_some() {
+                            if narrow {
+                                "保存で追加"
+                            } else {
+                                "キャラの名前と設定を入力し、保存すると一覧に追加されます。"
+                            }
+                        } else if narrow {
+                            "下の＋で追加"
+                        } else {
+                            "キャラがまだいません。下の＋から、名前や声の設定を追加してください。"
+                        };
+                        el.child(
+                            div()
+                                .px_1()
+                                .py_3()
+                                .text_xs()
+                                .line_height(px(20.))
+                                .text_color(p.muted)
+                                .child(message),
+                        )
+                    })
                     .children(
                         self.state
                             .snapshot
@@ -74,7 +102,7 @@ impl Studio {
             })
             .when(!disabled, |el| {
                 el.on_click(cx.listener(move |this, _, w, cx| {
-                    if this.state.append_character_row(id.clone()) {
+                    if this.state.select_character(id.clone()) {
                         this.edited(w, cx);
                     }
                 }))
@@ -93,6 +121,7 @@ impl Studio {
             .iter()
             .find(|c| c.id == self.state.snapshot.editor.active_character)
             .cloned();
+        let no_active = active.is_none();
         div()
             .flex()
             .gap_1()
@@ -115,6 +144,18 @@ impl Studio {
                     .when(disabled || active.is_none(), |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.edit_character(active.clone(), w, cx)
+                    })),
+            )
+            .child(
+                tool("duplicate-character", "copy", "キャラを複製")
+                    .size(px(32.))
+                    .disabled(disabled || no_active)
+                    .when(disabled || no_active, |el| el.cursor_default())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(command) = this.state.duplicate_character() {
+                            this.send(command);
+                            cx.notify();
+                        }
                     })),
             )
             .into_any_element()
