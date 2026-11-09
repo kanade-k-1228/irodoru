@@ -14,6 +14,17 @@ impl Studio {
         duration: f64,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        self.audio_player_controls(key, source, duration, true, cx)
+    }
+
+    pub(super) fn audio_player_controls(
+        &self,
+        key: (&'static str, usize),
+        source: AudioSource,
+        duration: f64,
+        with_download: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = self.palette();
         let active = self.audio_id.as_ref() == Some(&source);
         let player = self.playback.as_ref().filter(|_| active);
@@ -22,6 +33,8 @@ impl Studio {
         let export = source.clone();
         div()
             .flex()
+            .flex_1()
+            .min_w_0()
             .items_center()
             .gap_1()
             .text_xs()
@@ -61,14 +74,16 @@ impl Studio {
                     .into_any_element()
             })
             .child(div().w(px(36.)).child(time(duration)))
-            .child(
-                tool((key.0, key.1 * 2 + 1), "download", "WAVを保存")
-                    .disabled(self.state.busy)
-                    .when(self.state.busy, |el| el.cursor_default())
-                    .on_click(
-                        cx.listener(move |this, _, w, cx| this.export(export.clone(), w, cx)),
-                    ),
-            )
+            .when(with_download, |el| {
+                el.child(
+                    tool((key.0, key.1 * 2 + 1), "download", "WAVを保存")
+                        .disabled(self.state.busy)
+                        .when(self.state.busy, |el| el.cursor_default())
+                        .on_click(
+                            cx.listener(move |this, _, w, cx| this.export(export.clone(), w, cx)),
+                        ),
+                )
+            })
             .into_any_element()
     }
 }

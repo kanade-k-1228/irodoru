@@ -12,13 +12,19 @@ pub struct Snapshot {
     pub editor: EditorState,
     pub characters: Vec<Character>,
     pub takes: Vec<Take>,
-    pub voices: Vec<String>,
+    pub voices: Vec<crate::domain::Voice>,
 }
 pub enum Command {
     Open {
         path: PathBuf,
         create: bool,
     },
+    NewFromCharacters(PathBuf),
+    ExportCharacter {
+        input: CharacterInput,
+        path: PathBuf,
+    },
+    ImportCharacter(PathBuf),
     SaveEditor(EditorState),
     Flush {
         close: bool,
@@ -29,17 +35,25 @@ pub enum Command {
         preview: Option<String>,
     },
     DeleteCharacter(String),
-    ImportVoice(PathBuf),
+    ImportVoices(Vec<PathBuf>),
     ImportIcon(PathBuf),
     DeleteTake(String),
+    SelectTake {
+        row_id: String,
+        take_id: Option<String>,
+    },
     Generate(Vec<TakeRequest>),
     Preview {
         input: SynthesisInput,
         description: String,
-        voice: Option<String>,
+        voice_ids: Vec<String>,
     },
     RemovePreview(String),
     Audio(AudioSource),
+    ExportScript {
+        parent: PathBuf,
+        naming: crate::project::ExportNaming,
+    },
     Export {
         source: AudioSource,
         path: PathBuf,
@@ -64,5 +78,6 @@ pub enum Event {
     Voice(String),
     Icon(String),
     Audio(Vec<u8>),
+    Exported { directory: PathBuf, count: usize },
     Close,
 }

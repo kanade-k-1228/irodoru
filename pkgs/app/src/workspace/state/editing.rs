@@ -55,28 +55,44 @@ impl WorkspaceState {
         }
         true
     }
+    pub fn select_take(&mut self, id: &str, checked: bool) -> bool {
+        if self.busy || self.draft.is_some() || self.status.id.is_none() {
+            return false;
+        }
+        let Some(take) = self
+            .snapshot
+            .takes
+            .iter()
+            .find(|take| take.id == id && Some(&take.row_id) == self.selected.as_ref())
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(row) = self.selected_row_mut() else {
+            return false;
+        };
+        if checked {
+            take.restore_row(row);
+        } else if row.take_id.as_deref() == Some(id) {
+            row.take_id = None;
+        } else {
+            return false;
+        }
+        true
+    }
+
     pub fn edit_character(&mut self, character: Option<Character>) -> bool {
         if self.busy || self.draft.is_some() {
             return false;
         }
         let (id, input) = match character {
-            Some(c) => (
-                Some(c.id),
-                CharacterInput {
-                    name: c.name,
-                    description: c.description,
-                    voice: c.voice,
-                    icon: c.icon,
-                    color: Some(c.color),
-                    sample_text: Some(c.sample_text),
-                },
-            ),
+            Some(c) => (Some(c.id.clone()), c.into()),
             None => (
                 None,
                 CharacterInput {
                     name: String::new(),
                     description: String::new(),
-                    voice: None,
+                    voice_ids: Vec::new(),
                     icon: None,
                     color: Some(DEFAULT_CHARACTER_COLOR.into()),
                     sample_text: Some(DEFAULT_SAMPLE_TEXT.into()),
@@ -113,9 +129,42 @@ impl Draft {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum RowAction {
+    InsertAbove,
+    Duplicate,
+    Delete,
+}
+
 impl WorkspaceState {
     fn can_edit_rows(&self) -> bool {
         !self.busy && self.draft.is_none()
+    }
+
+    pub fn edit_row(&mut self, id: &str, action: RowAction) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        let Some(index) = self
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .position(|row| row.id == id)
+        else {
+            return false;
+        };
+        self.select(id.to_owned());
+        match action {
+            RowAction::InsertAbove => {
+                let after = index
+                    .checked_sub(1)
+                    .map(|i| self.snapshot.editor.rows[i].id.clone());
+                self.insert_at(after.as_deref(), false)
+            }
+            RowAction::Duplicate => self.add_row(true),
+            RowAction::Delete => self.remove_row(),
+        }
     }
 
     pub fn add_row(&mut self, duplicate: bool) -> bool {
@@ -138,12 +187,44 @@ impl WorkspaceState {
         self.select(id)
     }
 
-    pub fn insert_after(&mut self, id: String) -> bool {
-        if !self.can_edit_rows() {
+    pub fn insert_at(&mut self, after: Option<&str>, duplicate: bool) -> bool {
+        if !self.can_edit_rows()
+            || after.is_some_and(|id| !self.snapshot.editor.rows.iter().any(|row| row.id == id))
+        {
             return false;
         }
-        self.selected = Some(id);
-        self.add_row(false)
+        let source = if duplicate {
+            let Some(id) = self
+                .selected
+                .as_deref()
+                .filter(|id| self.snapshot.editor.rows.iter().any(|row| row.id == *id))
+            else {
+                return false;
+            };
+            Some(id)
+        } else {
+            after.or_else(|| self.snapshot.editor.rows.first().map(|row| row.id.as_str()))
+        }
+        .map(str::to_owned);
+        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), duplicate);
+        editor::move_row(&mut self.snapshot.editor.rows, &id, after);
+        self.select(id)
+    }
+
+    pub fn select_character(&mut self, id: String) -> bool {
+        if !self.can_edit_rows()
+            || self.status.id.is_none()
+            || !self
+                .snapshot
+                .characters
+                .iter()
+                .any(|character| character.id == id)
+        {
+            return false;
+        }
+        self.snapshot.editor.active_character = id;
+        self.selected = None;
+        true
     }
 
     pub fn append_character_row(&mut self, character: String) -> bool {
@@ -176,7 +257,7 @@ impl WorkspaceState {
             return false;
         };
         self.selected = Some(next);
-        self.snapshot.takes.retain(|take| take.row_id != id);
+
         true
     }
 
@@ -216,11 +297,19 @@ impl WorkspaceState {
         self.draft.is_none()
     }
 
-    pub fn set_draft_voice(&mut self, voice: Option<String>) {
+    pub fn toggle_draft_voice(&mut self, voice: Option<String>) {
         if !self.busy
             && let Some(draft) = &mut self.draft
         {
-            draft.input.voice = voice;
+            if let Some(voice) = voice {
+                if draft.input.voice_ids.contains(&voice) {
+                    draft.input.voice_ids.retain(|id| id != &voice);
+                } else {
+                    draft.input.voice_ids.push(voice);
+                }
+            } else {
+                draft.input.voice_ids.clear();
+            }
         }
     }
     pub fn set_draft_icon(&mut self, icon: String) {
@@ -247,6 +336,41 @@ impl WorkspaceState {
         self.saving_draft = self.draft.is_some();
         Command::DeleteCharacter(id)
     }
+    pub fn duplicate_character(&self) -> Option<Command> {
+        if self.busy || self.draft.is_some() || self.status.id.is_none() {
+            return None;
+        }
+        let source = self
+            .snapshot
+            .characters
+            .iter()
+            .find(|c| c.id == self.snapshot.editor.active_character)?;
+        let base = source
+            .name
+            .rsplit_once(" - ")
+            .filter(|(_, suffix)| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()))
+            .map_or(source.name.as_str(), |(base, _)| base);
+        let name = (1..)
+            .map(|index| {
+                let suffix = format!(" - {index}");
+                let base: String = base.chars().take(64 - suffix.chars().count()).collect();
+                format!("{}{suffix}", base.trim_end())
+            })
+            .find(|name| !self.snapshot.characters.iter().any(|c| &c.name == name))?;
+        Some(Command::SaveCharacter {
+            id: None,
+            input: CharacterInput {
+                name,
+                description: source.description.clone(),
+                voice_ids: source.voice_ids.clone(),
+                icon: source.icon.clone(),
+                color: Some(source.color.clone()),
+                sample_text: Some(source.sample_text.clone()),
+            },
+            preview: None,
+        })
+    }
+
     pub fn save_character(&mut self) -> Option<Command> {
         if self.busy {
             return None;
@@ -272,7 +396,7 @@ impl WorkspaceState {
                         &d.settings,
                     )?,
                     description: d.input.description.clone(),
-                    voice: d.input.voice.clone(),
+                    voice_ids: d.input.voice_ids.clone(),
                 })
             })
             .transpose()
@@ -289,7 +413,7 @@ impl WorkspaceState {
             .takes
             .iter()
             .find(|take| take.row_id == id)
-            .map(|take| take.seed);
+            .map(|take| take.conditions.seed);
         editor::randomize_row(&mut self.snapshot.editor, id, previous, seed)?;
         Ok(true)
     }

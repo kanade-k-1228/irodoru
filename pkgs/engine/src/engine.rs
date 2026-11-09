@@ -73,7 +73,16 @@ impl Engine {
         }
         let model = &mut self.model;
         let mut params = job.params;
-        if let Some(wav) = &job.reference_audio {
+        let reference = crate::cache::voices::combine_references(
+            job.reference_audio
+                .iter()
+                .chain(job.reference_audios.iter())
+                .map(Vec::as_slice),
+            model.manifest.max_ref_seconds,
+            self.codec.sample_rate,
+        )
+        .map_err(AppError::invalid)?;
+        if let Some(wav) = &reference {
             params.speaker = Some(self.voices.speaker(wav, model, &mut self.codec)?);
         }
         if is_cancelled() {
@@ -92,7 +101,7 @@ impl Engine {
         );
         conditions.checkpoint = model.manifest.checkpoint.clone();
         conditions.flow = model.manifest.flow.clone();
-        conditions.reference_sha256 = job.reference_audio.as_deref().map(sha256);
+        conditions.reference_sha256 = reference.as_deref().map(sha256);
         Ok((conditions, out))
     }
 }

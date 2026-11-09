@@ -81,9 +81,4 @@ impl Studio {
         self.sync_fields(window, cx);
         cx.notify();
     }
-    pub(super) fn remove_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.remove_row() {
-            self.edited(window, cx);
-        }
-    }
 }

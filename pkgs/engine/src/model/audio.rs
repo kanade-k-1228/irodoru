@@ -67,26 +67,7 @@ impl Audio {
     }
 
     pub fn to_wav_with_comment(&self, comment: &str) -> Result<Vec<u8>> {
-        let mut wav = self.to_wav()?;
-        let size = u32::try_from(comment.len() + 1)?;
-        let padded_size = size
-            .checked_add(size % 2)
-            .ok_or_else(|| anyhow::anyhow!("WAV comment too large"))?;
-        let list_size = padded_size
-            .checked_add(12)
-            .ok_or_else(|| anyhow::anyhow!("WAV comment too large"))?;
-        wav.extend_from_slice(b"LIST");
-        wav.extend_from_slice(&list_size.to_le_bytes());
-        wav.extend_from_slice(b"INFOICMT");
-        wav.extend_from_slice(&size.to_le_bytes());
-        wav.extend_from_slice(comment.as_bytes());
-        wav.push(0);
-        if size % 2 != 0 {
-            wav.push(0);
-        }
-        let riff_size = u32::try_from(wav.len() - 8)?;
-        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
-        Ok(wav)
+        crate::wav_metadata::with_comment(&self.to_wav()?, comment)
     }
 
     pub fn truncate_seconds(&mut self, seconds: f64) {

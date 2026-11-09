@@ -16,7 +16,7 @@ The first launch downloads about 3.44 GB of models. Allow enough disk space and 
 
 1. Click the project label at the bottom left to open **File** and create a `.iro` project.
 2. Click **+** in the character list, enter a name and voice prompt, and save.
-3. Click the character name to add a script line, enter dialogue, and generate audio.
+3. Select a character, click **+** at the end of the script, enter dialogue, and generate audio.
 4. Play the result or use the player's download icon to export a WAV file.
 
 Script edits and saved character settings are saved automatically.

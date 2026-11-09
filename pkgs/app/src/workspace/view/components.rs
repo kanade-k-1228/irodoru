@@ -47,7 +47,7 @@ impl Studio {
             .text_sm()
             .child(
                 if let Some(image) = character_icon(character.and_then(|c| c.icon.as_deref())) {
-                    img(image).size_full().into_any_element()
+                    img(image).size_full().rounded_full().into_any_element()
                 } else {
                     div()
                         .child(

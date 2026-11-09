@@ -52,6 +52,19 @@ impl Studio {
                         self.audio_id = None;
                     }
                 },
+                Some(Effect::Exported { directory, count }) => {
+                    cx.spawn(async move |_, _| {
+                        rfd::AsyncMessageDialog::new()
+                            .set_title("エクスポート完了")
+                            .set_description(format!(
+                                "{count}件のWAVを書き出しました。\n{}",
+                                directory.display()
+                            ))
+                            .show()
+                            .await;
+                    })
+                    .detach();
+                }
                 Some(Effect::CloseWindow) => {
                     window.remove_window();
                     return;

@@ -6,6 +6,7 @@ mod error;
 mod model;
 mod output;
 mod request;
+pub mod wav_metadata;
 pub use backend::{
     Runtime,
     device::{DeviceInfo, DevicePreference},

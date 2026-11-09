@@ -59,6 +59,42 @@ impl Voices {
         Ok(condition)
     }
 }
+/// Share the model's reference duration budget across recordings so later clips
+/// are not discarded by the codec's prefix truncation. Keep single-clip behavior.
+pub(crate) fn combine_references<'a>(
+    recordings: impl Iterator<Item = &'a [u8]>,
+    max_seconds: f64,
+    sample_rate: u32,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let recordings: Vec<_> = recordings.collect();
+    if recordings.is_empty() {
+        return Ok(None);
+    }
+    if recordings.len() == 1 {
+        return Ok(Some(recordings[0].to_vec()));
+    }
+    let budget = if max_seconds > 0.0 {
+        (max_seconds * sample_rate as f64) as usize
+    } else {
+        usize::MAX
+    };
+    let per_clip = budget / recordings.len();
+    anyhow::ensure!(per_clip > 0, "too many reference recordings");
+    let mut samples = Vec::new();
+    for wav in recordings {
+        let audio = Audio::from_wav(wav)?;
+        anyhow::ensure!(
+            audio.seconds() >= 0.5,
+            "reference audio must be at least 0.5 s long"
+        );
+        let mut audio = audio.resample(sample_rate);
+        audio.samples.truncate(per_clip);
+        audio.normalize_loudness(-16.0)?;
+        samples.extend(audio.samples);
+    }
+    Ok(Some(Audio::new(samples, sample_rate).to_wav()?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +136,48 @@ mod tests {
         );
         cache.clear();
         assert_eq!(cache.cache.len(), 0);
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+
+    #[test]
+    fn multiple_recordings_share_the_budget_and_keep_every_clip() {
+        let first = Audio::new(vec![0.1; 48000], 24000).to_wav().unwrap();
+        let second = Audio::new(vec![-0.1; 96000], 48000).to_wav().unwrap();
+        let mixed = combine_references(
+            [first.as_slice(), second.as_slice()].into_iter(),
+            2.0,
+            48000,
+        )
+        .unwrap()
+        .unwrap();
+        let audio = Audio::from_wav(&mixed).unwrap();
+        assert_eq!(audio.sample_rate, 48000);
+        assert_eq!(audio.samples.len(), 96000);
+        assert!(audio.samples[24000] > 0.0);
+        assert!(audio.samples[72000] < 0.0);
+        assert_eq!(
+            combine_references([first.as_slice()].into_iter(), 2.0, 48000).unwrap(),
+            Some(first)
+        );
+        assert!(
+            combine_references(std::iter::empty(), 2.0, 48000)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn an_invalid_or_too_short_clip_rejects_the_whole_reference_set() {
+        let valid = Audio::new(vec![0.1; 48000], 48000).to_wav().unwrap();
+        let short = Audio::new(vec![0.1; 100], 48000).to_wav().unwrap();
+        for invalid in [short.as_slice(), b"not a wav"] {
+            assert!(
+                combine_references([valid.as_slice(), invalid].into_iter(), 2.0, 48000).is_err()
+            );
+        }
     }
 }

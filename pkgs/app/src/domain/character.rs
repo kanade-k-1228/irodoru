@@ -2,24 +2,15 @@ use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_CHARACTER_COLOR: &str = "#41a2ec";
 pub const DEFAULT_SAMPLE_TEXT: &str = "こんにちは。よろしくお願いします。";
-fn default_character_color() -> String {
-    DEFAULT_CHARACTER_COLOR.into()
-}
-fn default_sample_text() -> String {
-    DEFAULT_SAMPLE_TEXT.into()
-}
 
 #[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct Character {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub voice: Option<String>,
-    #[serde(default = "default_character_color")]
+    pub voice_ids: Vec<String>,
     pub color: String,
-    #[serde(default = "default_sample_text")]
     pub sample_text: String,
-    #[serde(default)]
     pub icon: Option<String>,
 }
 
@@ -28,10 +19,9 @@ pub struct Character {
 pub struct CharacterInput {
     pub name: String,
     pub description: String,
-    pub voice: Option<String>,
+    pub voice_ids: Vec<String>,
     pub color: Option<String>,
     pub sample_text: Option<String>,
-    #[serde(default)]
     pub icon: Option<String>,
 }
 
@@ -59,14 +49,36 @@ impl CharacterInput {
                 "sample_text must be at most 1000 characters",
             ));
         }
+        let mut seen = std::collections::HashSet::new();
+        let voice_ids: Vec<_> = self
+            .voice_ids
+            .into_iter()
+            .filter(|id| !id.is_empty() && seen.insert(id.clone()))
+            .collect();
+        if voice_ids.iter().any(|id| !super::valid_id(id)) {
+            return Err(AppError::invalid("参照音声 ID が不正です"));
+        }
         Ok(Character {
             id,
             name,
             description: self.description.trim().into(),
             color: color.to_ascii_lowercase(),
             sample_text,
-            voice: self.voice.filter(|v| !v.is_empty()),
+            voice_ids,
             icon: self.icon.filter(|v| !v.is_empty()),
         })
+    }
+}
+
+impl From<Character> for CharacterInput {
+    fn from(character: Character) -> Self {
+        Self {
+            name: character.name,
+            description: character.description,
+            voice_ids: character.voice_ids,
+            color: Some(character.color),
+            sample_text: Some(character.sample_text),
+            icon: character.icon,
+        }
     }
 }

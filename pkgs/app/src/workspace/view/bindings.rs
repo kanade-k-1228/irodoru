@@ -2,7 +2,7 @@ use super::{Fields, GenerationSliders, Studio, appearance};
 use crate::preferences::Settings;
 use crate::workspace::protocol::Command;
 use crate::workspace::service::Service;
-use crate::workspace::state::{Field, WorkspaceState};
+use crate::workspace::state::{Field, GenerationField, WorkspaceState};
 use gpui_kit::component::color_picker::{ColorPickerEvent, ColorPickerState};
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
@@ -24,6 +24,7 @@ impl Studio {
             text: cx.new(|cx| {
                 TextareaState::new(window, cx)
                     .placeholder("セリフを入力")
+                    .auto_grow(1, 8)
                     .submit_on_enter(true)
             }),
             description: cx
@@ -38,10 +39,11 @@ impl Studio {
         let [speed, text, speaker, caption] = [
             cx.new(|_| {
                 SliderState::new()
-                    .min(0.5)
-                    .max(2.0)
-                    .step(0.05)
-                    .default_value(1.0)
+                    // Equal distances represent reciprocal speed ratios around 1×.
+                    .min(-1.0)
+                    .max(1.0)
+                    .step(0.01)
+                    .default_value(0.0)
             }),
             cx.new(|_| {
                 SliderState::new()
@@ -155,7 +157,12 @@ impl Studio {
                         && !this.sync
                         && !this.state.busy
                     {
-                        if this.state.change_generation(field, *value) {
+                        let value = if matches!(field, GenerationField::Speed) {
+                            value.exp2()
+                        } else {
+                            *value
+                        };
+                        if this.state.change_generation(field, value) {
                             this.autosave();
                         }
                         cx.notify();
@@ -239,6 +246,7 @@ impl Studio {
             subscriptions,
             advanced: false,
             script_scroll: ScrollHandle::new(),
+            script_drag_scroll: Default::default(),
             settings,
             playback: None,
             audio_id: None,
@@ -287,7 +295,7 @@ impl Studio {
             .prompt
             .update(cx, |f, cx| f.set_value(prompt, window, cx));
         let s = self.state.settings_value();
-        let speed = s.speed() as f32;
+        let speed = s.speed().log2() as f32;
         self.fields
             .seed
             .update(cx, |f, cx| f.set_value(s.seed, window, cx));

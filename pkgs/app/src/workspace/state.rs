@@ -42,6 +42,10 @@ pub enum Effect {
     SyncInputs,
     RemovePreview(String),
     PlayAudio(Vec<u8>),
+    Exported {
+        directory: std::path::PathBuf,
+        count: usize,
+    },
     CloseWindow,
 }
 
@@ -146,8 +150,10 @@ impl WorkspaceState {
                 }
             }
             Event::Voice(voice) => {
-                if let Some(d) = &mut self.draft {
-                    d.input.voice = Some(voice);
+                if let Some(d) = &mut self.draft
+                    && !d.input.voice_ids.contains(&voice)
+                {
+                    d.input.voice_ids.push(voice);
                 }
             }
             Event::Icon(icon) => {
@@ -156,6 +162,9 @@ impl WorkspaceState {
                 }
             }
             Event::Audio(bytes) => return Some(Effect::PlayAudio(bytes)),
+            Event::Exported { directory, count } => {
+                return Some(Effect::Exported { directory, count });
+            }
             Event::Close => return Some(Effect::CloseWindow),
         }
         None
@@ -165,4 +174,4 @@ impl WorkspaceState {
 mod tests;
 
 mod editing;
-pub use editing::GenerationField;
+pub use editing::{GenerationField, RowAction};

@@ -10,6 +10,8 @@ const MAX_TEXT_CHARS: usize = 1000;
 pub struct SynthesisRequest {
     pub text: String,
     pub reference_audio: Option<Vec<u8>>,
+    #[serde(default)]
+    pub reference_audios: Vec<Vec<u8>>,
     pub caption: Option<String>,
     pub seed: Option<u64>,
     pub num_steps: Option<usize>,
@@ -27,6 +29,7 @@ pub struct SynthesisRequest {
 
 pub struct TTSJob {
     pub reference_audio: Option<Vec<u8>>,
+    pub reference_audios: Vec<Vec<u8>>,
     pub params: SynthParams,
 }
 
@@ -60,6 +63,7 @@ impl TryFrom<SynthesisRequest> for TTSJob {
         }
         Ok(Self {
             reference_audio: req.reference_audio,
+            reference_audios: req.reference_audios,
             params: SynthParams {
                 text: req.text,
                 caption: req.caption,

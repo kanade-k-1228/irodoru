@@ -132,6 +132,7 @@ pub(super) fn icon(name: &str) -> Icon {
         "play" => include_bytes!("../../../icons/ui/play.svg"),
         "pause" => include_bytes!("../../../icons/ui/pause.svg"),
         "download" => include_bytes!("../../../icons/ui/download.svg"),
+        "gear" => include_bytes!("../../../icons/ui/gear.svg"),
         "settings" => include_bytes!("../../../icons/ui/settings.svg"),
         "dice" => include_bytes!("../../../icons/ui/dice.svg"),
         "wand" => include_bytes!("../../../icons/ui/wand.svg"),

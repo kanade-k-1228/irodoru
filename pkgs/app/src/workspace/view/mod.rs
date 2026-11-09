@@ -49,6 +49,7 @@ pub(crate) struct Studio {
     subscriptions: Vec<Subscription>,
     advanced: bool,
     script_scroll: ScrollHandle,
+    script_drag_scroll: gpui_kit::component::scroll::AutoScroll,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,
@@ -74,7 +75,8 @@ mod playback;
 
 mod appearance;
 
-mod character_view;
+mod character_panel;
+mod footer;
 
 mod app_dialog;
 mod app_menu;
@@ -93,10 +95,8 @@ impl Studio {
     }
 }
 
-mod characters;
 mod components;
 mod generation_controls;
 mod layout;
-mod line_editor;
 mod player;
 mod script;

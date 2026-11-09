@@ -155,7 +155,7 @@ mod tests {
             let yaml = serde_yaml::to_string(&settings).unwrap();
             let restored: GenerationSettings = serde_yaml::from_str(&yaml).unwrap();
             assert!((restored.speed() - speed).abs() < 1e-12);
-            assert!(yaml.contains("durationScale:"));
+            assert!(yaml.contains("duration_scale:"));
         }
         for speed in [0.0, 0.49, 2.01, f64::NAN, f64::INFINITY] {
             let mut settings = GenerationSettings::default();
@@ -236,7 +236,7 @@ mod tests {
 pub fn row_from_take(take: &crate::domain::Take, characters: &[Character]) -> ScriptRow {
     ScriptRow {
         id: new_id(),
-        text: take.text.clone(),
+        text: take.conditions.text.clone(),
         prompt: Some(take.additional_prompt.clone()),
         character_id: take
             .character_id
@@ -285,23 +285,24 @@ mod regression_tests {
     fn copied_take_retains_speech_direction_without_old_audio() {
         let take = crate::domain::Take {
             id: new_id(),
-            filename: None,
+            conditions: irodoru_engine::GenerationConditions {
+                text: "こんにちは".into(),
+                model: "anime".into(),
+                seed: 42,
+                num_steps: 40,
+                ..crate::domain::Take::test_conditions()
+            },
             row_id: new_id(),
             character_id: Some(new_id()),
             character_name: "削除済み".into(),
-            description: "声".into(),
             additional_prompt: "小声で".into(),
-            voice: None,
-            text: "こんにちは".into(),
-            model: "anime".into(),
-            seed: 42,
-            num_steps: 40,
+            voice_ids: Vec::new(),
             elapsed_ms: 1,
             audio_seconds: 1.0,
             created_at: 0,
         };
         let row = row_from_take(&take, &[]);
-        assert_eq!(row.text, take.text);
+        assert_eq!(row.text, take.conditions.text);
         assert_eq!(row.prompt.as_deref(), Some("小声で"));
         assert!(row.character_id.is_empty());
         assert!(row.settings.is_none());
