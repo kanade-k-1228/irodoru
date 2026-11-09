@@ -58,14 +58,29 @@ impl Engine {
         &mut self,
         job: TTSJob,
     ) -> Result<(GenerationConditions, SynthOutput), AppError> {
+        self.synthesize_cancellable(job, &|| false)
+    }
+
+    /// Checks for cancellation between inference stages.
+    pub fn synthesize_cancellable(
+        &mut self,
+        job: TTSJob,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<(GenerationConditions, SynthOutput), AppError> {
+        if is_cancelled() {
+            return Err(AppError::internal("synthesis cancelled"));
+        }
         let model = &mut self.model;
         let mut params = job.params;
         if let Some(wav) = &job.reference_audio {
             params.speaker = Some(self.voices.speaker(wav, model, &mut self.codec)?);
         }
+        if is_cancelled() {
+            return Err(AppError::internal("synthesis cancelled"));
+        }
         model.validate(&params).map_err(AppError::invalid)?;
         let out = model
-            .synthesize(&mut self.codec, &params)
+            .synthesize_cancellable(&mut self.codec, &params, is_cancelled)
             .map_err(AppError::internal)?;
         let mut conditions = GenerationConditions::from_params(
             model.manifest.name.clone(),

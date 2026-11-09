@@ -38,6 +38,7 @@ mod tests {
         fn synthesize(
             &mut self,
             job: TTSJob,
+            _is_cancelled: &dyn Fn() -> bool,
         ) -> Result<(GenerationConditions, SynthOutput), AppError> {
             Ok((
                 GenerationConditions::from_params("anime".into(), &job.params, 42, 4, 48000),
@@ -62,6 +63,34 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn worker_panic_returns_internal_server_error() {
+        struct Panics;
+        impl state::Synthesis for Panics {
+            fn synthesize(
+                &mut self,
+                _job: TTSJob,
+                _is_cancelled: &dyn Fn() -> bool,
+            ) -> Result<(GenerationConditions, SynthOutput), AppError> {
+                panic!("simulated worker failure");
+            }
+        }
+        let response = AppState::new(Panics)
+            .router()
+            .oneshot(
+                Request::post("/")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"text":"hello"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = to_bytes(response.into_body(), 10_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "synthesis worker stopped without a result");
+    }
+
     #[tokio::test]
     async fn returns_wav_with_embedded_conditions() {
         let response = post(r#"{"text":"こんにちは"}"#.into()).await;
