@@ -6,9 +6,9 @@
 
 ## Projects
 
-- Click the menu button at the far right of the footer to open the centered menu modal and create, open, or save a project. Close it with Escape, the close button, or a click on the backdrop.
+- Click the project path (or the red no-project label) at the left of the footer to open the **File** modal and create, open, or save a project, open a new window, or close the current window. Close it with Escape, the close button, or a click on the backdrop.
 - A `.iro` file contains the script, characters, reference audio, icons, and generated audio. Only `.iro` projects are supported.
-- Edits are saved automatically. If saving fails, use the menu's save action to retry.
+- Edits are saved automatically. If saving fails, use the File modal's save action to retry.
 - Before switching projects, save or cancel character edits and wait for generation to finish.
 - Opening a `.iro` file from your OS creates a separate window. A project can be open in only one window at a time.
 - On Windows, associate `.iro` files with `irodoru.exe` through **Open with**.
@@ -45,7 +45,7 @@ Characters belong to their project. Optional assets:
 
 ## Settings and shortcuts
 
-Choose the color theme or open preferences from the footer menu to switch between light and dark mode.
+Click the settings icon at the far right of the footer to open **Settings**, switch between light and dark mode, and view application information.
 
 ![Preferences with color theme settings](imgs/preferences.png)
 
@@ -60,7 +60,7 @@ On macOS, the app uses the native menu bar and window title bar, without the cus
 - Preferences: `Ctrl+,`
 - Close window: `Ctrl+W`
 
-Click the project path at the bottom left for project actions: create, open, save, or close the window.
+The footer provides three separate modals: **File**, **Model**, and **Settings**.
 
 ## Model settings
 

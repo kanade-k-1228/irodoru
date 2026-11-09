@@ -57,7 +57,7 @@ pub(crate) struct Studio {
     menu_focus: FocusHandle,
     menu_trigger_focus: FocusHandle,
     menu_open: bool,
-    project_menu: bool,
+    file_trigger_focus: FocusHandle,
     menu_index: usize,
     dialog_open: bool,
     model_dialog_open: bool,

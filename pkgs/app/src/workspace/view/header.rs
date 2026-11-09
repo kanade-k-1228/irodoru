@@ -8,7 +8,6 @@ use gpui_kit::*;
 impl Studio {
     pub(super) fn header(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let closed = self.state.status.id.is_none();
         div()
             .flex_shrink_0()
             .bg(p.toolbar)
@@ -17,15 +16,6 @@ impl Studio {
             .px_2()
             .py_1()
             .child(self.header_bar(window, cx))
-            .when(closed, |el| {
-                el.child(div().px_2().py_1().text_xs().text_color(p.muted).child(
-                    if self.state.busy {
-                        "プロジェクトを読み込み中…"
-                    } else {
-                        "プロジェクト（.iro）を新規作成するか、既存の .iro を開いてください。"
-                    },
-                ))
-            })
             .into_any_element()
     }
 

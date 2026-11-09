@@ -247,7 +247,7 @@ impl Studio {
             menu_focus: cx.focus_handle(),
             menu_trigger_focus: cx.focus_handle(),
             menu_open: false,
-            project_menu: false,
+            file_trigger_focus: cx.focus_handle(),
             menu_index: 0,
             dialog_open: false,
             model_dialog_open: false,

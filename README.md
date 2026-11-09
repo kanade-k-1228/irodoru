@@ -14,7 +14,7 @@ The first launch downloads about 3.44 GB of models. Allow enough disk space and 
 
 ## Quick start
 
-1. Open the **irodoru** menu at the top left and create a `.iro` project.
+1. Click the project label at the bottom left to open **File** and create a `.iro` project.
 2. Click **+** in the character list, enter a name and voice prompt, and save.
 3. Click the character name to add a script line, enter dialogue, and generate audio.
 4. Play the result or use the player's download icon to export a WAV file.
