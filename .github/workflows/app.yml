@@ -134,27 +134,22 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: cargo xtask release version "$RELEASE_TAG"
-      # Exact inputs only: never restore notices from an older dependency set.
-      - uses: actions/cache/restore@v6
+      # Manifests, notices and policy can change without changing Cargo.lock.
+      - uses: actions/cache@v6
         id: licenses
         with:
-          path: target/licenses
-          key: licenses-v1-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'pkgs/*/Cargo.toml', 'xtask/Cargo.toml', '.cargo/**', 'rust-toolchain*', 'about.toml', 'LICENSE', 'licenses/**', 'pkgs/app/icons/ui/LICENSE', 'xtask/src/**', '.github/workflows/app.yml') }}
+          path: ${{ runner.temp }}/licenses
+          key: licenses-v1-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'pkgs/*/Cargo.toml', 'xtask/Cargo.toml', 'about.toml', 'LICENSE', 'licenses/**', 'pkgs/app/icons/ui/LICENSE', 'xtask/src/licenses.rs') }}
       - name: Generate shared license bundle on cache miss
         if: steps.licenses.outputs.cache-hit != 'true'
         run: |
           cargo install cargo-about --version 0.9.3 --locked --features cli
           cargo fetch --locked
-          cargo xtask licenses --destination target/licenses
-      - uses: actions/cache/save@v6
-        if: steps.licenses.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        with:
-          path: target/licenses
-          key: ${{ steps.licenses.outputs.cache-primary-key }}
+          cargo xtask licenses --destination "$RUNNER_TEMP/licenses"
       - uses: actions/upload-artifact@v7
         with:
           name: app-licenses
-          path: target/licenses/
+          path: ${{ runner.temp }}/licenses/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
@@ -205,7 +200,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: app-licenses
-          path: target/licenses
+          path: ${{ runner.temp }}/licenses
       - name: Check desktop native code
         env:
           MACOSX_DEPLOYMENT_TARGET: "15.0"
@@ -242,7 +237,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          cargo xtask package --target "$TARGET" --licenses-dir target/licenses
+          cargo xtask package --target "$TARGET" --licenses-dir "$RUNNER_TEMP/licenses"
       - name: Verify package contents
         if: startsWith(github.ref, 'refs/tags/')
         env:
