@@ -1,5 +1,4 @@
 use super::*;
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     io::{Read, Write},
@@ -45,14 +44,21 @@ fn installer_files(directory: &Path) -> Result<Vec<PathBuf>> {
     files.sort();
     Ok(files)
 }
-fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Result<Vec<PathBuf>> {
-    anyhow::ensure!(
-        !target.is_empty()
-            && target
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_'),
-        "Invalid target"
-    );
+fn prepare(
+    root: &Path,
+    tag: &str,
+    target: &str,
+    destination: &Path,
+    part_size: u64,
+) -> Result<Vec<PathBuf>> {
+    let version = semver::Version::parse(tag).context("Release tag must be MAJOR.MINOR.PATCH")?;
+    let platform = match target {
+        "x86_64-pc-windows-msvc" => "windows_x64",
+        "aarch64-apple-darwin" => "macos_arm64",
+        "x86_64-unknown-linux-gnu" => "linux_x64",
+        _ => bail!("Unsupported desktop target: {target}"),
+    };
+    let prefix = format!("irodoru_{version}_{platform}");
     anyhow::ensure!(
         part_size > 0 && part_size < 1 << 31,
         "Invalid release part size"
@@ -61,18 +67,21 @@ fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Res
     let mut assets = Vec::new();
     let mut names = HashSet::new();
     let mut instructions = String::from(
-        "Download all parts for your platform into one folder. Join them before opening or installing the app.\nWindows: use Command Prompt (cmd.exe), extract the ZIP and run irodoru.exe.\nVerify the joined file: Get-FileHash FILE -Algorithm SHA256 (PowerShell), shasum -a 256 -c FILE.sha256 (macOS), sha256sum -c FILE.sha256 (Linux).\n",
+        "Download all parts for your platform into one folder. Verify each part against its SHA-256 digest on the GitHub release page, then join them before opening or installing the app.\nWindows: use Command Prompt (cmd.exe), extract the ZIP and run irodoru.exe.\n",
     );
     let mut split = false;
     for file in installer_files(&root.join("target").join(target).join("release/bundle"))? {
-        let ext = file.extension().unwrap_or_default().to_string_lossy();
-        if !["exe", "dmg", "deb", "appimage", "zip"].contains(&ext.to_lowercase().as_str()) {
-            continue;
-        }
-        let name = format!(
-            "{}-{target}.{ext}",
-            file.file_stem().unwrap().to_string_lossy()
-        );
+        let ext = file
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
+        let ext = match ext.as_str() {
+            "appimage" => "AppImage",
+            "exe" | "dmg" | "deb" | "zip" => ext.as_str(),
+            _ => continue,
+        };
+        let name = format!("{prefix}.{ext}");
         anyhow::ensure!(
             names.insert(name.clone()),
             "Duplicate installer name: {name}"
@@ -80,7 +89,6 @@ fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Res
         let size = fs::metadata(&file)?.len();
         let count = size.div_ceil(part_size).max(1);
         let mut input = fs::File::open(file)?;
-        let mut hash = Sha256::new();
         let mut parts = Vec::new();
         for part in 0..count {
             let filename = if count == 1 {
@@ -99,20 +107,11 @@ fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Res
                     break;
                 }
                 out.write_all(&buffer[..n])?;
-                hash.update(&buffer[..n]);
                 remaining -= n as u64;
             }
             assets.push(path);
             parts.push(filename);
         }
-        let checksum = destination.join(format!("{name}.sha256"));
-        let digest: String = hash
-            .finalize()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        fs::write(&checksum, format!("{digest}  {name}\n"))?;
-        assets.push(checksum);
         if count > 1 {
             split = true;
             instructions.push_str(&format!(
@@ -132,7 +131,7 @@ fn prepare(root: &Path, target: &str, destination: &Path, part_size: u64) -> Res
     }
     anyhow::ensure!(!names.is_empty(), "No installers found");
     if split {
-        let path = destination.join(format!("irodoru-{target}-README.txt"));
+        let path = destination.join(format!("{prefix}_README.txt"));
         fs::write(&path, instructions)?;
         assets.push(path);
     }
@@ -145,8 +144,14 @@ pub fn cli(args: &[String]) -> Result<()> {
         return set_version(&root(), &args[1]);
     }
     match args.first().map(String::as_str) {
-        Some("app") if args.len() == 3 => {
-            prepare(&root(), &args[1], Path::new(&args[2]), 1024 * 1024 * 1024)?;
+        Some("app") if args.len() == 4 => {
+            prepare(
+                &root(),
+                &args[1],
+                &args[2],
+                Path::new(&args[3]),
+                1024 * 1024 * 1024,
+            )?;
         }
         Some("container") if args.len() == 2 => {
             let image = env::var("IMAGE")?.to_lowercase();
@@ -179,7 +184,7 @@ pub fn cli(args: &[String]) -> Result<()> {
                 ),
             )?;
         }
-        _ => bail!("Usage: cargo xtask release version TAG | app TARGET DEST | container DEST"),
+        _ => bail!("Usage: cargo xtask release version TAG | app TAG TARGET DEST | container DEST"),
     }
     Ok(())
 }
@@ -187,45 +192,77 @@ pub fn cli(args: &[String]) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn split_files_rejoin_and_checksum_matches_original() {
+    fn split_files_rejoin_to_original() {
         let dir = tempfile::tempdir().unwrap();
-        let source = dir.path().join("target/test/release/bundle");
+        let target = "x86_64-pc-windows-msvc";
+        let source = dir
+            .path()
+            .join("target")
+            .join(target)
+            .join("release/bundle");
         fs::create_dir_all(&source).unwrap();
         fs::write(source.join("app.zip"), b"1234567890").unwrap();
         let dest = dir.path().join("assets");
-        let assets = prepare(dir.path(), "test", &dest, 4).unwrap();
-        assert_eq!(assets.len(), 5);
+        let assets = prepare(dir.path(), "0.0.5-beta.1", target, &dest, 4).unwrap();
+        assert_eq!(assets.len(), 4);
         let joined: Vec<u8> = (1..=3)
-            .flat_map(|i| fs::read(dest.join(format!("app-test.zip.part{i:03}"))).unwrap())
+            .flat_map(|i| {
+                fs::read(dest.join(format!("irodoru_0.0.5-beta.1_windows_x64.zip.part{i:03}")))
+                    .unwrap()
+            })
             .collect();
         assert_eq!(joined, b"1234567890");
-        let expected = "c775e7b757ede630cd0aa1113bd102661ab38829ca52a6422ab782862f268646";
-        assert!(
-            fs::read_to_string(dest.join("app-test.zip.sha256"))
-                .unwrap()
-                .starts_with(expected)
-        );
+        let instructions =
+            fs::read_to_string(dest.join("irodoru_0.0.5-beta.1_windows_x64_README.txt")).unwrap();
+        assert!(instructions.contains("irodoru_0.0.5-beta.1_windows_x64.zip.part003"));
         fs::create_dir(source.join("nested")).unwrap();
         fs::write(source.join("nested/app.zip"), b"duplicate").unwrap();
-        assert!(prepare(dir.path(), "test", &dest, 4).is_err());
+        assert!(prepare(dir.path(), "0.0.5-beta.1", target, &dest, 4).is_err());
     }
     #[test]
-    fn release_ignores_packager_intermediates() {
-        let dir = tempfile::tempdir().unwrap();
-        let bundle = dir.path().join("target/test/release/bundle");
-        let intermediate = bundle.join(".cargo-packager/appimage/app.AppDir");
-        fs::create_dir_all(&intermediate).unwrap();
-        fs::write(intermediate.join("temporary.AppImage"), b"not a release").unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink("missing", intermediate.join("AppRun")).unwrap();
-        fs::write(bundle.join("app.AppImage"), b"installer").unwrap();
-        let assets = prepare(dir.path(), "test", &dir.path().join("assets"), 1024).unwrap();
-        assert_eq!(assets.len(), 2);
-        assert!(
-            assets
-                .iter()
-                .all(|p| !p.to_string_lossy().contains("temporary"))
-        );
+    fn release_names_are_consistent_and_ignore_packager_intermediates() {
+        for (target, source, expected) in [
+            (
+                "x86_64-pc-windows-msvc",
+                "irodoru_windows.zip",
+                "irodoru_0.0.4_windows_x64.zip",
+            ),
+            (
+                "aarch64-apple-darwin",
+                "irodoru_0.0.4_aarch64.dmg",
+                "irodoru_0.0.4_macos_arm64.dmg",
+            ),
+            (
+                "x86_64-unknown-linux-gnu",
+                "irodoru_0.0.4_amd64.deb",
+                "irodoru_0.0.4_linux_x64.deb",
+            ),
+            (
+                "x86_64-unknown-linux-gnu",
+                "irodoru_0.0.4_x86_64.AppImage",
+                "irodoru_0.0.4_linux_x64.AppImage",
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let bundle = dir
+                .path()
+                .join("target")
+                .join(target)
+                .join("release/bundle");
+            let intermediate = bundle.join(".cargo-packager/appimage/app.AppDir");
+            fs::create_dir_all(&intermediate).unwrap();
+            fs::write(intermediate.join("temporary.AppImage"), b"not a release").unwrap();
+            #[cfg(unix)]
+            std::os::unix::fs::symlink("missing", intermediate.join("AppRun")).unwrap();
+            fs::write(bundle.join(source), b"installer").unwrap();
+            let dest = dir.path().join("assets");
+            let assets = prepare(dir.path(), "0.0.4", target, &dest, 1024).unwrap();
+            assert_eq!(assets, vec![dest.join(expected)]);
+            assert_eq!(fs::read(&assets[0]).unwrap(), b"installer");
+            assert_eq!(fs::read_dir(&dest).unwrap().count(), 1);
+            assert!(prepare(dir.path(), "../bad", target, &dest, 1024).is_err());
+            assert!(prepare(dir.path(), "0.0.4", "unsupported", &dest, 1024).is_err());
+        }
     }
     #[test]
     fn version_updates_only_app_in_lock() {

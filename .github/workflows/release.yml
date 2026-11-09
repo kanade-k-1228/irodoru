@@ -51,12 +51,14 @@ jobs:
           name: release-container
           path: release-assets
       - name: Prepare app release assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           for artifact in artifacts/irodoru-*; do
             target=${artifact##*/irodoru-}
             mkdir -p "target/$target/release"
             mv "$artifact" "target/$target/release/bundle"
-            cargo xtask release app "$target" release-assets
+            cargo xtask release app "$RELEASE_TAG" "$target" release-assets
           done
       - name: Upload all assets and publish with generated notes
         env:
