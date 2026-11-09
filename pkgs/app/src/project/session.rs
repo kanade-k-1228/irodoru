@@ -83,10 +83,10 @@ impl Session {
             }
         }
     }
-    fn validate(&self) -> Result<()> {
+    pub(super) fn validate(&self) -> Result<()> {
         let editor = self.library.editor()?;
         let characters = self.library.characters()?;
-        let takes = self.library.takes()?;
+        let voices = self.library.voices()?;
         let mut rows = std::collections::HashSet::new();
         for row in &editor.rows {
             if row.id.is_empty() || row.id.len() > 64 || !rows.insert(&row.id) {
@@ -97,22 +97,19 @@ impl Session {
                 bail!("キャラクタが見つかりません");
             }
             if let Some(id) = &row.take_id
-                && !takes
-                    .iter()
-                    .any(|take| &take.id == id && take.row_id == row.id)
+                && !voices.iter().any(|voice| matches!(voice, crate::domain::Voice::Generated(take) if &take.id == id && take.row_id == row.id))
             {
                 bail!("生成音声が見つかりません");
             }
         }
-        for take in &takes {
-            if !rows.contains(&take.row_id) {
-                bail!("生成音声と台本が一致しません");
-            }
-            crate::audio::validate_wav(&self.library.audio(&take.id)?)?;
+        for voice in &voices {
+            crate::audio::validate_wav(&self.library.audio(voice.id())?)?;
         }
         for character in characters {
-            if let Some(voice) = character.voice {
-                crate::audio::validate_wav(&self.library.voice(&voice)?)?;
+            for id in character.voice_ids {
+                if !voices.iter().any(|v| v.id() == id) {
+                    bail!("キャラクターの参照音声が見つかりません");
+                }
             }
         }
         Ok(())

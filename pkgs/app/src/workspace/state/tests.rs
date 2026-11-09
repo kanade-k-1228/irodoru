@@ -4,7 +4,7 @@ fn draft() -> Draft {
     let input = CharacterInput {
         name: "編集中".into(),
         description: String::new(),
-        voice: None,
+        voice_ids: Vec::new(),
         color: None,
         sample_text: None,
         icon: None,
@@ -125,7 +125,7 @@ fn character() -> crate::domain::Character {
     CharacterInput {
         name: "声".into(),
         description: "明るい声".into(),
-        voice: None,
+        voice_ids: Vec::new(),
         color: None,
         sample_text: None,
         icon: None,
@@ -293,7 +293,7 @@ fn character_duplication_preserves_settings_and_uses_unique_bounded_names() {
     state.status.id = Some("project".into());
     let mut original = character();
     original.name = "あ".repeat(64);
-    original.voice = Some("reference.wav".into());
+    original.voice_ids = vec![crate::domain::new_id()];
     original.icon = Some("data:image/png;base64,icon".into());
     state.snapshot.editor.active_character = original.id.clone();
     state.snapshot.characters.push(original.clone());
@@ -306,7 +306,7 @@ fn character_duplication_preserves_settings_and_uses_unique_bounded_names() {
         assert!(preview.is_none());
         assert_eq!(input.name, format!("{} - {index}", "あ".repeat(60)));
         assert_eq!(input.description, original.description);
-        assert_eq!(input.voice, original.voice);
+        assert_eq!(input.voice_ids, original.voice_ids);
         assert_eq!(input.icon, original.icon);
         assert_eq!(input.color.as_ref(), Some(&original.color));
         assert_eq!(input.sample_text.as_ref(), Some(&original.sample_text));
@@ -323,4 +323,29 @@ fn character_duplication_preserves_settings_and_uses_unique_bounded_names() {
     state.draft = None;
     state.status.id = None;
     assert!(state.duplicate_character().is_none());
+}
+
+#[test]
+fn reference_selection_is_additive_and_can_remove_individual_voices() {
+    let mut state = WorkspaceState::default();
+    assert!(state.edit_character(None));
+    state.toggle_draft_voice(Some("first".into()));
+    state.toggle_draft_voice(Some("second".into()));
+    state.apply(Event::Voice("third".into()));
+    state.apply(Event::Voice("third".into()));
+    assert_eq!(
+        state.draft.as_ref().unwrap().input.voice_ids,
+        ["first", "second", "third"]
+    );
+    state.toggle_draft_voice(Some("second".into()));
+    assert_eq!(
+        state.draft.as_ref().unwrap().input.voice_ids,
+        ["first", "third"]
+    );
+    state.busy = true;
+    state.toggle_draft_voice(None);
+    assert_eq!(state.draft.as_ref().unwrap().input.voice_ids.len(), 2);
+    state.busy = false;
+    state.toggle_draft_voice(None);
+    assert!(state.draft.as_ref().unwrap().input.voice_ids.is_empty());
 }

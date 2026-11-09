@@ -1,8 +1,5 @@
 //! Ordered application commands. All storage and synthesis work runs off the UI thread.
-use crate::{
-    domain::TakeRequest, domain::new_id, project::Project, synthesis::Inference,
-    synthesis::generation,
-};
+use crate::{domain::TakeRequest, project::Project, synthesis::Inference, synthesis::generation};
 use anyhow::Result;
 use std::sync::{
     Arc,
@@ -67,7 +64,7 @@ impl Worker {
                     .collect::<Result<_, _>>()?,
                 editor: s.library.editor()?,
                 takes: s.library.takes()?,
-                voices: s.library.voices(&characters)?,
+                voices: s.library.voices()?,
                 characters,
             })
         })?;
@@ -90,11 +87,7 @@ impl Worker {
                 .into_iter()
                 .map(|request| {
                     let character = s.library.character(&request.character_id)?;
-                    let reference_audio = character
-                        .voice
-                        .as_ref()
-                        .map(|v| s.library.voice(v))
-                        .transpose()?;
+                    let reference_audio = s.library.reference_audio(&character.voice_ids)?;
                     Ok(generation::GenerationInput {
                         request,
                         character,
@@ -131,6 +124,17 @@ impl Worker {
         match command {
             Command::Open { path, create } => {
                 self.project.open(&path, create)?;
+                self.snapshot()?;
+            }
+            Command::NewFromCharacters(path) => {
+                self.project.create_from_characters(&path)?;
+                self.snapshot()?;
+            }
+            Command::ExportCharacter { input, path } => {
+                self.project.read(|s| s.export_character(input, &path))?;
+            }
+            Command::ImportCharacter(path) => {
+                self.project.change(|s| s.import_character(&path))?;
                 self.snapshot()?;
             }
             Command::SaveEditor(editor) => {
@@ -172,12 +176,26 @@ impl Worker {
                 self.project.change(|s| Ok(s.library.delete_take(&id)?))?;
                 self.snapshot()?;
             }
-            Command::ImportVoice(path) => {
-                let wav = crate::audio::import_audio(&path)?;
-                let id = format!("reference-{}", new_id());
-                self.project
-                    .change(|s| Ok(s.library.save_voice(&id, &wav)?))?;
-                self.events.send(Event::Voice(id))?;
+            Command::ImportVoices(paths) => {
+                // Decode every file before changing the project.
+                let audio = paths
+                    .iter()
+                    .map(|path| {
+                        Ok((
+                            path.file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned(),
+                            crate::audio::import_recording(path)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                for (name, wav) in audio {
+                    let id = self
+                        .project
+                        .change(|s| Ok(s.library.save_voice(&name, &wav)?))?;
+                    self.events.send(Event::Voice(id))?;
+                }
                 self.snapshot()?;
             }
             Command::ImportIcon(path) => {
@@ -191,11 +209,11 @@ impl Worker {
             Command::Preview {
                 input,
                 description,
-                voice,
+                voice_ids,
             } => {
                 let prepared = self.project.read(|s| {
-                    let reference_audio = voice.as_ref().map(|v| s.library.voice(v)).transpose()?;
-                    generation::prepare_preview(input, description, voice, reference_audio)
+                    let reference_audio = s.library.reference_audio(&voice_ids)?;
+                    generation::prepare_preview(input, description, voice_ids, reference_audio)
                 })?;
                 let (take, wav) =
                     generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
@@ -335,7 +353,7 @@ mod tests {
                 Ok(s.library.create_character(CharacterInput {
                     name: "声".into(),
                     description: "明るい声".into(),
-                    voice: None,
+                    voice_ids: Vec::new(),
                     color: None,
                     icon: None,
                     sample_text: None,

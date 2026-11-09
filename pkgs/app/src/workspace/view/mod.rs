@@ -75,7 +75,8 @@ mod playback;
 
 mod appearance;
 
-mod character_view;
+mod character_panel;
+mod footer;
 
 mod app_dialog;
 mod app_menu;
@@ -94,10 +95,8 @@ impl Studio {
     }
 }
 
-mod characters;
 mod components;
 mod generation_controls;
 mod layout;
-mod line_editor;
 mod player;
 mod script;

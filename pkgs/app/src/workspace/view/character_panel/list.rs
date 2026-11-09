@@ -1,12 +1,16 @@
-use super::Studio;
-use super::appearance::tool;
 use crate::domain::Character;
+use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::tool;
 use gpui_kit::component::Disableable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn characters(&self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::workspace::view) fn characters(
+        &self,
+        narrow: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = self.palette();
         div()
             .w(px(if narrow { 56. } else { 208. }))

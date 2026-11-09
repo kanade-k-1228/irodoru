@@ -1,8 +1,8 @@
 //! Character editor composition, followed by each form section.
-use super::Studio;
-use super::appearance::{button, icon, tool};
 use crate::domain::AudioSource;
 use crate::workspace::state::Draft;
+use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::{button, icon, tool};
 use gpui_kit::component::Disableable;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::button::Button;
@@ -14,7 +14,11 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn character_editor(&self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::workspace::view) fn character_editor(
+        &self,
+        narrow: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let draft = self.state.draft.as_ref().unwrap();
         div()
             .flex_1()
@@ -59,6 +63,15 @@ impl Studio {
                         })),
                 )
             })
+            .child(
+                tool(
+                    "export-character",
+                    "download",
+                    "キャラクターファイルを書き出す",
+                )
+                .disabled(disabled || draft.input.name.trim().is_empty())
+                .on_click(cx.listener(|this, _, w, cx| this.character_file(true, w, cx))),
+            )
             .child(
                 tool("cancel-character", "close", "キャンセル")
                     .disabled(disabled)
@@ -110,25 +123,26 @@ impl Studio {
             .child(self.character_identity(draft, cx))
             .child(self.character_description())
             .child(self.reference_voice_actions(cx))
-            .child(
-                div().text_xs().text_color(p.muted).child(
-                    draft
-                        .input
-                        .voice
-                        .clone()
-                        .unwrap_or_else(|| "参照音声なし".into()),
-                ),
-            )
+            .child(div().text_xs().text_color(p.muted).child(format!(
+                "参照音声 {}件 — 選択したすべての音声を使用",
+                draft.input.voice_ids.len()
+            )))
             .children(self.state.snapshot.voices.iter().enumerate().map(|(i, v)| {
-                let voice = v.clone();
+                let voice = v.id().to_owned();
+                let selected = draft.input.voice_ids.contains(&voice);
                 Button::new(("voice", i))
                     .cursor_pointer()
                     .small()
-                    .label(v.clone())
+                    .label(format!(
+                        "{} {}",
+                        if selected { "✓" } else { "＋" },
+                        v.label()
+                    ))
+                    .when(selected, |el| el.bg(p.soft).border_color(self.accent()))
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.state.set_draft_voice(Some(voice.clone()));
+                        this.state.toggle_draft_voice(Some(voice.clone()));
                         cx.notify();
                     }))
             }))
@@ -213,7 +227,7 @@ impl Studio {
                 },
             )
             .when_some(
-                super::components::character_icon(draft.input.icon.as_deref()),
+                crate::workspace::view::components::character_icon(draft.input.icon.as_deref()),
                 |el, image| el.child(img(image).size(px(40.)).rounded_full()),
             )
             .disabled(disabled)
@@ -260,7 +274,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.state.set_draft_voice(None);
+                        this.state.toggle_draft_voice(None);
                         cx.notify();
                     })),
             )

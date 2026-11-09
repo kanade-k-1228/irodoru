@@ -38,6 +38,37 @@ impl Project {
         Ok(())
     }
 
+    pub fn create_from_characters(&mut self, path: &Path) -> Result<()> {
+        super::validate_path(path)?;
+        self.flush()?;
+        // Reserve separately: the current project remains open if copying or saving fails.
+        let mut ownership = WindowProject::default();
+        let mut session = ownership.open(path, true)?;
+        self.read(|source| {
+            let ids = source
+                .library
+                .characters()?
+                .into_iter()
+                .map(|c| c.id)
+                .collect::<Vec<_>>();
+            source.library.copy_characters_to(&session.library, &ids)?;
+            let editor = crate::domain::EditorState {
+                preferences: source.library.editor()?.preferences,
+                active_character: ids.first().cloned().unwrap_or_default(),
+                ..Default::default()
+            };
+            Ok(session.library.save_editor(&editor)?)
+        })?;
+        super::archive::write_archive(&super::archive::snapshot(&session)?)?;
+        session.saved = session.revision;
+        *self
+            .session
+            .lock()
+            .map_err(|_| anyhow::anyhow!("project lock poisoned"))? = Some(session);
+        self.ownership = ownership;
+        Ok(())
+    }
+
     pub fn read<T>(&self, read: impl FnOnce(&Session) -> Result<T>) -> Result<T> {
         let guard = self
             .session

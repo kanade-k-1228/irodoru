@@ -4,7 +4,7 @@ use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{AppError, Character, CharacterInput, Take, new_id, valid_id};
+use crate::domain::{AppError, Character, CharacterInput, Take, Voice, new_id, valid_id};
 use crate::files::atomic_bytes;
 
 pub struct Library {
@@ -14,8 +14,9 @@ pub struct Library {
 #[derive(Serialize, Deserialize)]
 struct ProjectDocument {
     version: u32,
-    #[serde(flatten)]
-    editor: crate::domain::EditorState,
+    scripts: Vec<String>,
+    preferences: crate::domain::GenerationSettings,
+    active_character: String,
 }
 
 fn check_id(id: &str) -> Result<(), AppError> {
@@ -40,7 +41,7 @@ impl Library {
     pub fn open(root: &FsPath) -> Result<Self> {
         std::fs::create_dir_all(root.join("characters"))?;
         std::fs::create_dir_all(root.join("voices"))?;
-        std::fs::create_dir_all(root.join(".imports"))?;
+        std::fs::create_dir_all(root.join("scripts"))?;
         Ok(Self {
             root: root.to_owned(),
         })
@@ -62,10 +63,32 @@ impl Library {
             return Ok(crate::domain::EditorState::default());
         }
         let project: ProjectDocument = read_yaml(&path)?;
-        if project.version != 1 {
+        if project.version != 2 {
             return Err(AppError::invalid("未対応のプロジェクト形式です"));
         }
-        Ok(project.editor)
+        let mut rows = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for id in project.scripts {
+            if !seen.insert(id.clone()) {
+                return Err(AppError::invalid("台本の行 ID が重複しています"));
+            }
+            let row: crate::domain::ScriptRow = read_yaml(&self.script_path(&id)?)?;
+            if row.id != id {
+                return Err(AppError::invalid("台本の行 ID が一致しません"));
+            }
+            rows.push(row);
+        }
+        Ok(crate::domain::EditorState {
+            rows,
+            preferences: project.preferences,
+            active_character: project.active_character,
+        })
+    }
+    fn script_path(&self, id: &str) -> Result<PathBuf, AppError> {
+        if !valid_script_id(id) {
+            return Err(AppError::invalid("台本の行 ID が不正です"));
+        }
+        Ok(self.root.join("scripts").join(format!("{id}.yaml")))
     }
     pub fn save_editor(&self, state: &crate::domain::EditorState) -> Result<(), AppError> {
         let takes = self.takes()?;
@@ -84,64 +107,110 @@ impl Library {
                         .any(|take| &take.id == id && take.row_id == row.id)
                 });
         }
-        self.write_editor(&editor)?;
-        for take in takes {
-            if !editor.rows.iter().any(|row| row.id == take.row_id) {
-                self.delete_take(&take.id)?;
-            }
-        }
-        Ok(())
+        self.write_editor(&editor)
     }
     fn write_editor(&self, editor: &crate::domain::EditorState) -> Result<(), AppError> {
-        self.atomic_yaml(
-            &self.root.join("project.yaml"),
-            &ProjectDocument {
-                version: 1,
-                editor: editor.clone(),
-            },
-        )
-    }
-    pub fn voices(&self, characters: &[Character]) -> Result<Vec<String>, AppError> {
-        let mut names: Vec<_> = characters.iter().filter_map(|c| c.voice.clone()).collect();
-        for entry in std::fs::read_dir(self.root.join(".imports")).map_err(AppError::internal)? {
-            let path = entry.map_err(AppError::internal)?.path();
-            if path.extension().is_some_and(|e| e == "wav") {
-                names.push(path.file_stem().unwrap().to_string_lossy().into_owned());
+        let mut seen = std::collections::HashSet::new();
+        for row in &editor.rows {
+            self.script_path(&row.id)?;
+            if !seen.insert(&row.id) {
+                return Err(AppError::invalid("台本の行 ID が重複しています"));
             }
         }
-        names.sort();
-        names.dedup();
-        Ok(names)
-    }
-    fn voice_path(&self, name: &str) -> Result<PathBuf, AppError> {
-        if let Some(id) = name.strip_suffix("/reference.wav") {
-            check_id(id)?;
-            return Ok(self.root.join("characters").join(id).join("reference.wav"));
+        let staging = tempfile::Builder::new()
+            .prefix(".scripts-")
+            .tempdir_in(&self.root)
+            .map_err(AppError::internal)?;
+        let next = staging.path().join("next");
+        let previous = staging.path().join("previous");
+        std::fs::create_dir(&next).map_err(AppError::internal)?;
+        for row in &editor.rows {
+            self.atomic_yaml(&next.join(format!("{}.yaml", row.id)), row)?;
         }
-        if name.is_empty()
-            || name.chars().count() > 64
-            || name.starts_with('.')
-            || name.chars().any(|c| {
-                c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-            })
-        {
-            return Err(AppError::invalid("invalid reference voice name"));
+        let scripts = self.root.join("scripts");
+        std::fs::rename(&scripts, &previous).map_err(AppError::internal)?;
+        let result = (|| {
+            std::fs::rename(&next, &scripts).map_err(AppError::internal)?;
+            self.atomic_yaml(
+                &self.root.join("project.yaml"),
+                &ProjectDocument {
+                    version: 2,
+                    scripts: editor.rows.iter().map(|r| r.id.clone()).collect(),
+                    preferences: editor.preferences.clone(),
+                    active_character: editor.active_character.clone(),
+                },
+            )
+        })();
+        if result.is_err() {
+            if scripts.exists() {
+                std::fs::remove_dir_all(&scripts).map_err(AppError::internal)?;
+            }
+            std::fs::rename(&previous, &scripts).map_err(AppError::internal)?;
         }
-        Ok(self.root.join(".imports").join(format!("{name}.wav")))
+        result
     }
-    pub fn voice(&self, name: &str) -> Result<Vec<u8>, AppError> {
-        std::fs::read(self.voice_path(name)?).map_err(AppError::internal)
+
+    pub fn voices(&self) -> Result<Vec<Voice>, AppError> {
+        let mut voices = Vec::new();
+        for entry in std::fs::read_dir(self.root.join("voices")).map_err(AppError::internal)? {
+            let entry = entry.map_err(AppError::internal)?;
+            if let Some(id) = entry
+                .path()
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .filter(|id| valid_id(id))
+                && entry.path().extension().is_some_and(|ext| ext == "wav")
+            {
+                voices.push(self.voice_record(id)?);
+            }
+        }
+        voices.sort_by_key(|v| v.id().to_owned());
+        Ok(voices)
     }
-    pub fn save_voice(&self, name: &str, wav: &[u8]) -> Result<(), AppError> {
-        use std::io::Write;
-        crate::audio::validate_wav(wav).map_err(AppError::invalid)?;
-        let path = self.voice_path(name)?;
-        let mut temp =
-            tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(AppError::internal)?;
-        temp.write_all(wav).map_err(AppError::internal)?;
-        temp.as_file().sync_all().map_err(AppError::internal)?;
-        temp.persist_noclobber(path).map_err(AppError::internal)?;
-        Ok(())
+    pub fn voice_record(&self, id: &str) -> Result<Voice, AppError> {
+        check_id(id)?;
+        let mut file = std::fs::File::open(self.voice_path(id)?).map_err(AppError::internal)?;
+        let voice = crate::audio::read_voice(&mut file)
+            .map_err(AppError::invalid)?
+            .ok_or_else(|| AppError::invalid("WAV に音声情報がありません"))?;
+        if voice.id() != id {
+            return Err(AppError::invalid("音声 ID が一致しません"));
+        }
+        Ok(voice)
+    }
+    pub fn reference_audio(&self, ids: &[String]) -> Result<Vec<Vec<u8>>, AppError> {
+        ids.iter().map(|id| self.audio(id)).collect()
+    }
+    pub fn save_voice(&self, name: &str, wav: &[u8]) -> Result<String, AppError> {
+        let duration = crate::audio::validate_wav(wav).map_err(AppError::invalid)?;
+        let id = new_id();
+        let mut voice = crate::audio::read_voice(&mut std::io::Cursor::new(wav))
+            .map_err(AppError::invalid)?
+            .unwrap_or_else(|| Voice::Imported {
+                id: id.clone(),
+                name: name.into(),
+            });
+        match &mut voice {
+            Voice::Imported { id: stored, .. } => *stored = id.clone(),
+            Voice::Generated(take) => {
+                take.id = id.clone();
+                take.audio_seconds = duration;
+            }
+        }
+        self.store_voice(&voice, wav)?;
+        Ok(id)
+    }
+    fn store_voice(&self, voice: &Voice, wav: &[u8]) -> Result<(), AppError> {
+        let path = self.voice_path(voice.id())?;
+        if path.exists() {
+            return Err(AppError::invalid("音声 ID が重複しています"));
+        }
+        let wav = crate::audio::with_voice(wav, voice).map_err(AppError::invalid)?;
+        atomic_bytes(&path, &wav)
+    }
+    fn voice_path(&self, id: &str) -> Result<PathBuf, AppError> {
+        check_id(id)?;
+        Ok(self.root.join("voices").join(format!("{id}.wav")))
     }
     pub fn character(&self, id: &str) -> Result<Character, AppError> {
         check_id(id)?;
@@ -149,12 +218,6 @@ impl Library {
         let mut character: Character = read_yaml(&dir.join("character.yaml"))?;
         if character.id != id {
             return Err(AppError::invalid("キャラクタ ID が一致しません"));
-        }
-        if let Some(voice) = &character.voice {
-            if voice != "reference.wav" {
-                return Err(AppError::invalid("invalid reference path"));
-            }
-            character.voice = Some(format!("{id}/reference.wav"));
         }
         if let Some(icon) = &character.icon {
             if icon != "icon.png" {
@@ -220,8 +283,8 @@ impl Library {
     fn save_character(&self, id: String, input: CharacterInput) -> Result<Character, AppError> {
         check_id(&id)?;
         let character = input.normalize(id)?;
-        if let Some(voice) = &character.voice {
-            self.voice(voice)?;
+        for voice in &character.voice_ids {
+            self.voice_record(voice)?;
         }
         let icon = &character.icon;
         if let Some(value) = icon {
@@ -236,10 +299,6 @@ impl Library {
         let dir = self.root.join("characters").join(&character.id);
         std::fs::create_dir_all(&dir).map_err(AppError::internal)?;
         let mut stored = character.clone();
-        if let Some(voice) = &character.voice {
-            atomic_bytes(&dir.join("reference.wav"), &self.voice(voice)?)?;
-            stored.voice = Some("reference.wav".into());
-        }
         if let Some(icon) = &character.icon {
             atomic_bytes(
                 &dir.join("icon.png"),
@@ -250,13 +309,8 @@ impl Library {
             stored.icon = Some("icon.png".into());
         }
         self.atomic_yaml(&dir.join("character.yaml"), &stored)?;
-        for (keep, name) in [
-            (stored.voice.is_some(), "reference.wav"),
-            (stored.icon.is_some(), "icon.png"),
-        ] {
-            if !keep && dir.join(name).exists() {
-                std::fs::remove_file(dir.join(name)).map_err(AppError::internal)?;
-            }
+        if stored.icon.is_none() && dir.join("icon.png").exists() {
+            std::fs::remove_file(dir.join("icon.png")).map_err(AppError::internal)?;
         }
         self.character(&character.id)
     }
@@ -267,58 +321,34 @@ impl Library {
         preview: &str,
     ) -> Result<(), AppError> {
         self.character(id)?;
-        let take: Take = read_yaml(&source.take_dir(preview)?.join("meta.yaml"))?;
-        let dir = self.root.join("characters").join(id).join("previews");
-        std::fs::create_dir_all(&dir).map_err(AppError::internal)?;
-        atomic_bytes(&dir.join("audio.wav"), &source.audio(preview)?)?;
-        self.atomic_yaml(&dir.join("meta.yaml"), &take)
+        atomic_bytes(
+            &self.root.join("characters").join(id).join("preview.wav"),
+            &source.audio(preview)?,
+        )
     }
     pub fn character_preview_path(&self, id: &str) -> Result<Option<PathBuf>, AppError> {
         check_id(id)?;
-        let path = self
-            .root
-            .join("characters")
-            .join(id)
-            .join("previews/audio.wav");
+        let path = self.root.join("characters").join(id).join("preview.wav");
         Ok(path.is_file().then_some(path))
     }
     pub fn takes(&self) -> Result<Vec<Take>, AppError> {
-        let mut out = Vec::new();
-        for entry in std::fs::read_dir(self.root.join("voices")).map_err(AppError::internal)? {
-            let entry = entry.map_err(AppError::internal)?;
-            if entry.file_name().to_str().is_some_and(valid_id) {
-                let take: Take = read_yaml(&entry.path().join("meta.yaml"))?;
-                if entry.file_name().to_str() != Some(&take.id) {
-                    return Err(AppError::invalid("生成音声 ID が一致しません"));
-                }
-                out.push(take);
-            }
-        }
-        out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
-        Ok(out)
+        let mut takes: Vec<_> = self
+            .voices()?
+            .into_iter()
+            .filter_map(|v| match v {
+                Voice::Generated(take) => Some(*take),
+                Voice::Imported { .. } => None,
+            })
+            .collect();
+        takes.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+        Ok(takes)
     }
     pub fn save_take(&self, take: &Take, wav: &[u8]) -> Result<(), AppError> {
-        check_id(&take.id)?;
-        let dir = self.root.join("voices");
-        let temp = dir.join(format!(".{}", take.id));
-        let write = || -> Result<()> {
-            std::fs::create_dir(&temp)?;
-            std::fs::write(temp.join("audio.wav"), wav)?;
-            std::fs::write(
-                temp.join("meta.yaml"),
-                serde_yaml::to_string(take)?.as_bytes(),
-            )?;
-            std::fs::rename(&temp, dir.join(&take.id))?;
-            Ok(())
-        };
-        if let Err(e) = write() {
-            let _ = std::fs::remove_dir_all(temp);
-            return Err(AppError::internal(e));
-        }
+        self.store_voice(&Voice::Generated(Box::new(take.clone())), wav)?;
         let mut editor = self.editor()?;
         for row in &mut editor.rows {
             if row.id == take.row_id {
-                take.restore_row(row, &editor.preferences);
+                take.restore_row(row);
             }
         }
         self.write_editor(&editor)?;
@@ -327,7 +357,9 @@ impl Library {
 
     pub fn select_take(&self, row_id: &str, take_id: Option<&str>) -> Result<(), AppError> {
         let take = if let Some(id) = take_id {
-            let take: Take = read_yaml(&self.take_dir(id)?.join("meta.yaml"))?;
+            let Voice::Generated(take) = self.voice_record(id)? else {
+                return Err(AppError::invalid("生成音声ではありません"));
+            };
             if take.row_id != row_id {
                 return Err(AppError::invalid("このセリフのテイクではありません"));
             }
@@ -342,26 +374,28 @@ impl Library {
             .find(|row| row.id == row_id)
             .ok_or_else(|| AppError::invalid("セリフが見つかりません"))?;
         if let Some(take) = take {
-            take.restore_row(row, &editor.preferences);
+            take.restore_row(row);
         } else {
             row.take_id = None;
         }
         self.write_editor(&editor)
     }
 
-    fn take_dir(&self, id: &str) -> Result<PathBuf, AppError> {
-        check_id(id)?;
-        let dir = self.root.join("voices").join(id);
-        let _: Take = read_yaml(&dir.join("meta.yaml"))?;
-        Ok(dir)
-    }
-
     pub fn audio(&self, id: &str) -> Result<Vec<u8>, AppError> {
-        std::fs::read(self.take_dir(id)?.join("audio.wav")).map_err(AppError::internal)
+        std::fs::read(self.voice_path(id)?).map_err(AppError::internal)
     }
 
     pub fn delete_take(&self, id: &str) -> Result<(), AppError> {
-        std::fs::remove_dir_all(self.take_dir(id)?).map_err(AppError::internal)?;
+        if self
+            .characters()?
+            .iter()
+            .any(|c| c.voice_ids.iter().any(|v| v == id))
+        {
+            return Err(AppError::invalid(
+                "キャラクターが参照している音声は削除できません。先に参照を解除してください",
+            ));
+        }
+        std::fs::remove_file(self.voice_path(id)?).map_err(AppError::internal)?;
         let mut editor = self.editor()?;
         for row in &mut editor.rows {
             if row.take_id.as_deref() == Some(id) {
@@ -374,3 +408,14 @@ impl Library {
 
 #[cfg(test)]
 mod tests;
+
+// Script IDs are used as filenames; exclude path components.
+pub(crate) fn valid_script_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+mod transfer;

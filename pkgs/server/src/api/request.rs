@@ -36,6 +36,7 @@ impl TryFrom<TTSRequest> for TTSJob {
     fn try_from(req: TTSRequest) -> Result<Self, AppError> {
         SynthesisRequest {
             text: req.text,
+            reference_audios: Vec::new(),
             reference_audio: req
                 .reference_audio_base64
                 .map(|s| STANDARD.decode(s).map_err(AppError::invalid))

@@ -1,105 +1,15 @@
-//! Line editor composition and generated take list.
-use super::Studio;
-use super::appearance::{blend, button, icon, tool};
 use crate::domain::{AudioSource, Take};
 use crate::workspace::protocol::Command;
+use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::{blend, tool};
 use gpui_kit::base::Radio;
 use gpui_kit::component::Disableable;
-use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn line_editor(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .id("line-editor")
-            .flex()
-            .items_stretch()
-            .w_full()
-            .min_w_0()
-            .child(self.take_list(cx))
-            .child(self.line_form(cx))
-            .into_any_element()
-    }
-
-    fn line_form(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .w(relative(0.5))
-            .border_l_1()
-            .border_color(self.palette().muted.opacity(0.45))
-            .min_w_0()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .child(self.line_prompt())
-            .child(self.speed_controls())
-            .child(self.advanced_controls(cx))
-            .child(self.line_generation_actions(cx))
-            .into_any_element()
-    }
-
-    fn line_generation_actions(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette();
-        let disabled = self.state.busy || self.state.status.id.is_none();
-        div()
-            .flex()
-            .gap_2()
-            .px_3()
-            .pb_3()
-            .child(
-                button(
-                    "generate-line",
-                    if self.state.running.is_some() {
-                        "生成中…"
-                    } else {
-                        "生成"
-                    },
-                )
-                .primary()
-                .bg(self.accent())
-                .icon(icon("wand"))
-                .flex_1()
-                .disabled(
-                    disabled
-                        || !self.can_generate()
-                        || self.fields.text.read(cx).value().trim().is_empty(),
-                )
-                .when(
-                    disabled
-                        || !self.can_generate()
-                        || self.fields.text.read(cx).value().trim().is_empty(),
-                    |el| el.cursor_default(),
-                )
-                .on_click(cx.listener(|this, _, w, cx| this.generate(false, false, w, cx))),
-            )
-            .child(
-                tool("advanced", "settings", "詳細設定")
-                    .h(px(32.))
-                    .w(px(34.))
-                    .border_1()
-                    .border_color(if self.advanced { self.accent() } else { p.line })
-                    .bg(if self.advanced { p.soft } else { p.control })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.advanced = !this.advanced;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                tool("random-line", "dice", "シードを変えて再生成")
-                    .h(px(32.))
-                    .w(px(34.))
-                    .border_1()
-                    .border_color(p.line)
-                    .bg(p.control)
-                    .disabled(disabled || !self.can_generate())
-                    .when(disabled || !self.can_generate(), |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, w, cx| this.generate(false, true, w, cx))),
-            )
-            .into_any_element()
-    }
-
-    fn take_list(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::workspace::view) fn take_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         div()
             .w(relative(0.5))
@@ -150,8 +60,8 @@ impl Studio {
         let tooltip = format!(
             "テイク {} · シード {} · {} ステップ · {:.1}秒で生成",
             i + 1,
-            take.seed,
-            take.num_steps,
+            take.conditions.seed,
+            take.conditions.num_steps,
             take.elapsed_ms as f64 / 1000.
         );
         let select = cx.listener(move |this, checked: &bool, window, cx| {

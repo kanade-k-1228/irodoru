@@ -68,12 +68,11 @@ impl WorkspaceState {
         else {
             return false;
         };
-        let defaults = self.snapshot.editor.preferences.clone();
         let Some(row) = self.selected_row_mut() else {
             return false;
         };
         if checked {
-            take.restore_row(row, &defaults);
+            take.restore_row(row);
         } else if row.take_id.as_deref() == Some(id) {
             row.take_id = None;
         } else {
@@ -87,23 +86,13 @@ impl WorkspaceState {
             return false;
         }
         let (id, input) = match character {
-            Some(c) => (
-                Some(c.id),
-                CharacterInput {
-                    name: c.name,
-                    description: c.description,
-                    voice: c.voice,
-                    icon: c.icon,
-                    color: Some(c.color),
-                    sample_text: Some(c.sample_text),
-                },
-            ),
+            Some(c) => (Some(c.id.clone()), c.into()),
             None => (
                 None,
                 CharacterInput {
                     name: String::new(),
                     description: String::new(),
-                    voice: None,
+                    voice_ids: Vec::new(),
                     icon: None,
                     color: Some(DEFAULT_CHARACTER_COLOR.into()),
                     sample_text: Some(DEFAULT_SAMPLE_TEXT.into()),
@@ -140,9 +129,42 @@ impl Draft {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum RowAction {
+    InsertAbove,
+    Duplicate,
+    Delete,
+}
+
 impl WorkspaceState {
     fn can_edit_rows(&self) -> bool {
         !self.busy && self.draft.is_none()
+    }
+
+    pub fn edit_row(&mut self, id: &str, action: RowAction) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        let Some(index) = self
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .position(|row| row.id == id)
+        else {
+            return false;
+        };
+        self.select(id.to_owned());
+        match action {
+            RowAction::InsertAbove => {
+                let after = index
+                    .checked_sub(1)
+                    .map(|i| self.snapshot.editor.rows[i].id.clone());
+                self.insert_at(after.as_deref(), false)
+            }
+            RowAction::Duplicate => self.add_row(true),
+            RowAction::Delete => self.remove_row(),
+        }
     }
 
     pub fn add_row(&mut self, duplicate: bool) -> bool {
@@ -235,7 +257,7 @@ impl WorkspaceState {
             return false;
         };
         self.selected = Some(next);
-        self.snapshot.takes.retain(|take| take.row_id != id);
+
         true
     }
 
@@ -275,11 +297,19 @@ impl WorkspaceState {
         self.draft.is_none()
     }
 
-    pub fn set_draft_voice(&mut self, voice: Option<String>) {
+    pub fn toggle_draft_voice(&mut self, voice: Option<String>) {
         if !self.busy
             && let Some(draft) = &mut self.draft
         {
-            draft.input.voice = voice;
+            if let Some(voice) = voice {
+                if draft.input.voice_ids.contains(&voice) {
+                    draft.input.voice_ids.retain(|id| id != &voice);
+                } else {
+                    draft.input.voice_ids.push(voice);
+                }
+            } else {
+                draft.input.voice_ids.clear();
+            }
         }
     }
     pub fn set_draft_icon(&mut self, icon: String) {
@@ -332,7 +362,7 @@ impl WorkspaceState {
             input: CharacterInput {
                 name,
                 description: source.description.clone(),
-                voice: source.voice.clone(),
+                voice_ids: source.voice_ids.clone(),
                 icon: source.icon.clone(),
                 color: Some(source.color.clone()),
                 sample_text: Some(source.sample_text.clone()),
@@ -366,7 +396,7 @@ impl WorkspaceState {
                         &d.settings,
                     )?,
                     description: d.input.description.clone(),
-                    voice: d.input.voice.clone(),
+                    voice_ids: d.input.voice_ids.clone(),
                 })
             })
             .transpose()
@@ -383,7 +413,7 @@ impl WorkspaceState {
             .takes
             .iter()
             .find(|take| take.row_id == id)
-            .map(|take| take.seed);
+            .map(|take| take.conditions.seed);
         editor::randomize_row(&mut self.snapshot.editor, id, previous, seed)?;
         Ok(true)
     }

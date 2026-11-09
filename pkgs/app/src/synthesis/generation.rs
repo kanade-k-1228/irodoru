@@ -8,19 +8,21 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub struct PreparedTake {
     job: TTSJob,
-    take: Take,
+    row_id: String,
+    character: crate::domain::Character,
+    additional_prompt: String,
 }
 
 impl PreparedTake {
     pub(crate) fn row_id(&self) -> &str {
-        &self.take.row_id
+        &self.row_id
     }
 }
 
 pub struct GenerationInput {
     pub request: TakeRequest,
     pub character: crate::domain::Character,
-    pub reference_audio: Option<Vec<u8>>,
+    pub reference_audio: Vec<Vec<u8>>,
 }
 
 pub fn prepare(inputs: Vec<GenerationInput>) -> Result<Vec<PreparedTake>> {
@@ -36,8 +38,8 @@ pub fn prepare(inputs: Vec<GenerationInput>) -> Result<Vec<PreparedTake>> {
 pub fn prepare_preview(
     request: crate::domain::SynthesisInput,
     description: String,
-    voice: Option<String>,
-    reference_audio: Option<Vec<u8>>,
+    voice_ids: Vec<String>,
+    reference_audio: Vec<Vec<u8>>,
 ) -> Result<PreparedTake> {
     if description.chars().count() > 2000 {
         bail!("プロンプトは2000文字以内です");
@@ -46,7 +48,7 @@ pub fn prepare_preview(
         id: new_id(),
         name: "サンプル".into(),
         description,
-        voice,
+        voice_ids,
         color: crate::domain::DEFAULT_CHARACTER_COLOR.into(),
         sample_text: request.text.clone(),
         icon: None,
@@ -63,7 +65,7 @@ pub fn prepare_preview(
 fn prepare_one(
     req: TakeRequest,
     character: crate::domain::Character,
-    reference_audio: Option<Vec<u8>>,
+    reference_audio: Vec<Vec<u8>>,
 ) -> Result<PreparedTake> {
     if req.row_id.is_empty()
         || req.row_id.len() > 64
@@ -82,9 +84,9 @@ fn prepare_one(
         .collect::<Vec<_>>()
         .join("\n");
     let job = SynthesisRequest {
-        text: req.request.text.clone(),
-        caption: Some(description.clone()),
-        reference_audio,
+        text: req.request.text,
+        caption: Some(description),
+        reference_audios: reference_audio,
         seed: req.request.seed,
         num_steps: req.request.num_steps,
         duration_scale: Some(req.request.duration_scale),
@@ -96,24 +98,9 @@ fn prepare_one(
     .try_into()?;
     Ok(PreparedTake {
         job,
-        take: Take {
-            filename: None,
-            conditions: None,
-            id: new_id(),
-            row_id: req.row_id,
-            character_id: Some(character.id),
-            character_name: character.name,
-            description,
-            additional_prompt: extra,
-            voice: character.voice,
-            text: req.request.text,
-            model: String::new(),
-            seed: 0,
-            num_steps: 0,
-            elapsed_ms: 0,
-            audio_seconds: 0.0,
-            created_at: 0,
-        },
+        row_id: req.row_id,
+        character,
+        additional_prompt: extra,
     })
 }
 
@@ -123,16 +110,19 @@ pub fn synthesize(
 ) -> Result<(Take, Vec<u8>)> {
     let started = Instant::now();
     let (conditions, output) = infer(prepared.job)?;
-    let wav = conditions.to_wav(&output.audio)?;
-    let mut take = prepared.take;
-    take.filename = Some(conditions.filename()?);
-    take.model = conditions.model.clone();
-    take.conditions = Some(conditions);
-    take.seed = output.seed;
-    take.num_steps = output.num_steps;
-    take.elapsed_ms = started.elapsed().as_millis() as u64;
-    take.audio_seconds = output.audio.seconds();
-    take.created_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+    let wav = output.audio.to_wav()?;
+    let take = Take {
+        id: new_id(),
+        row_id: prepared.row_id,
+        character_id: Some(prepared.character.id),
+        character_name: prepared.character.name,
+        voice_ids: prepared.character.voice_ids,
+        additional_prompt: prepared.additional_prompt,
+        conditions,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        audio_seconds: output.audio.seconds(),
+        created_at: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
+    };
     Ok((take, wav))
 }
 
@@ -142,7 +132,7 @@ mod tests {
     use crate::library::Library;
     fn input(library: &Library, request: TakeRequest) -> GenerationInput {
         let character = library.character(&request.character_id).unwrap();
-        let reference_audio = character.voice.as_ref().map(|v| library.voice(v).unwrap());
+        let reference_audio = library.reference_audio(&character.voice_ids).unwrap();
         GenerationInput {
             request,
             character,
@@ -172,7 +162,7 @@ mod tests {
     fn fixture() -> (tempfile::TempDir, Library, TakeRequest) {
         let dir = tempfile::tempdir().unwrap();
         let library = Library::open(dir.path()).unwrap();
-        library.save_voice("reference", &wav()).unwrap();
+        let voice = library.save_voice("reference", &wav()).unwrap();
         let character = library
             .create_character(CharacterInput {
                 icon: None,
@@ -180,7 +170,7 @@ mod tests {
                 sample_text: None,
                 name: "さくら".into(),
                 description: "落ち着いた声".into(),
-                voice: Some("reference".into()),
+                voice_ids: vec![voice],
             })
             .unwrap();
         let req = TakeRequest {
@@ -224,13 +214,15 @@ mod tests {
         let prepared = prepare_preview(
             request.request,
             " 明るい声 ".into(),
-            Some("reference".into()),
-            Some(library.voice("reference").unwrap()),
+            library.characters().unwrap()[0].voice_ids.clone(),
+            library
+                .reference_audio(&library.characters().unwrap()[0].voice_ids)
+                .unwrap(),
         )
         .unwrap();
         let (take, wav) = synthesize(prepared, |job| {
             assert_eq!(job.params.caption.as_deref(), Some("明るい声"));
-            assert!(job.reference_audio.is_some());
+            assert!(!job.reference_audios.is_empty());
             Ok((
                 GenerationConditions::from_params("anime".into(), &job.params, 42, 1, 48000),
                 SynthOutput {
@@ -245,7 +237,12 @@ mod tests {
         assert_eq!(take.audio_seconds, 0.5);
         previews.save_take(&take, &wav).unwrap();
         assert!(library.takes().unwrap().is_empty());
-        assert_eq!(previews.audio(&take.id).unwrap(), wav);
+        assert_eq!(
+            irodoru_engine::Audio::from_wav(&previews.audio(&take.id).unwrap())
+                .unwrap()
+                .samples,
+            irodoru_engine::Audio::from_wav(&wav).unwrap().samples
+        );
         previews.delete_take(&take.id).unwrap();
         assert!(previews.takes().unwrap().is_empty());
         assert_eq!(library.characters().unwrap().len(), 1);
@@ -267,11 +264,14 @@ mod tests {
             })
             .unwrap();
         let character = request.character_id.clone();
+        let reference_audio = library
+            .reference_audio(&library.character(&character).unwrap().voice_ids)
+            .unwrap();
         let prepared = prepare(vec![input(&library, request)]).unwrap().remove(0);
         library.delete_character(&character).unwrap();
         let (take, bytes) = synthesize(prepared, |job| {
             assert_eq!(job.params.caption.as_deref(), Some("落ち着いた声\n小声で"));
-            assert_eq!(job.reference_audio.as_deref(), Some(wav().as_slice()));
+            assert!(job.reference_audios == reference_audio);
             let conditions =
                 GenerationConditions::from_params("anime".into(), &job.params, 42, 40, 48000);
             Ok((
@@ -286,15 +286,20 @@ mod tests {
         })
         .unwrap();
         assert_eq!(take.character_name, "さくら");
-        assert_eq!(take.model, "anime");
-        assert_eq!(take.num_steps, 40);
+        assert_eq!(take.conditions.model, "anime");
+        assert_eq!(take.conditions.num_steps, 40);
         assert_eq!(take.audio_seconds, 1.0);
-        assert!(take.filename.as_ref().unwrap().ends_with(".wav"));
+        assert!(take.conditions.filename().unwrap().ends_with(".wav"));
         library.save_take(&take, &bytes).unwrap();
-        assert_eq!(library.audio(&take.id).unwrap(), bytes);
+        assert_eq!(
+            irodoru_engine::Audio::from_wav(&library.audio(&take.id).unwrap())
+                .unwrap()
+                .samples,
+            irodoru_engine::Audio::from_wav(&bytes).unwrap().samples
+        );
         let library = Library::open(dir.path()).unwrap();
         let saved = library.takes().unwrap().remove(0);
-        let conditions = saved.conditions.as_ref().unwrap();
+        let conditions = &saved.conditions;
         assert_eq!(conditions.duration_scale, 1.25);
         assert_eq!(conditions.cfg_scale_caption, 6.0);
         assert_eq!(conditions.caption.as_deref(), Some("落ち着いた声\n小声で"));

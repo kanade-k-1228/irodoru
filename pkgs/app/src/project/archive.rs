@@ -116,15 +116,17 @@ pub(super) fn extract(file: File, root: &Path) -> Result<()> {
         let parts: Vec<_> = name.split('/').collect();
         let allowed = match parts.as_slice() {
             ["project.yaml"] => true,
+            ["scripts", file] => file
+                .strip_suffix(".yaml")
+                .is_some_and(crate::library::valid_script_id),
             [
                 "characters",
                 id,
-                "character.yaml" | "reference.wav" | "icon.png",
+                "character.yaml" | "icon.png" | "preview.wav",
             ] => crate::domain::valid_id(id),
-            ["voices", id, "audio.wav" | "meta.yaml"] => crate::domain::valid_id(id),
-            ["characters", id, "previews", "audio.wav" | "meta.yaml"] => {
-                crate::domain::valid_id(id)
-            }
+            ["voices", file] => file
+                .strip_suffix(".wav")
+                .is_some_and(crate::domain::valid_id),
             _ => false,
         };
         if !allowed {

@@ -1,5 +1,6 @@
 //! Menu layout and navigation; header and dialog layouts live in sibling modules.
 use super::appearance::{icon, tool};
+use super::dialogs::ProjectDialog;
 use super::{Studio, WindowRequest, actions, appearance};
 use crate::workspace::protocol::Command;
 use gpui_kit::component::{Theme as ComponentTheme, ThemeMode};
@@ -10,6 +11,8 @@ use gpui_kit::*;
 pub(super) enum MenuAction {
     NewWindow,
     NewProject,
+    NewFromCharacters,
+    ImportCharacter,
     OpenProject,
     SaveProject,
     Preferences,
@@ -17,9 +20,15 @@ pub(super) enum MenuAction {
 }
 use MenuAction::*;
 
-const MENU_ITEMS: [(MenuAction, &str, &str); 5] = [
+const MENU_ITEMS: [(MenuAction, &str, &str); 7] = [
     (NewWindow, "新規ウィンドウ", "app-window"),
     (NewProject, "新規プロジェクト…", "new"),
+    (
+        NewFromCharacters,
+        "キャラクターを引き継いで新規作成…",
+        "copy",
+    ),
+    (ImportCharacter, "キャラクターファイルを読み込む…", "folder"),
     (OpenProject, "プロジェクトを開く…", "folder"),
     (SaveProject, "プロジェクトを保存", "save"),
     (CloseWindow, "ウィンドウを閉じる", "close"),
@@ -203,6 +212,9 @@ impl Studio {
     fn action_disabled(&self, action: MenuAction) -> bool {
         match action {
             NewProject | OpenProject => self.state.busy || self.state.draft.is_some(),
+            NewFromCharacters | ImportCharacter => {
+                self.state.busy || self.state.draft.is_some() || self.state.status.id.is_none()
+            }
             SaveProject => self.state.busy || self.state.status.id.is_none(),
             CloseWindow => self.state.busy,
             _ => false,
@@ -226,8 +238,10 @@ impl Studio {
             NewWindow => {
                 cx.emit(WindowRequest::New);
             }
-            NewProject => self.choose_project(true, window, cx),
-            OpenProject => self.choose_project(false, window, cx),
+            NewProject => self.choose_project(ProjectDialog::New, window, cx),
+            NewFromCharacters => self.choose_project(ProjectDialog::FromCharacters, window, cx),
+            ImportCharacter => self.character_file(false, window, cx),
+            OpenProject => self.choose_project(ProjectDialog::Open, window, cx),
             SaveProject => {
                 self.autosave();
                 self.send(Command::Flush { close: false });

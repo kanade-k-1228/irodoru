@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct GenerationSettings {
     pub seed: String,
     pub num_steps: String,
@@ -33,9 +32,9 @@ impl Default for GenerationSettings {
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ScriptRow {
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "voice_id")]
     pub take_id: Option<String>,
     pub id: String,
     pub text: String,
@@ -45,9 +44,7 @@ pub struct ScriptRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<GenerationSettings>,
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[derive(Default)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct EditorState {
     pub rows: Vec<ScriptRow>,
     pub preferences: GenerationSettings,

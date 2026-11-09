@@ -1,6 +1,7 @@
 //! Project lifetime, portable ZIP archives and single-writer autosave.
 mod active;
 mod archive;
+mod characters;
 mod export;
 pub use export::ExportNaming;
 #[cfg(feature = "desktop")]

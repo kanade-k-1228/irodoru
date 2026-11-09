@@ -34,7 +34,7 @@ impl ExportNaming {
             parts.push(filename_part(&take.character_name, "キャラクター"));
         }
         if matches!(self, Self::Dialogue | Self::CharacterDialogue) {
-            parts.push(filename_part(&take.text, "セリフ"));
+            parts.push(filename_part(&take.conditions.text, "セリフ"));
         }
         format!("{}.wav", parts.join("_"))
     }
@@ -61,19 +61,18 @@ fn filename_part(value: &str, fallback: &str) -> String {
     }
 }
 
-pub(crate) fn export_rows(editor: &EditorState, takes: &[Take]) -> Result<Vec<String>> {
+pub(crate) fn export_rows<'a>(editor: &EditorState, takes: &'a [Take]) -> Result<Vec<&'a Take>> {
     if editor.rows.is_empty() {
         bail!("書き出すセリフがありません");
     }
     let mut selected = Vec::new();
     let mut missing = Vec::new();
     for (index, row) in editor.rows.iter().enumerate() {
-        match row.take_id.as_ref().filter(|id| {
-            takes
-                .iter()
-                .any(|take| &take.id == *id && take.row_id == row.id)
-        }) {
-            Some(id) => selected.push(id.clone()),
+        match takes
+            .iter()
+            .find(|take| row.take_id.as_ref() == Some(&take.id) && take.row_id == row.id)
+        {
+            Some(take) => selected.push(take),
             None => missing.push((index + 1).to_string()),
         }
     }
@@ -110,12 +109,8 @@ impl Session {
             })
             .expect("unbounded directory search")?;
         let result = (|| -> Result<()> {
-            for (index, id) in selected.iter().enumerate() {
-                let wav = self.library.audio(id)?;
-                let take = takes
-                    .iter()
-                    .find(|take| &take.id == id)
-                    .expect("validated selected take");
+            for (index, take) in selected.iter().enumerate() {
+                let wav = self.library.audio(&take.id)?;
                 crate::files::atomic_bytes(&directory.join(naming.filename(index, take)), &wav)?;
             }
             Ok(())

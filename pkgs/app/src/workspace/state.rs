@@ -150,8 +150,10 @@ impl WorkspaceState {
                 }
             }
             Event::Voice(voice) => {
-                if let Some(d) = &mut self.draft {
-                    d.input.voice = Some(voice);
+                if let Some(d) = &mut self.draft
+                    && !d.input.voice_ids.contains(&voice)
+                {
+                    d.input.voice_ids.push(voice);
                 }
             }
             Event::Icon(icon) => {
@@ -172,4 +174,4 @@ impl WorkspaceState {
 mod tests;
 
 mod editing;
-pub use editing::GenerationField;
+pub use editing::{GenerationField, RowAction};
