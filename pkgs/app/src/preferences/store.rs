@@ -40,11 +40,7 @@ impl Settings {
     fn save_to(&self, path: &std::path::Path) -> Result<()> {
         let parent = path.parent().context("設定の保存先が不正です")?;
         std::fs::create_dir_all(parent)?;
-        // confy writes in place; stage its output before replacing the saved settings.
-        let temp = tempfile::NamedTempFile::new_in(parent)?;
-        confy::store_path(temp.path(), self)?;
-        temp.as_file().sync_all()?;
-        temp.persist(path).map_err(|e| e.error)?;
+        crate::files::atomic_bytes(path, serde_yaml::to_string(self)?.as_bytes())?;
         Ok(())
     }
 }

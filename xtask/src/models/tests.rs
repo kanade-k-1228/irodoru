@@ -1,4 +1,5 @@
 use super::*;
+use irodoru_model_bundle::MAX_ARCHIVE_SIZE;
 
 pub(super) fn fixture(directory: &Path) {
     for (folder, names) in REQUIRED {

@@ -4,14 +4,15 @@ The app is one Rust crate. `main.rs` calls `desktop::run`; the `desktop` feature
 
 ## Modules
 
-- `desktop`: Startup, windows, menus, and platform quit handling.
+- `desktop`: Startup, shared inference construction, windows, menus, and platform quit handling.
 - `domain`: Shared serializable values, IDs, and errors; no GUI or filesystem access.
 - `workspace`: One project window's state, commands, background worker, and UI.
 - `project`: Project sessions, ZIP archives, autosave, ownership, and file-open handling.
 - `library`: Filesystem storage for project YAML, characters, audio, and assets.
 - `synthesis`: Shared inference, generation, and verified model downloads and caching.
-- `audio`: Import, decoding, resampling, WAV validation, and playback.
-- `preferences`: OS-local YAML settings through confy, an ordered writer, and theme settings.
+- `audio`: Audio import, decoding, resampling, WAV validation, and playback.
+- `icons.rs`: Image import and conversion for character icons.
+- `preferences`: OS-local YAML settings, an ordered writer, and theme settings. Loading through confy preserves existing settings; writes use atomic file replacement.
 - `files.rs`: Private atomic file replacement helper.
 
 ## Workspace and UI
@@ -23,7 +24,7 @@ The app is one Rust crate. `main.rs` calls `desktop::run`; the `desktop` feature
 - `worker.rs`: Ordered background work and project/engine coordination.
 - `view/`: GPUI entities, bindings, dialogs, editing adapters, layout, and playback controls.
 
-Each window owns one `Entity<Studio>` and its `WorkspaceState`. Inputs retain their entities, subscriptions, and focus handles. State consumes worker events and returns `Effect` values without importing GPUI, rodio, rfd, or a repository.
+Each window owns one `Entity<Studio>` and its `WorkspaceState`. Inputs retain their entities, subscriptions, and focus handles. State owns row and character edits, settings targets, and generation command construction. It consumes worker events and returns `Effect` values without importing GPUI, rodio, rfd, or a repository. Views retain input entities, IME, focus, and scrolling behavior while forwarding edits to state.
 
 ```text
 GPUI listener → state/editor → Command → Service → Worker → project/library/synthesis
@@ -35,17 +36,19 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
 - Keep containers needed for layout, scrolling, or hit testing. Put editing adapters in `editing.rs` and preserve input entities, element IDs, and focus handles.
 - Run storage and inference on workers with owned command data. Only the UI thread drains notifications and updates GPUI entities; its weak-entity timer stops when the window closes.
 - Use `Command::is_passive` to keep editing available without emitting `Done`. The view and worker share this policy; callers do not supply a separate busy flag.
-- Generate prepared takes in order. The ordered worker needs no batch IDs or index lookup. Failed generation preserves prior audio.
+- The worker resolves characters and reference audio into owned `GenerationInput` values. Generation prepares the complete batch before inference and returns take/audio values for the worker to save. It has no dependency on project or library storage. Takes execute in order, stopping after the current take finishes; failures preserve prior audio.
+- `AudioSource` identifies a generated take, a temporary preview, or a saved character preview. Playback and export both read it through `Session::audio`.
 
 ## Projects and shared services
 
 - `project::Project` owns the session, archive reservation, and saver. The workspace worker uses `read`, `change`, `open`, and `flush`; it does not manage locks or notify the saver directly.
-- A `.iro` project is a ZIP containing `project.yaml`, `characters/`, and `voices/`, with relative asset paths. Preserve schema compatibility, IDs, atomic writes, autosave timing, and recovery behavior.
+- Project entry points accept only `.iro` (case-insensitive), and reject other extensions before switching or flushing the current project. A `.iro` project is a ZIP containing `project.yaml`, `characters/`, and `voices/`, with relative asset paths. Preserve schema compatibility, IDs, atomic writes, autosave timing, and recovery behavior.
 - Autosave uses immutable snapshots and one debounced writer. Replace the archive only after the new ZIP is written successfully. Flush pending saves before switching or dropping a project, and report explicit flush failures before closing its window.
 - Native file-open events and forwarded launches create independent windows. A per-user instance lock and bounded atomic request inbox preserve launches until the owning process can handle them. A project path can belong to only one window.
 - New-window requests are GPUI events handled by `desktop`. Project state is local to each window; theme settings and inference are shared.
-- `synthesis::Inference` owns shared model initialization. All windows share one inference worker, including model preparation progress, retry, and model source changes. The footer and model settings modal read the same shared state. Local model selections are validated and saved on the inference worker to `models.yaml`, independently of theme settings, and applied by dropping the entire old `Engine` instance before constructing a new one on its owning worker. No engine instance is shared behind a lock. Release builds verify a revisioned cache and download a GHCR ZIP when needed; models remain outside the app package.
-- `project` and `library` use domain values and audio validation without depending on workspace views or the inference engine. The generation coordinator publishes completed takes through the repository.
+- `desktop` constructs one `synthesis::Inference` and passes its handle to each window and workspace service. Inference owns the engine lifecycle, progress, retry, and synthesis queue. Model resolution and directory configuration/persistence are callbacks supplied at startup. They run on its worker; a failed settings write preserves the previous source. Reloading drops the entire old `Engine` before constructing its replacement. No engine instance is shared behind a lock.
+- Model sources are resolved in order: saved selection, `IRODORU_MODELS`, development resources, then verified cache/download. The app and xtask share the schema 2 manifest and validation in `irodoru-model-bundle`; transport and cache installation stay in the app. Release builds download a GHCR ZIP only when needed; models remain outside the app package.
+- `project` and `library` use domain values and audio validation without depending on workspace views or the inference engine. The workspace worker publishes completed takes through the repository.
 
 ## Application icons
 
@@ -71,7 +74,7 @@ cargo xtask dev
 ```
 
 - State tests cover save failures, stale notifications, selection, settings scope, character drafts, generation completion, and close guards.
-- Storage and worker tests cover archive compatibility, atomic saves and retries, queue cancellation, and regeneration failures.
+- Storage and worker tests cover `.iro` round trips, unsupported extension rejection, atomic saves and retries, queue cancellation, and regeneration failures.
 - Native smoke checks cover multiple windows, shortcut focus, and save-on-close. Check IME input, dragging, and audio devices manually on each platform.
 
 Follow the [GPUI Kit coding guides](https://gpui-kit.com/docs/coding-guides/) and [task model](https://gpui-kit.com/docs/task/) for module boundaries, state ownership, and background work.

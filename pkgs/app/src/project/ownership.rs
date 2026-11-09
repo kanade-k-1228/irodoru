@@ -65,15 +65,15 @@ mod tests {
     #[test]
     fn windows_reserve_paths_independently_and_release_on_close() {
         let dir = tempfile::tempdir().unwrap();
-        let a = dir.path().join("a.zip");
-        let b = dir.path().join("b.zip");
+        let a = dir.path().join("a.iro");
+        let b = dir.path().join("b.iro");
         let mut first = WindowProject::default();
         let mut second = WindowProject::default();
         first.open(&a, true).unwrap();
         assert!(second.open(&a, true).is_err());
         second.open(&b, true).unwrap();
         assert!(first.open(&b, true).is_err());
-        assert!(first.open(&dir.path().join("missing.zip"), false).is_err());
+        assert!(first.open(&dir.path().join("missing.iro"), false).is_err());
         assert!(second.open(&a, true).is_err());
         drop(first);
         second.open(&a, true).unwrap();
@@ -88,10 +88,10 @@ mod tests {
         let alias = dir.path().join("alias");
         std::os::unix::fs::symlink(&real, &alias).unwrap();
         let mut first = WindowProject::default();
-        first.open(&real.join("project.zip"), true).unwrap();
+        first.open(&real.join("project.iro"), true).unwrap();
         assert!(
             WindowProject::default()
-                .open(&alias.join("project.zip"), true)
+                .open(&alias.join("project.iro"), true)
                 .is_err()
         );
     }

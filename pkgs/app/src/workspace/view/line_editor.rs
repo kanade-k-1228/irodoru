@@ -1,8 +1,7 @@
 //! Line editor composition and generated take list.
 use super::Studio;
 use super::appearance::{blend, button, icon, tool};
-use crate::domain::Take;
-use crate::workspace::editor;
+use crate::domain::{AudioSource, Take};
 use crate::workspace::protocol::Command;
 use gpui_kit::component::Disableable;
 use gpui_kit::component::button::ButtonVariants;
@@ -164,7 +163,12 @@ impl Studio {
                     .rounded(px(8.))
                     .px_2()
                     .py_1()
-                    .child(self.audio_player(("take", i), id, false, take.audio_seconds, cx)),
+                    .child(self.audio_player(
+                        ("take", i),
+                        AudioSource::Take(id),
+                        take.audio_seconds,
+                        cx,
+                    )),
             )
             .when(self.advanced, |el| {
                 el.child(div().text_xs().text_color(p.muted).child(format!(
@@ -190,21 +194,18 @@ impl Studio {
                 tool(("export", i), "download", "WAVを保存")
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
-                    .on_click(
-                        cx.listener(move |this, _, w, cx| {
-                            this.export(export.clone(), false, w, cx)
-                        }),
-                    ),
+                    .on_click(cx.listener(move |this, _, w, cx| {
+                        this.export(AudioSource::Take(export.clone()), w, cx)
+                    })),
             )
             .child(
                 tool(("copy-take", i), "plus", "台本に追加")
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
-                        let row = editor::row_from_take(&copy, &this.state.snapshot.characters);
-                        let id = row.id.clone();
-                        this.state.snapshot.editor.rows.push(row);
-                        this.select(id, w, cx);
+                        if this.state.copy_take(&copy) {
+                            this.edited(w, cx);
+                        }
                     })),
             )
             .child(

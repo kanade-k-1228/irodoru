@@ -1,6 +1,6 @@
 mod api;
 mod config;
-use irodoru_engine::{engine, error, model as inference, output as generation};
+use irodoru_engine::{Engine, Runtime};
 
 use std::{net::SocketAddr, time::Duration};
 
@@ -10,8 +10,6 @@ use tracing::info;
 
 use api::AppState;
 use config::{Arg, Cmd, ServeArgs};
-use engine::Engine;
-use inference::Runtime;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -11,8 +11,8 @@ use openvino::{
 };
 
 use super::{
+    Input,
     device::{DeviceInfo, DevicePreference},
-    onnx::Input,
 };
 
 pub(super) struct OpenVinoRuntime {

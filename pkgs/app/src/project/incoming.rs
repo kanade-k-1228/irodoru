@@ -11,10 +11,7 @@ use std::{
 const MAX_BYTES: u64 = 256 * 1024;
 const MAX_PATHS: usize = 64;
 
-fn is_project(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("iro") || ext.eq_ignore_ascii_case("zip"))
-}
+use super::is_project_path;
 
 pub(crate) fn argument_paths(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Vec<PathBuf> {
     args.into_iter()
@@ -25,7 +22,7 @@ pub(crate) fn argument_paths(args: impl IntoIterator<Item = OsString>, cwd: &Pat
                 return None;
             }
             let path = PathBuf::from(arg);
-            is_project(&path).then(|| {
+            is_project_path(&path).then(|| {
                 if path.is_absolute() {
                     path
                 } else {
@@ -41,7 +38,7 @@ pub(crate) fn url_paths(urls: impl IntoIterator<Item = String>) -> Vec<PathBuf> 
     urls.into_iter()
         .filter(|value| value.len() as u64 <= MAX_BYTES)
         .filter_map(|value| url::Url::parse(&value).ok()?.to_file_path().ok())
-        .filter(|path| is_project(path))
+        .filter(|path| is_project_path(path))
         .take(MAX_PATHS)
         .collect()
 }
@@ -71,7 +68,7 @@ impl Inbox {
         ensure!(
             paths
                 .iter()
-                .all(|path| path.is_absolute() && is_project(path)),
+                .all(|path| path.is_absolute() && is_project_path(path)),
             "開くパスが不正です"
         );
         let bytes = serde_json::to_vec(paths)?;
@@ -112,7 +109,7 @@ impl Inbox {
                 let batch: Vec<PathBuf> = serde_json::from_slice(&bytes)?;
                 ensure!(batch.len() <= MAX_PATHS, "開くファイルが多すぎます");
                 ensure!(
-                    batch.iter().all(|p| p.is_absolute() && is_project(p)),
+                    batch.iter().all(|p| p.is_absolute() && is_project_path(p)),
                     "開くパスが不正です"
                 );
                 Ok(batch)
@@ -148,13 +145,14 @@ mod tests {
             "file:///tmp/file.iro",
             "相対 パス.IRO",
             "legacy.zip",
+            "second.iro",
             "other.txt",
         ];
         assert_eq!(
             argument_paths(args.map(OsString::from), dir.path()),
             vec![
                 dir.path().join("相対 パス.IRO"),
-                dir.path().join("legacy.zip")
+                dir.path().join("second.iro")
             ]
         );
     }
@@ -162,13 +160,15 @@ mod tests {
     #[test]
     fn file_urls_decode_spaces_and_unicode_without_accepting_remote_projects() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("日本語 project.iro");
+        let path = dir.path().join("日本語 project.IRO");
         let url = url::Url::from_file_path(&path).unwrap();
         assert_eq!(
             url_paths([
                 url.into(),
                 "https://host/file.iro".into(),
-                "file:///tmp/other.txt".into()
+                "file:///tmp/other.txt".into(),
+                "file:///tmp/legacy.zip".into(),
+                "file:///tmp/legacy.ZIP".into()
             ]),
             vec![path]
         );
@@ -179,7 +179,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let inbox = Inbox::at(dir.path().join("inbox")).unwrap();
         let first = dir.path().join("first.iro");
-        let second = dir.path().join("second.zip");
+        let second = dir.path().join("second.iro");
         inbox
             .forward(&[first.clone(), first.clone(), second.clone()])
             .unwrap();
@@ -209,6 +209,9 @@ mod tests {
         std::fs::write(inbox.0.join("a.json"), b"invalid").unwrap();
         std::fs::write(inbox.0.join("b.json"), vec![b' '; MAX_BYTES as usize + 1]).unwrap();
         std::fs::write(inbox.0.join("c.json"), br#"["relative.iro"]"#).unwrap();
+        let zip = dir.path().join("legacy.zip");
+        assert!(inbox.forward(std::slice::from_ref(&zip)).is_err());
+        std::fs::write(inbox.0.join("d.json"), serde_json::to_vec(&[zip]).unwrap()).unwrap();
         let path = dir.path().join("valid.iro");
         inbox.forward(std::slice::from_ref(&path)).unwrap();
         assert_eq!(inbox.drain().unwrap(), vec![path]);

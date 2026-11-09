@@ -15,6 +15,8 @@ pub struct Draft {
 }
 #[derive(Clone, Copy)]
 pub enum Field {
+    Text,
+    Description,
     Prompt,
     Seed,
     Steps,
@@ -22,6 +24,7 @@ pub enum Field {
     Sample,
 }
 
+#[derive(Default)]
 pub struct WorkspaceState {
     pub snapshot: Snapshot,
     pub status: ProjectStatus,
@@ -29,35 +32,10 @@ pub struct WorkspaceState {
     pub draft: Option<Draft>,
     pub busy: bool,
     pub saving_draft: bool,
-    pub defaults: bool,
     pub error: Option<String>,
     pub row_errors: HashMap<String, String>,
     pub running: Option<String>,
     pub stopping: bool,
-}
-
-impl Default for WorkspaceState {
-    fn default() -> Self {
-        Self {
-            snapshot: Snapshot::default(),
-            status: ProjectStatus {
-                id: None,
-                name: None,
-                path: None,
-                state: "closed".into(),
-                error: None,
-            },
-            selected: None,
-            draft: None,
-            busy: false,
-            saving_draft: false,
-            defaults: false,
-            error: None,
-            row_errors: HashMap::new(),
-            running: None,
-            stopping: false,
-        }
-    }
 }
 
 pub enum Effect {
@@ -68,7 +46,7 @@ pub enum Effect {
 }
 
 impl WorkspaceState {
-    pub fn selected_row_mut(&mut self) -> Option<&mut ScriptRow> {
+    fn selected_row_mut(&mut self) -> Option<&mut ScriptRow> {
         let id = self.selected.as_ref()?;
         self.snapshot.editor.rows.iter_mut().find(|r| &r.id == id)
     }
@@ -76,13 +54,12 @@ impl WorkspaceState {
         if let Some(draft) = &self.draft {
             return draft.settings.clone();
         }
-        if !self.defaults
-            && let Some(row) = self
-                .snapshot
-                .editor
-                .rows
-                .iter()
-                .find(|r| Some(&r.id) == self.selected.as_ref())
+        if let Some(row) = self
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .find(|r| Some(&r.id) == self.selected.as_ref())
         {
             return row
                 .settings
@@ -91,17 +68,16 @@ impl WorkspaceState {
         }
         self.snapshot.editor.preferences.clone()
     }
-    pub fn generation_settings_mut(&mut self) -> &mut GenerationSettings {
+    fn generation_settings_mut(&mut self) -> &mut GenerationSettings {
         if let Some(draft) = &mut self.draft {
             return &mut draft.settings;
         }
-        if !self.defaults
-            && let Some(index) = self
-                .snapshot
-                .editor
-                .rows
-                .iter()
-                .position(|r| Some(&r.id) == self.selected.as_ref())
+        if let Some(index) = self
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .position(|r| Some(&r.id) == self.selected.as_ref())
         {
             let defaults = self.snapshot.editor.preferences.clone();
             return self.snapshot.editor.rows[index]
@@ -189,3 +165,4 @@ impl WorkspaceState {
 mod tests;
 
 mod editing;
+pub use editing::GenerationField;

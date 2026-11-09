@@ -1,10 +1,27 @@
 //! Pure editing transitions; the view decides when to synchronize controls and save.
 use super::{Draft, Field, WorkspaceState};
+use crate::domain::Take;
 use crate::domain::{Character, CharacterInput, DEFAULT_CHARACTER_COLOR, DEFAULT_SAMPLE_TEXT};
+use crate::workspace::{editor, protocol::Command};
+use anyhow::Result;
 
 impl WorkspaceState {
     pub fn change(&mut self, field: Field, value: String) -> bool {
+        if self.busy || (self.draft.is_some() && matches!(field, Field::Text | Field::Prompt)) {
+            return false;
+        }
         match field {
+            Field::Text => {
+                if let Some(row) = self.selected_row_mut() {
+                    row.text = value;
+                }
+            }
+            Field::Description => {
+                if let Some(d) = &mut self.draft {
+                    d.input.description = value;
+                }
+                return false;
+            }
             Field::Prompt => {
                 if let Some(row) = self.selected_row_mut() {
                     row.prompt = Some(value);
@@ -25,7 +42,7 @@ impl WorkspaceState {
                 return false;
             }
         }
-        true
+        self.draft.is_none()
     }
     pub fn select(&mut self, id: String) -> bool {
         if self.busy || self.draft.is_some() {
@@ -36,7 +53,6 @@ impl WorkspaceState {
             let c = row.character_id.clone();
             self.snapshot.editor.active_character = c;
         }
-        self.defaults = false;
         true
     }
     pub fn edit_character(&mut self, character: Option<Character>) -> bool {
@@ -80,5 +96,220 @@ impl WorkspaceState {
             settings,
         });
         true
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum GenerationField {
+    Speed,
+    TextGuidance,
+    SpeakerGuidance,
+    CaptionGuidance,
+}
+
+impl Draft {
+    pub fn is_dirty(&self) -> bool {
+        self.preview.is_some() || self.input != self.original
+    }
+}
+
+impl WorkspaceState {
+    fn can_edit_rows(&self) -> bool {
+        !self.busy && self.draft.is_none()
+    }
+
+    pub fn add_row(&mut self, duplicate: bool) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        if self.snapshot.editor.active_character.is_empty() {
+            self.snapshot.editor.active_character = self
+                .snapshot
+                .characters
+                .first()
+                .map(|c| c.id.clone())
+                .unwrap_or_default();
+        }
+        let id = editor::insert(
+            &mut self.snapshot.editor,
+            self.selected.as_deref(),
+            duplicate,
+        );
+        self.select(id)
+    }
+
+    pub fn insert_after(&mut self, id: String) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        self.selected = Some(id);
+        self.add_row(false)
+    }
+
+    pub fn append_character_row(&mut self, character: String) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        self.snapshot.editor.active_character = character;
+        let id = editor::insert(&mut self.snapshot.editor, None, false);
+        self.select(id)
+    }
+
+    pub fn copy_take(&mut self, take: &Take) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        let row = editor::row_from_take(take, &self.snapshot.characters);
+        let id = row.id.clone();
+        self.snapshot.editor.rows.push(row);
+        self.select(id)
+    }
+
+    pub fn remove_row(&mut self) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        let Some(id) = self.selected.clone() else {
+            return false;
+        };
+        let Some(next) = editor::remove(&mut self.snapshot.editor, &id) else {
+            return false;
+        };
+        self.selected = Some(next);
+        self.snapshot.takes.retain(|take| take.row_id != id);
+        true
+    }
+
+    pub fn move_row(&mut self, after: Option<&str>) -> Option<usize> {
+        if !self.can_edit_rows() {
+            return None;
+        }
+        editor::move_row(
+            &mut self.snapshot.editor.rows,
+            self.selected.as_deref()?,
+            after,
+        )
+    }
+
+    pub fn reset_row_settings(&mut self) -> bool {
+        if !self.can_edit_rows() {
+            return false;
+        }
+        let Some(row) = self.selected_row_mut() else {
+            return false;
+        };
+        row.settings = None;
+        true
+    }
+
+    pub fn change_generation(&mut self, field: GenerationField, value: f32) -> bool {
+        if self.busy {
+            return false;
+        }
+        let settings = self.generation_settings_mut();
+        match field {
+            GenerationField::Speed => settings.set_speed(value.into()),
+            GenerationField::TextGuidance => settings.cfg_text = value,
+            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
+            GenerationField::CaptionGuidance => settings.cfg_caption = value,
+        }
+        self.draft.is_none()
+    }
+
+    pub fn set_draft_voice(&mut self, voice: Option<String>) {
+        if !self.busy
+            && let Some(draft) = &mut self.draft
+        {
+            draft.input.voice = voice;
+        }
+    }
+    pub fn set_draft_icon(&mut self, icon: String) {
+        if !self.busy
+            && let Some(draft) = &mut self.draft
+        {
+            draft.input.icon = Some(icon);
+        }
+    }
+    pub fn set_draft_color(&mut self, color: String) {
+        if !self.busy
+            && let Some(draft) = &mut self.draft
+        {
+            draft.input.color = Some(color);
+        }
+    }
+    pub fn discard_character(&mut self) -> Option<Command> {
+        if self.busy {
+            return None;
+        }
+        self.draft.take()?.preview.map(Command::RemovePreview)
+    }
+    pub fn delete_character(&mut self, id: String) -> Command {
+        self.saving_draft = self.draft.is_some();
+        Command::DeleteCharacter(id)
+    }
+    pub fn save_character(&mut self) -> Option<Command> {
+        if self.busy {
+            return None;
+        }
+        let draft = self.draft.as_ref()?;
+        self.saving_draft = true;
+        Some(Command::SaveCharacter {
+            id: draft.id.clone(),
+            input: draft.input.clone(),
+            preview: draft.preview.clone(),
+        })
+    }
+    pub fn preview(&self) -> Result<Option<Command>> {
+        if self.busy {
+            return Ok(None);
+        }
+        self.draft
+            .as_ref()
+            .map(|d| {
+                Ok(Command::Preview {
+                    input: editor::speech(
+                        d.input.sample_text.clone().unwrap_or_default(),
+                        &d.settings,
+                    )?,
+                    description: d.input.description.clone(),
+                    voice: d.input.voice.clone(),
+                })
+            })
+            .transpose()
+    }
+    pub fn randomize_selected_row(&mut self, seed: u32) -> Result<bool> {
+        if !self.can_edit_rows() {
+            return Ok(false);
+        }
+        let Some(id) = self.selected.as_deref() else {
+            return Ok(false);
+        };
+        let previous = self
+            .snapshot
+            .takes
+            .iter()
+            .find(|take| take.row_id == id)
+            .map(|take| take.seed);
+        editor::randomize_row(&mut self.snapshot.editor, id, previous, seed)?;
+        Ok(true)
+    }
+    pub fn generate(&self, all: bool) -> Result<Option<Command>> {
+        if !self.can_edit_rows() {
+            return Ok(None);
+        }
+        let rows = self
+            .snapshot
+            .editor
+            .rows
+            .iter()
+            .filter(|row| all || Some(&row.id) == self.selected.as_ref())
+            .cloned()
+            .collect::<Vec<_>>();
+        let requests = editor::requests(
+            &rows,
+            &self.snapshot.characters,
+            &self.snapshot.editor.preferences,
+        )?;
+        Ok((!requests.is_empty()).then_some(Command::Generate(requests)))
     }
 }

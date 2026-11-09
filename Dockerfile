@@ -22,6 +22,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY LICENSE about.toml ./
 COPY licenses ./licenses
 COPY pkgs/engine ./pkgs/engine
+COPY pkgs/model-bundle ./pkgs/model-bundle
 COPY pkgs/server ./pkgs/server
 # The UI needs a manifest and placeholder targets for license resolution.
 # xtask generates notices and corresponding MPL sources for the runtime image.

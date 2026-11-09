@@ -6,6 +6,36 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 #[cfg(target_os = "macos")]
 mod macos_quit;
 
+struct SharedInference(Result<std::sync::Arc<crate::synthesis::Inference>, String>);
+impl Global for SharedInference {}
+
+fn start_inference() -> anyhow::Result<std::sync::Arc<crate::synthesis::Inference>> {
+    use crate::{
+        preferences::ModelSettings,
+        synthesis::{Inference, resources},
+    };
+    let settings = ModelSettings::load()?;
+    Ok(std::sync::Arc::new(Inference::start_configured(
+        settings.directory,
+        |directory, progress| {
+            Ok(irodoru_engine::EngineConfig::anime(
+                resources::models_with_directory(directory, progress)?,
+            ))
+        },
+        |directory| {
+            let directory = directory
+                .as_deref()
+                .map(resources::local_models)
+                .transpose()?;
+            ModelSettings {
+                directory: directory.clone(),
+            }
+            .save()?;
+            Ok(directory)
+        },
+    )?))
+}
+
 pub(crate) fn open_studio(path: Option<std::path::PathBuf>, cx: &mut App) -> anyhow::Result<()> {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -35,7 +65,8 @@ pub(crate) fn open_studio(path: Option<std::path::PathBuf>, cx: &mut App) -> any
     };
     gpui_kit::open_window(options, cx, move |window, cx| {
         window.set_window_title("irodoru");
-        let studio = cx.new(|cx| Studio::new(path, window, cx));
+        let inference = cx.global::<SharedInference>().0.clone();
+        let studio = cx.new(|cx| Studio::new(path, inference, window, cx));
         cx.subscribe(&studio, |studio, request, cx| match request {
             WindowRequest::New => {
                 if let Err(error) = open_studio(None, cx) {
@@ -85,6 +116,9 @@ pub fn run() {
     application.on_open_urls(move |urls| opened.borrow_mut().extend(incoming::url_paths(urls)));
     application.run(move |cx| {
         gpui_kit::init(cx);
+        cx.set_global(SharedInference(
+            start_inference().map_err(|error| format!("{error:#}")),
+        ));
         if let Err(error) = crate::preferences::theme::initialize(cx) {
             eprintln!("{error:#}");
             cx.quit();

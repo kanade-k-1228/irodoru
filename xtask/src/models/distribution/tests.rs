@@ -1,5 +1,9 @@
+use super::super::{prepare, read_bundle};
 use super::*;
 use crate::models::tests::fixture;
+use crate::option;
+use anyhow::bail;
+use std::{io::Read, path::PathBuf};
 
 fn bundle(root: &Path) -> Result<PathBuf> {
     let source = root.join("source");
@@ -16,11 +20,21 @@ fn deterministic_archive_round_trip_and_revision() -> Result<()> {
     let first = distribute(&source, &destination, Some("example/app-models".into()))?;
     assert_eq!(
         first.revision,
-        hex(Sha256::digest(fs::read(source.join("bundle.json"))?))
+        Some(hex(Sha256::digest(fs::read(source.join("bundle.json"))?)))
     );
-    let archive_path = destination.join(&first.archive.asset);
+    let consumed: Distribution =
+        serde_json::from_slice(&fs::read(destination.join("model-distribution.json"))?)?;
+    assert_eq!(
+        consumed.validate()?,
+        first.files.iter().map(|e| e.size).sum::<u64>()
+    );
+    assert_eq!(consumed.revision, first.revision);
+    let archive_path = destination.join(&first.archive.as_ref().unwrap().asset);
     let bytes = fs::read(&archive_path)?;
-    assert_eq!(first.archive.sha256, hex(Sha256::digest(&bytes)));
+    assert_eq!(
+        first.archive.as_ref().unwrap().sha256,
+        hex(Sha256::digest(&bytes))
+    );
     let mut zip = zip::ZipArchive::new(fs::File::open(&archive_path)?)?;
     assert_eq!(zip.len(), first.files.len());
     for entry in &first.files {
@@ -40,7 +54,10 @@ fn deterministic_archive_round_trip_and_revision() -> Result<()> {
     fs::write(destination.join("stale.part001"), b"stale")?;
     let second = distribute(&source, &destination, None)?;
     assert!(second.repository.is_none());
-    assert_eq!(second.archive.sha256, first.archive.sha256);
+    assert_eq!(
+        second.archive.as_ref().unwrap().sha256,
+        first.archive.as_ref().unwrap().sha256
+    );
     assert_eq!(fs::read(&archive_path)?, bytes);
     assert!(!destination.join("stale.part001").exists());
     let (_, mut index) = read_bundle(&source)?;
@@ -49,7 +66,10 @@ fn deterministic_archive_round_trip_and_revision() -> Result<()> {
     json_write(&source.join("bundle.json"), &index)?;
     let changed = distribute(&source, &destination, None)?;
     assert_ne!(changed.revision, first.revision);
-    assert_eq!(changed.archive.sha256, first.archive.sha256);
+    assert_eq!(
+        changed.archive.as_ref().unwrap().sha256,
+        first.archive.as_ref().unwrap().sha256
+    );
     assert!(!archive_path.exists());
     Ok(())
 }
@@ -78,8 +98,8 @@ fn rejects_corruption_and_layer_limit_without_replacing_good_archive() -> Result
             .contains("changed while archiving")
     );
     assert_eq!(
-        fingerprint(&destination.join(&first.archive.asset))?.1,
-        first.archive.sha256
+        fingerprint(&destination.join(&first.archive.as_ref().unwrap().asset))?.1,
+        first.archive.as_ref().unwrap().sha256
     );
     assert_eq!(fs::read_dir(destination)?.count(), 2);
     Ok(())
@@ -117,7 +137,7 @@ fn publication_verifies_local_archive_and_anonymous_manifest_and_blob() -> Resul
     let source = bundle(temp.path())?;
     let destination = temp.path().join("assets");
     let distribution = distribute(&source, &destination, Some("example/app-models".into()))?;
-    let archive = &distribution.archive;
+    let archive = distribution.archive.as_ref().unwrap();
     let layer = serde_json::json!({"digest": format!("sha256:{}", archive.sha256), "size": archive.size,
         "mediaType": "application/zip", "annotations": {"org.opencontainers.image.title": archive.asset}});
     let payload = serde_json::to_vec(&serde_json::json!({"schemaVersion": 2, "layers": [layer]}))?;

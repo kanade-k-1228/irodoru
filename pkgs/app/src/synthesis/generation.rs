@@ -1,7 +1,6 @@
 use crate::{
     domain::TakeRequest,
     domain::{Take, new_id},
-    library::Library,
 };
 use anyhow::{Result, bail};
 use irodoru_engine::{GenerationConditions, SynthOutput, SynthesisRequest, TTSJob};
@@ -18,24 +17,27 @@ impl PreparedTake {
     }
 }
 
-pub fn prepare(library: &Library, requests: Vec<TakeRequest>) -> Result<Vec<PreparedTake>> {
-    if requests.is_empty() {
+pub struct GenerationInput {
+    pub request: TakeRequest,
+    pub character: crate::domain::Character,
+    pub reference_audio: Option<Vec<u8>>,
+}
+
+pub fn prepare(inputs: Vec<GenerationInput>) -> Result<Vec<PreparedTake>> {
+    if inputs.is_empty() {
         bail!("生成するセリフがありません");
     }
-    requests
+    inputs
         .into_iter()
-        .map(|request| {
-            let character = library.character(&request.character_id)?;
-            prepare_one(library, request, character)
-        })
+        .map(|input| prepare_one(input.request, input.character, input.reference_audio))
         .collect()
 }
 
 pub fn prepare_preview(
-    library: &Library,
     request: crate::domain::SynthesisInput,
     description: String,
     voice: Option<String>,
+    reference_audio: Option<Vec<u8>>,
 ) -> Result<PreparedTake> {
     if description.chars().count() > 2000 {
         bail!("プロンプトは2000文字以内です");
@@ -55,13 +57,13 @@ pub fn prepare_preview(
         additional_prompt: None,
         request,
     };
-    prepare_one(library, request, character)
+    prepare_one(request, character, reference_audio)
 }
 
 fn prepare_one(
-    library: &Library,
     req: TakeRequest,
     character: crate::domain::Character,
+    reference_audio: Option<Vec<u8>>,
 ) -> Result<PreparedTake> {
     if req.row_id.is_empty()
         || req.row_id.len() > 64
@@ -82,11 +84,7 @@ fn prepare_one(
     let job = SynthesisRequest {
         text: req.request.text.clone(),
         caption: Some(description.clone()),
-        reference_audio: character
-            .voice
-            .as_ref()
-            .map(|voice| library.voice(voice))
-            .transpose()?,
+        reference_audio,
         seed: req.request.seed,
         num_steps: req.request.num_steps,
         duration_scale: Some(req.request.duration_scale),
@@ -139,6 +137,16 @@ pub fn synthesize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::library::Library;
+    fn input(library: &Library, request: TakeRequest) -> GenerationInput {
+        let character = library.character(&request.character_id).unwrap();
+        let reference_audio = character.voice.as_ref().map(|v| library.voice(v).unwrap());
+        GenerationInput {
+            request,
+            character,
+            reference_audio,
+        }
+    }
     use crate::{domain::CharacterInput, domain::SynthesisInput};
     use std::io::Cursor;
     fn wav() -> Vec<u8> {
@@ -193,12 +201,18 @@ mod tests {
     #[test]
     fn preparation_rejects_empty_or_partially_invalid_queues() {
         let (_dir, library, request) = fixture();
-        assert!(prepare(&library, vec![]).is_err());
+        assert!(prepare(vec![]).is_err());
         let mut invalid = request.clone();
         invalid.request.duration_scale = 0.0;
-        assert!(prepare(&library, vec![request.clone(), invalid]).is_err());
+        assert!(
+            prepare(vec![
+                input(&library, request.clone()),
+                input(&library, invalid)
+            ])
+            .is_err()
+        );
         assert!(library.takes().unwrap().is_empty());
-        assert_eq!(prepare(&library, vec![request]).unwrap().len(), 1);
+        assert_eq!(prepare(vec![input(&library, request)]).unwrap().len(), 1);
     }
 
     #[test]
@@ -206,10 +220,10 @@ mod tests {
         let (dir, library, request) = fixture();
         let previews = Library::open(&dir.path().join("previews")).unwrap();
         let prepared = prepare_preview(
-            &library,
             request.request,
             " 明るい声 ".into(),
             Some("reference".into()),
+            Some(library.voice("reference").unwrap()),
         )
         .unwrap();
         let (take, wav) = synthesize(prepared, |job| {
@@ -239,7 +253,7 @@ mod tests {
     fn snapshot_survives_character_removal_and_saves_resolved_output() {
         let (_dir, library, request) = fixture();
         let character = request.character_id.clone();
-        let prepared = prepare(&library, vec![request]).unwrap().remove(0);
+        let prepared = prepare(vec![input(&library, request)]).unwrap().remove(0);
         library.delete_character(&character).unwrap();
         let (take, bytes) = synthesize(prepared, |job| {
             assert_eq!(job.params.caption.as_deref(), Some("落ち着いた声\n小声で"));

@@ -1,6 +1,8 @@
 //! Inference lifecycle, generation jobs and deployable model resources.
 pub mod generation;
 mod inference;
+#[cfg(any(feature = "desktop", test))]
 mod model_resources;
-pub mod resources;
+#[cfg(any(feature = "desktop", test))]
+pub(crate) mod resources;
 pub use inference::Inference;

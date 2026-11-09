@@ -25,7 +25,7 @@ impl Studio {
         character_color(color, self.palette().accent)
     }
     pub(super) fn can_generate(&self) -> bool {
-        self.service
+        self.inference
             .as_ref()
             .is_some_and(|s| matches!(s.status(), InferenceStatus::Ready))
             && self.state.status.id.is_some()

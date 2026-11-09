@@ -25,6 +25,7 @@ impl Project {
     }
 
     pub fn open(&mut self, path: &Path, create: bool) -> Result<()> {
+        super::validate_path(path)?;
         self.flush()?;
         let session = self.ownership.open(path, create)?;
         *self
