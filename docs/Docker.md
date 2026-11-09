@@ -50,3 +50,19 @@ docker compose down
 - To use existing `models/anime/` and `models/codec/`, run `docker compose --profile local up --build -d local`. Stop it with `docker compose --profile local down`.
 - For an Intel GPU on WSL2, use the `wsl-gpu` profile and service. This requires a Windows GPU driver and `/dev/dxg`.
 - Run one service at a time: they share the same port.
+
+## Cancel a request
+
+Abort the HTTP request or close its connection to cancel synthesis; no separate
+cancel endpoint is needed. For example, pass an `AbortController` signal to
+`fetch` and call `controller.abort()` when a newer navigation instruction arrives.
+
+Once the server detects the disconnect, a request waiting for the engine is
+discarded. Running synthesis stops at the next cancellation checkpoint, including
+each sampling step and before audio decoding. An in-progress model operation
+must finish first; it is not forcibly interrupted. Other requests can then use
+the engine normally.
+
+If you use a reverse proxy, it must propagate client disconnects to the upstream
+server. Cancellation begins when the server observes the disconnect, not when
+the client locally stops waiting for the response.

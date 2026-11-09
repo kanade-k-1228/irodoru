@@ -145,7 +145,13 @@ impl TTSModel {
         Ok(())
     }
 
-    pub fn synthesize(&mut self, codec: &mut Codec, p: &SynthParams) -> Result<SynthOutput> {
+    pub fn synthesize(
+        &mut self,
+        codec: &mut Codec,
+        p: &SynthParams,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<SynthOutput> {
+        ensure!(!is_cancelled(), "synthesis cancelled");
         let mut clock = Stopwatch::start();
         let text = normalize_text(&p.text).trim().to_string();
         if text.is_empty() {
@@ -159,8 +165,10 @@ impl TTSModel {
 
         let conds = self.conditions(&text, p)?;
         clock.lap("encode_conditions");
+        ensure!(!is_cancelled(), "synthesis cancelled");
         let (latent_steps, target_samples) = self.length(&conds, p, codec)?;
         clock.lap("predict_duration");
+        ensure!(!is_cancelled(), "synthesis cancelled");
         let guidance = self.sampler.guidance(
             conds,
             [p.cfg_scale_text, p.cfg_scale_speaker, p.cfg_scale_caption],
@@ -169,6 +177,7 @@ impl TTSModel {
         )?;
         clock.lap("context_kv");
 
+        ensure!(!is_cancelled(), "synthesis cancelled");
         let dump = DebugDump::from_env();
         let mut x = noise(latent_steps, self.manifest.latent_dim, seed)?;
         if let Some(dump) = &dump {
@@ -176,12 +185,14 @@ impl TTSModel {
         }
         let schedule = self.sampler.schedule(num_steps, p.sway_coeff)?;
         for w in schedule.windows(2) {
+            ensure!(!is_cancelled(), "synthesis cancelled");
             let (t, t_next) = (w[0], w[1]);
             let v = self.sampler.velocity(&guidance, &x, t, t - t_next)?;
             x = x + v * (t_next - t);
         }
         clock.lap("sample");
 
+        ensure!(!is_cancelled(), "synthesis cancelled");
         if let Some(dump) = &dump {
             dump.f32("latent.f32", &x)?;
             let ids = self.tokenizer.encode(&text, self.manifest.max_text_len)?;
@@ -193,7 +204,9 @@ impl TTSModel {
                 }),
             )?;
         }
+        ensure!(!is_cancelled(), "synthesis cancelled");
         let mut audio = codec.decode(&x)?;
+        ensure!(!is_cancelled(), "synthesis cancelled");
         if let Some(dump) = &dump {
             dump.f32("audio.f32", &audio.samples)?;
         }
