@@ -13,6 +13,7 @@ enum Command {
 struct ModelState {
     status: InferenceStatus,
     settings: ModelSettings,
+    providers: Option<irodoru_engine::ProviderTracker>,
 }
 
 pub struct Inference {
@@ -31,6 +32,7 @@ impl Inference {
         let state = Arc::new(Mutex::new(ModelState {
             status: InferenceStatus::Loading,
             settings,
+            providers: None,
         }));
         let worker_state = state.clone();
         std::thread::Builder::new()
@@ -41,12 +43,15 @@ impl Inference {
                     let directory = worker_state.lock().unwrap().settings.directory.clone();
                     let config = config(directory.as_deref(), &progress)?;
                     progress(InferenceStatus::Loading);
-                    Engine::load(&config)
+                    let engine = Engine::load(&config)?;
+                    worker_state.lock().unwrap().providers = Some(engine.provider_tracker());
+                    Ok(engine)
                 };
                 let mut engine = None;
                 let mut initialize = true;
                 loop {
                     if initialize {
+                        worker_state.lock().unwrap().providers = None;
                         match restart_engine(&mut engine, load) {
                             Ok(()) => progress(InferenceStatus::Ready),
                             Err(error) => progress(InferenceStatus::Error {
@@ -58,6 +63,7 @@ impl Inference {
                         Ok(Command::Retry) => initialize = true,
                         Ok(Command::Configure(archive)) => {
                             initialize = false;
+                            worker_state.lock().unwrap().providers = None;
                             let mut configure = || -> Result<ModelSettings> {
                                 let imported = archive
                                     .as_deref()
@@ -88,12 +94,17 @@ impl Inference {
                             match configure() {
                                 Ok(settings) => {
                                     let mut state = worker_state.lock().unwrap();
+                                    state.providers = engine.as_ref().map(Engine::provider_tracker);
                                     state.settings = settings;
                                     state.status = InferenceStatus::Ready;
                                 }
-                                Err(error) => progress(InferenceStatus::Error {
-                                    error: format!("{error:#}"),
-                                }),
+                                Err(error) => {
+                                    worker_state.lock().unwrap().providers =
+                                        engine.as_ref().map(Engine::provider_tracker);
+                                    progress(InferenceStatus::Error {
+                                        error: format!("{error:#}"),
+                                    });
+                                }
                             }
                         }
                         Ok(Command::Synthesize(job, reply)) => {
@@ -111,6 +122,16 @@ impl Inference {
             })?;
         Ok(Self { sender, state })
     }
+    pub fn providers(&self) -> Vec<irodoru_engine::ProviderStatus> {
+        self.state
+            .lock()
+            .unwrap()
+            .providers
+            .as_ref()
+            .map(|tracker| tracker.snapshot())
+            .unwrap_or_default()
+    }
+
     pub fn status(&self) -> InferenceStatus {
         self.state.lock().unwrap().status.clone()
     }

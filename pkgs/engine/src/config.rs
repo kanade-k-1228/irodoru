@@ -15,7 +15,11 @@ impl EngineConfig {
             model_dir: models.join("anime"),
             codec_dir: models.join("codec"),
             threads: std::thread::available_parallelism().map_or(2, |n| n.get().min(4)),
-            device: DevicePreference::Cpu,
+            device: if cfg!(any(target_os = "windows", target_os = "macos")) {
+                DevicePreference::Auto
+            } else {
+                DevicePreference::Cpu
+            },
             openvino_library: None,
         }
     }

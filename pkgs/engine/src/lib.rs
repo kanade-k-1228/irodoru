@@ -7,8 +7,10 @@ mod model;
 mod output;
 mod request;
 pub mod wav_metadata;
+#[cfg(target_os = "windows")]
+pub mod windows_runtime;
 pub use backend::{
-    Runtime,
+    ProviderStatus, ProviderTracker, Runtime,
     device::{DeviceInfo, DevicePreference},
 };
 pub use config::EngineConfig;

@@ -48,6 +48,7 @@ cargo xtask package
 ```
 
 - Linux also requires `patchelf`; Windows requires 7-Zip.
+- Windows packages contain the executable and license materials, without runtime DLLs. They use Windows ML when available and an embedded CPU ONNX Runtime otherwise. Both Rust and the embedded runtime use a static CRT.
 - Add `--no-bundle` to create an app directory without an installer. App packages do not include models.
 - Use `cargo xtask models distribute` to create model ZIPs and distribution manifests.
 
@@ -84,3 +85,66 @@ bash scripts/check-package.sh TARGET
 ```
 
 Replace `TARGET` with the Rust target. This check does not load models or run synthesis. Run `cargo xtask help` for other commands.
+
+## Windows ML runtime
+
+Windows builds require Windows 11 24H2 or later. CPU inference needs no separate runtime installation. GPU/NPU acceleration uses the x64 Windows App SDK Runtime **2.6.5 or later, major version 2**. Install the official runtime, or run the reviewed installer script from PowerShell (also used by CI):
+
+```powershell
+./scripts/install-windows-ml.ps1
+```
+
+The script downloads the pinned official NuGet package, verifies its SHA-256, and installs its signed framework and companion MSIX packages for the current user. It does not add these binaries to the app ZIP.
+
+Before building on Windows, run the pinned CPU runtime build (Visual Studio C++ tools, Python, CMake and Git required):
+
+```powershell
+./scripts/build-cpu-ort.ps1
+$env:IRODORU_CPU_ORT_LIB_DIR = (Resolve-Path target/cpu-ort/lib).Path
+```
+
+This builds ONNX Runtime 1.31.0 with `/MT`, no accelerator DLL dependencies, and full ONNX operator support. CI caches the static library. Its linked executable size increase must be measured from Windows release artifacts; the earlier 20–40 MiB figure was an estimate.
+
+At startup the engine selects one ORT API for the entire process. If the shared package cannot be loaded or does not support API 27, it selects the statically linked CPU API. It never mixes handles from two runtimes. With Windows ML available, even CPU fallback sessions use that selected shared runtime.
+
+The engine adds `Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe` to the process package dependency graph using the Windows dynamic-dependency APIs. It loads ONNX Runtime and the Windows ML catalog from that resolved package's absolute directory. Rust `ort` uses API version 27, matching the reviewed Microsoft.Windows.AI.MachineLearning 2.4.89 headers, rather than requiring the bundled runtime to expose API 31.
+
+Windows ML prepares certified execution providers and their dependencies; the engine registers their library paths in its own ORT environment. Windows defaults to automatic GPU/NPU selection. Original ONNX graphs and the custom Snake operator remain in use, with CPU graph fallback for automatic mode. Explicit CPU selection suppresses automatic EP selection. Explicit GPU/NPU requests fail if no matching device is available or no session can be created; individual unsupported operators may still run on CPU. Non-Windows backend behavior remains unchanged. The catalog can download providers on first use; deployment in an offline environment requires preparing them beforehand.
+
+Validate the staged executable with MSVC tools installed:
+
+```powershell
+./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe
+# On a machine with a compatible hardware GPU (may download an EP):
+./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe -Gpu
+```
+
+The check rejects direct ONNX Runtime, DirectML, and MSVC runtime imports, then launches a temporary copy of only the executable with a system-only PATH. The application reports the framework package or embedded CPU runtime used. `-EmbeddedCpu` forces the embedded path in a fresh diagnostic process even if Windows ML is installed. CI checks that path before installing Windows ML, then checks the shared runtime, with a tiny CPU Add inference in each; GPU mode additionally executes a tiny Add graph with CPU fallback disabled. Hardware GPU/NPU execution, full speech synthesis and offline reuse must still be tested on Windows; a successful loader check is not evidence of those checks.
+
+References: [Windows ML deployment](https://learn.microsoft.com/windows/ai/new-windows-ml/distributing-your-app), [provider registration](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers), [reviewed runtime package](https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Runtime/2.6.5).
+
+The footer lists active providers. Model settings show each loaded graph’s selected provider and CPU fallback state. This is session selection, not per-operator profiling; an accelerator session may execute unsupported operators on CPU. Execution failures update the live status when the graph switches to CPU.
+
+## macOS Core ML
+
+macOS builds enable the `ort/coreml` feature and use the reviewed ORT 1.31.0
+Apple Silicon archive with Core ML support. The OS supplies the Core ML framework;
+users need no additional runtime. The existing macOS 15 minimum is unchanged.
+
+The app defaults to automatic selection. Sessions register Core ML with MLProgram
+format and all compute units enabled. Original ONNX graphs and the Snake custom
+operator remain supported through CPU partitioning. Provider registration errors
+are propagated to the engine so automatic mode can rebuild a CPU-only session;
+execution failures use the same graph fallback and live provider tracker as Windows.
+Explicit CPU selection never registers Core ML. GPU/NPU options select
+CPUAndGPU/CPUAndNeuralEngine policies, not guaranteed hardware placement. The
+entries in device discovery describe these policies. Explicit OpenVINO overrides
+remain available.
+
+The UI reports `Core ML（自動選択）` or the selected compute policy. Core ML chooses
+the actual hardware per operation, so this label does not prove GPU or Neural
+Engine execution. Compiled model caching is not enabled to avoid stale weights
+when importing replacement models. Mac CI checks the native code and package contents. Full speech quality, latency
+and actual accelerator use still require validation on a Mac.
+
+Reference: [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).

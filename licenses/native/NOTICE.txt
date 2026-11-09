@@ -9,7 +9,7 @@ table, and fails after a version update pending review of these notices.
 The accompanying onnxruntime-1.31.0-sources.txt contains the exact upstream
 dependency source URLs, including the MPL-2.0 Eigen headers used by the runtime.
 
-Windows DirectML 1.15.4
+Windows build archive DirectML 1.15.4 (historical)
 https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
 The ort-sys Windows archive ships DirectML.dll (file version
 1.15.4+241025-1615.1.dml-1.15.fac7597). Its SHA-256 archive checksum is
@@ -19,7 +19,14 @@ license terms, not the application's MIT license or the DirectML sample-code
 MIT license. Section 1(a) permits redistribution in applications built with
 machine learning tools/frameworks for use on Windows/Xbox. Its LICENSE.txt
 and ThirdPartyNotices.txt are copied from the official 1.15.4 NuGet package.
-Those terms apply to the DirectML component only, which is shipped on Windows.
+Those terms apply to the DirectML component only. Windows application builds
+now use the separately installed Windows ML framework and do not link or ship
+this ort-sys archive. These notices are retained as provenance for the earlier
+build dependency. Non-Windows builds still link the reviewed ONNX Runtime above.
+Windows also statically links CPU-only ONNX Runtime 1.31.0, built from commit
+402979ac1bef89dcd55add41eaa7277c407599eb with the notices above.
+Windows ML and its separately acquired providers remain subject to their own
+Microsoft/vendor terms; they are not redistributed in the application ZIP.
 
 OpenVINO (optional GPU container)
 The container preserves license and notice files from the exact installed

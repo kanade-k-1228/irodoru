@@ -3744,6 +3744,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hound",
+ "libloading",
  "ndarray",
  "openvino",
  "openvino-sys",
@@ -3757,6 +3758,7 @@ dependencies = [
  "tokenizers",
  "tracing",
  "unicode-normalization",
+ "windows 0.62.2",
 ]
 
 [[package]]

@@ -4,3 +4,7 @@ rustflags = ["-C", "link-arg=-fapple-link-rtlib"]
 
 [alias]
 xtask = "run --locked --package xtask --"
+
+# Windows and the embedded CPU ORT fallback both use a static CRT.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

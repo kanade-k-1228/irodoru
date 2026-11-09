@@ -2,7 +2,7 @@ pub(crate) mod device;
 mod onnx;
 mod runtime;
 pub(crate) use runtime::Graph;
-pub use runtime::Runtime;
+pub use runtime::{ProviderStatus, ProviderTracker, Runtime};
 
 pub(crate) enum Input<'a> {
     F32(&'a ndarray::ArrayD<f32>),
