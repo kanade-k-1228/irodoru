@@ -2,6 +2,7 @@
 pub mod audio;
 pub mod domain;
 mod files;
+mod icons;
 pub mod library;
 pub mod preferences;
 pub mod project;

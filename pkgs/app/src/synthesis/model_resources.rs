@@ -1,147 +1,16 @@
 use crate::domain::InferenceStatus;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
+use irodoru_model_bundle::{Distribution, Entry};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     io::{Read, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
 
-const REQUIRED: &[&str] = &[
-    "anime/LICENSES.txt",
-    "anime/provenance.json",
-    "codec/LICENSES.txt",
-    "codec/provenance.json",
-    "anime/manifest.json",
-    "anime/tokenizer.json",
-    "anime/caption_tokenizer.json",
-    "anime/forced_splits.json",
-    "anime/backbone.onnx",
-    "anime/text_proj.onnx",
-    "anime/caption_proj.onnx",
-    "anime/speaker_encoder.onnx",
-    "anime/duration.onnx",
-    "anime/dit_context.onnx",
-    "anime/dit_step.onnx",
-    "codec/codec.json",
-    "codec/dacvae_encoder.onnx",
-    "codec/dacvae_decoder.onnx",
-];
 const UNPUBLISHED: &str = "このビルドのモデルはまだ公開されていません。モデルが公開済みのリリースを利用するか、開発用モデルを準備してください。";
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Distribution {
-    schema: u32,
-    model: String,
-    revision: Option<String>,
-    repository: Option<String>,
-    archive: Option<Archive>,
-    files: Vec<Entry>,
-}
-#[derive(Deserialize)]
-struct Entry {
-    path: String,
-    size: u64,
-    sha256: String,
-}
-#[derive(Deserialize)]
-struct Archive {
-    format: String,
-    asset: String,
-    size: u64,
-    sha256: String,
-}
-
-fn checksum(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-fn filename(value: &str) -> bool {
-    !value.is_empty()
-        && value != "."
-        && value != ".."
-        && !value.starts_with('.')
-        && !value.ends_with('.')
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
-}
-fn repository(value: &str) -> bool {
-    value.len() <= 255
-        && value.split('/').count() == 2
-        && value.split('/').all(|segment| {
-            let alphanumeric = |byte: u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
-            segment.bytes().next().is_some_and(alphanumeric)
-                && segment.bytes().last().is_some_and(alphanumeric)
-                && segment
-                    .bytes()
-                    .all(|byte| alphanumeric(byte) || b"._-".contains(&byte))
-        })
-}
-impl Distribution {
-    fn validate(&self) -> Result<u64> {
-        ensure!(
-            self.schema == 2 && self.model == "anime",
-            "invalid model distribution"
-        );
-        if self.revision.is_none()
-            && self.files.is_empty()
-            && self.repository.is_none()
-            && self.archive.is_none()
-        {
-            bail!(UNPUBLISHED);
-        }
-        ensure!(
-            self.revision.as_deref().is_some_and(checksum),
-            "invalid model revision"
-        );
-        if let Some(name) = &self.repository {
-            ensure!(repository(name), "invalid model repository");
-        }
-        let archive = self.archive.as_ref().context("missing model archive")?;
-        ensure!(
-            archive.format == "zip"
-                && filename(&archive.asset)
-                && archive.size > 0
-                && archive.size <= 10_000_000_000
-                && checksum(&archive.sha256),
-            "invalid model archive"
-        );
-        let mut paths = HashSet::new();
-        let mut total = 0u64;
-        for entry in &self.files {
-            let segments: Vec<_> = entry.path.split('/').collect();
-            ensure!(
-                segments.len() == 2
-                    && matches!(segments[0], "anime" | "codec")
-                    && filename(segments[1]),
-                "invalid model resource path"
-            );
-            ensure!(
-                paths.insert(entry.path.as_str()),
-                "duplicate model resource path"
-            );
-            ensure!(
-                entry.size > 0 && checksum(&entry.sha256),
-                "invalid model resource checksum or size"
-            );
-            total = total
-                .checked_add(entry.size)
-                .context("model size overflow")?;
-        }
-        ensure!(total <= archive.size, "model files exceed archive size");
-        ensure!(
-            REQUIRED.iter().all(|path| paths.contains(path)),
-            "incomplete model distribution"
-        );
-        Ok(total)
-    }
-}
 
 fn digest(hash: Sha256) -> String {
     hash.finalize()
@@ -266,6 +135,7 @@ fn install(
     mut open: impl FnMut(&str, &str) -> Result<Box<dyn Read>>,
 ) -> Result<PathBuf> {
     let distribution: Distribution = serde_json::from_slice(index)?;
+    ensure!(!distribution.is_unpublished(), UNPUBLISHED);
     let total = distribution.validate()?;
     let destination = root.join(distribution.revision.as_ref().unwrap());
     let mut complete = 0u64;
@@ -438,7 +308,11 @@ fn extract_archive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use irodoru_engine::output::sha256;
+    use irodoru_model_bundle::required_paths;
+
+    fn sha256(bytes: &[u8]) -> String {
+        digest(Sha256::new_with_prefix(bytes))
+    }
     use std::io::Cursor;
 
     fn archive() -> Vec<u8> {
@@ -446,8 +320,8 @@ mod tests {
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored)
             .large_file(true);
-        for path in REQUIRED {
-            zip.start_file(*path, options).unwrap();
+        for path in required_paths() {
+            zip.start_file(path, options).unwrap();
             zip.write_all(b"model").unwrap();
         }
         zip.finish().unwrap().into_inner()
@@ -458,7 +332,7 @@ mod tests {
             "schema": 2, "model": "anime", "revision": sha256(b"bundle"),
             "repository": "example/models",
             "archive": {"format": "zip", "asset": "models.zip", "size": archive.len(), "sha256": sha256(archive)},
-            "files": REQUIRED.iter().map(|path| serde_json::json!({
+            "files": required_paths().map(|path| serde_json::json!({
                 "path": path, "size": 5, "sha256": sha256(b"model")
             })).collect::<Vec<_>>()
         })
@@ -503,6 +377,18 @@ mod tests {
     }
 
     #[test]
+    fn unpublished_manifest_preserves_the_cache_and_explains_how_to_continue() {
+        let root = tempfile::tempdir().unwrap();
+        let index = br#"{"schema":2,"model":"anime","revision":null,"repository":null,"archive":null,"files":[]}"#;
+        let error = install(index, root.path(), &|_| {}, |_, _| {
+            panic!("no published archive")
+        })
+        .unwrap_err();
+        assert_eq!(error.to_string(), UNPUBLISHED);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn installs_models_and_reuses_the_cache_offline() {
         let root = tempfile::tempdir().unwrap();
         let archive = archive();
@@ -511,7 +397,7 @@ mod tests {
             Ok(Box::new(Cursor::new(archive.clone())))
         })
         .unwrap();
-        for path in REQUIRED {
+        for path in required_paths() {
             assert_eq!(std::fs::read(destination.join(path)).unwrap(), b"model");
         }
         assert_eq!(
@@ -530,7 +416,7 @@ mod tests {
         let archive = archive();
         let index = serde_json::to_vec(&manifest(&archive)).unwrap();
         let destination = root.path().join(sha256(b"bundle"));
-        let blocked = destination.join(REQUIRED[1]);
+        let blocked = destination.join(required_paths().nth(1).unwrap());
         assert!(
             install(
                 &index,
@@ -584,7 +470,7 @@ mod tests {
             .is_err()
         );
         let destination = root.path().join(sha256(b"bundle"));
-        assert!(!destination.join(REQUIRED[0]).exists());
+        assert!(!destination.join(required_paths().next().unwrap()).exists());
         assert!(!destination.join(".models.zip").exists());
     }
 }

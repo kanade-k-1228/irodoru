@@ -3753,6 +3753,7 @@ dependencies = [
  "hound",
  "image",
  "irodoru-engine",
+ "irodoru-model-bundle",
  "objc2 0.6.5",
  "rand 0.10.3",
  "resvg 0.46.0",
@@ -3789,6 +3790,15 @@ dependencies = [
  "tokenizers",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "irodoru-model-bundle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -9677,6 +9687,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "irodoru-model-bundle",
  "semver",
  "serde",
  "serde_json",

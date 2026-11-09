@@ -2,19 +2,32 @@
 use super::appearance::{icon, tool};
 use super::{Studio, WindowRequest, actions, appearance};
 use crate::workspace::protocol::Command;
-use gpui_kit::component::{Theme, ThemeMode};
+use gpui_kit::component::{Theme as ComponentTheme, ThemeMode};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-const MENU_ITEMS: [(&str, &str); 8] = [
-    ("新規ウィンドウ", "app-window"),
-    ("新規プロジェクト…", "new"),
-    ("プロジェクトを開く…", "folder"),
-    ("プロジェクトを保存", "save"),
-    ("カラーテーマ", "palette"),
-    ("環境設定…", "settings"),
-    ("irodoruについて", "info"),
-    ("ウィンドウを閉じる", "close"),
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum MenuAction {
+    NewWindow,
+    NewProject,
+    OpenProject,
+    SaveProject,
+    Theme,
+    Preferences,
+    About,
+    CloseWindow,
+}
+use MenuAction::*;
+
+const MENU_ITEMS: [(MenuAction, &str, &str); 8] = [
+    (NewWindow, "新規ウィンドウ", "app-window"),
+    (NewProject, "新規プロジェクト…", "new"),
+    (OpenProject, "プロジェクトを開く…", "folder"),
+    (SaveProject, "プロジェクトを保存", "save"),
+    (Theme, "カラーテーマ", "palette"),
+    (Preferences, "環境設定…", "settings"),
+    (About, "irodoruについて", "info"),
+    (CloseWindow, "ウィンドウを閉じる", "close"),
 ];
 
 impl Studio {
@@ -94,7 +107,7 @@ impl Studio {
                                 .iter()
                                 .enumerate()
                                 .filter(|(index, _)| self.menu_visible(*index))
-                                .map(|(index, (label, icon_name))| {
+                                .map(|(index, (_, label, icon_name))| {
                                     self.menu_item(index, label, icon_name, cx)
                                 }),
                         ),
@@ -120,7 +133,7 @@ impl Studio {
         let p = self.palette();
         let disabled = self.menu_disabled(index);
         div()
-            .when(index == 4 || index == 6, |el| {
+            .when(matches!(MENU_ITEMS[index].0, Theme | About), |el| {
                 el.child(div().h(px(1.)).my_1().bg(p.line))
             })
             .child(
@@ -148,8 +161,12 @@ impl Studio {
                             .child(icon(icon_name).flex_shrink_0())
                             .child(label),
                     )
-                    .when(index == 4, |el| el.child(self.theme_track()))
-                    .on_click(cx.listener(move |this, _, w, cx| this.menu_select(index, w, cx))),
+                    .when(MENU_ITEMS[index].0 == Theme, |el| {
+                        el.child(self.theme_track())
+                    })
+                    .on_click(cx.listener(move |this, _, w, cx| {
+                        this.menu_select(MENU_ITEMS[index].0, w, cx)
+                    })),
             )
             .into_any_element()
     }
@@ -178,14 +195,18 @@ impl Studio {
     }
 
     fn menu_visible(&self, index: usize) -> bool {
-        !self.project_menu || matches!(index, 1 | 2 | 3 | 7)
+        !self.project_menu
+            || matches!(
+                MENU_ITEMS[index].0,
+                NewProject | OpenProject | SaveProject | CloseWindow
+            )
     }
 
     fn menu_key_down(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
         match key {
             "escape" => self.close_menu(w, cx),
-            "enter" | "space" => self.menu_select(self.menu_index, w, cx),
+            "enter" | "space" => self.menu_select(MENU_ITEMS[self.menu_index].0, w, cx),
             "home" => {
                 self.menu_index = (0..MENU_ITEMS.len())
                     .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
@@ -215,41 +236,43 @@ impl Studio {
     }
 
     fn menu_disabled(&self, index: usize) -> bool {
-        match index {
-            1 | 2 => self.state.busy || self.state.draft.is_some(),
-            3 => self.state.busy || self.state.status.id.is_none(),
-            7 => self.state.busy,
+        self.action_disabled(MENU_ITEMS[index].0)
+    }
+    fn action_disabled(&self, action: MenuAction) -> bool {
+        match action {
+            NewProject | OpenProject => self.state.busy || self.state.draft.is_some(),
+            SaveProject => self.state.busy || self.state.status.id.is_none(),
+            CloseWindow => self.state.busy,
             _ => false,
         }
     }
 
     pub(super) fn menu_select(
         &mut self,
-        index: usize,
+        action: MenuAction,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.dialog_open || self.menu_disabled(index) {
+        if self.dialog_open || self.action_disabled(action) {
             return;
         }
-        if index != 4 && self.menu_open {
+        if action != Theme && self.menu_open {
             self.menu_open = false;
             self.menu_trigger_focus.focus(window, cx);
         }
-        match index {
-            0 => {
+        match action {
+            NewWindow => {
                 cx.emit(WindowRequest::New);
             }
-            1 => self.choose_project(true, window, cx),
-            2 => self.choose_project(false, window, cx),
-            3 => {
+            NewProject => self.choose_project(true, window, cx),
+            OpenProject => self.choose_project(false, window, cx),
+            SaveProject => {
                 self.autosave();
                 self.send(Command::Flush { close: false });
             }
-            4 => self.toggle_theme(window, cx),
-            5 | 6 => self.show_app_dialog(index == 5, window, cx),
-            7 => self.close(),
-            _ => {}
+            Theme => self.toggle_theme(window, cx),
+            Preferences | About => self.show_app_dialog(action == Preferences, window, cx),
+            CloseWindow => self.close(),
         }
         cx.notify();
     }
@@ -305,7 +328,7 @@ impl Studio {
 
     pub(super) fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings.theme = crate::preferences::theme::toggle(cx);
-        Theme::change(
+        ComponentTheme::change(
             if self.settings.theme.is_light() {
                 ThemeMode::Light
             } else {

@@ -1,11 +1,6 @@
 use super::error::ApiError;
-use crate::generation::GenerationConditions;
-use crate::{
-    engine::{Engine, TTSJob},
-    error::AppError,
-    inference::SynthOutput,
-};
 use axum::{Router, extract::DefaultBodyLimit};
+use irodoru_engine::{AppError, Engine, GenerationConditions, SynthOutput, TTSJob};
 use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
 pub(crate) trait Synthesis: Send {
@@ -64,7 +59,7 @@ pub(super) fn body_limit() -> DefaultBodyLimit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inference::Audio;
+    use irodoru_engine::Audio;
     use std::time::Duration;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},

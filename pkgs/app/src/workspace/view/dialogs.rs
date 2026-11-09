@@ -1,4 +1,5 @@
 use super::Studio;
+use crate::domain::AudioSource;
 use crate::workspace::protocol::Command;
 use gpui_kit::*;
 
@@ -13,23 +14,23 @@ impl Studio {
             return;
         }
         self.state.busy = true;
-        self.autosave();
         cx.spawn_in(window, async move |this, cx| {
-            let dialog = rfd::AsyncFileDialog::new();
+            let dialog =
+                rfd::AsyncFileDialog::new().add_filter("irodoru プロジェクト", &["iro", "IRO"]);
             let file = if create {
-                dialog
-                    .add_filter("irodoru プロジェクト", &["iro"])
-                    .set_file_name("project.iro")
-                    .save_file()
-                    .await
+                dialog.set_file_name("project.iro").save_file().await
             } else {
-                dialog
-                    .add_filter("irodoru プロジェクト", &["iro", "zip"])
-                    .pick_file()
-                    .await
+                dialog.pick_file().await
             };
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
+                    if let Err(error) = crate::project::validate_path(file.path()) {
+                        this.state.busy = false;
+                        this.state.error = Some(error.to_string());
+                        cx.notify();
+                        return;
+                    }
+                    this.autosave();
                     this.playback = None;
                     this.audio_id = None;
                     this.state.row_errors.clear();
@@ -55,7 +56,7 @@ impl Studio {
                 .add_filter(
                     if icon { "画像" } else { "参照音声" },
                     if icon {
-                        crate::audio::IMAGE_EXTENSIONS
+                        crate::icons::IMAGE_EXTENSIONS
                     } else {
                         crate::audio::AUDIO_EXTENSIONS
                     },
@@ -79,8 +80,7 @@ impl Studio {
     }
     pub(super) fn export(
         &mut self,
-        id: String,
-        preview: bool,
+        source: AudioSource,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -93,7 +93,7 @@ impl Studio {
             .snapshot
             .takes
             .iter()
-            .find(|t| t.id == id)
+            .find(|t| matches!(&source, AudioSource::Take(id) if &t.id == id))
             .and_then(|t| t.filename.clone())
             .unwrap_or_else(|| "sample.wav".into());
         cx.spawn_in(window, async move |this, cx| {
@@ -105,38 +105,7 @@ impl Studio {
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
                     this.send(Command::Export {
-                        id,
-                        preview,
-                        path: file.path().to_owned(),
-                    });
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-    pub(super) fn export_character(
-        &mut self,
-        id: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.state.busy {
-            return;
-        }
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
-            let file = rfd::AsyncFileDialog::new()
-                .add_filter("WAV", &["wav"])
-                .set_file_name("sample.wav")
-                .save_file()
-                .await;
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(file) = file {
-                    this.send(Command::ExportCharacter {
-                        id,
+                        source,
                         path: file.path().to_owned(),
                     });
                 } else {
@@ -151,10 +120,7 @@ impl Studio {
         if self.state.busy {
             return;
         }
-        let dirty = self.state.draft.as_ref().is_some_and(|d| {
-            d.preview.is_some()
-                || serde_json::to_value(&d.input).ok() != serde_json::to_value(&d.original).ok()
-        });
+        let dirty = self.state.draft.as_ref().is_some_and(|d| d.is_dirty());
         if !dirty {
             self.discard_character(window, cx);
             return;
@@ -199,8 +165,8 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if choice == rfd::MessageDialogResult::Yes {
-                    this.state.saving_draft = this.state.draft.is_some();
-                    this.send(Command::DeleteCharacter(id));
+                    let command = this.state.delete_character(id);
+                    this.send(command);
                 } else {
                     this.state.busy = false;
                 }

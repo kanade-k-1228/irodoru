@@ -1,5 +1,8 @@
 use super::archive::extract;
-use crate::{domain::new_id, library::Library};
+use crate::{
+    domain::{AudioSource, new_id},
+    library::Library,
+};
 use anyhow::{Result, bail};
 use serde::Serialize;
 use std::{
@@ -8,12 +11,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SaveState {
+    #[default]
+    Closed,
+    Saving,
+    Saved,
+    Error,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct ProjectStatus {
     pub id: Option<String>,
     pub name: Option<String>,
     pub path: Option<String>,
-    pub state: String,
+    pub state: SaveState,
     pub error: Option<String>,
 }
 
@@ -30,6 +43,7 @@ pub struct Session {
 }
 impl Session {
     pub fn create(path: PathBuf) -> Result<Self> {
+        super::validate_path(&path)?;
         let directory = tempfile::Builder::new()
             .prefix("irodoru-project-")
             .tempdir()?;
@@ -55,6 +69,19 @@ impl Session {
             saved: 1,
             ..session
         })
+    }
+    pub fn audio(&self, source: &AudioSource) -> Result<Vec<u8>> {
+        match source {
+            AudioSource::Take(id) => Ok(self.library.audio(id)?),
+            AudioSource::Preview(id) => Ok(self.previews.audio(id)?),
+            AudioSource::CharacterPreview(id) => {
+                let path = self
+                    .library
+                    .character_preview_path(id)?
+                    .ok_or_else(|| anyhow::anyhow!("サンプル音声がありません"))?;
+                Ok(std::fs::read(path)?)
+            }
+        }
     }
     fn validate(&self) -> Result<()> {
         let editor = self.library.editor()?;
@@ -107,13 +134,12 @@ impl Session {
             ),
             path: Some(self.path.to_string_lossy().into_owned()),
             state: if self.error.is_some() {
-                "error"
+                SaveState::Error
             } else if self.revision != self.saved {
-                "saving"
+                SaveState::Saving
             } else {
-                "saved"
-            }
-            .into(),
+                SaveState::Saved
+            },
             error: self.error.clone(),
         }
     }
@@ -130,7 +156,7 @@ pub fn status(project: &SharedProject) -> Result<ProjectStatus> {
             id: None,
             name: None,
             path: None,
-            state: "closed".into(),
+            state: SaveState::Closed,
             error: None,
         }))
 }

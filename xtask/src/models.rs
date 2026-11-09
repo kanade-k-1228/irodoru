@@ -1,53 +1,22 @@
-use super::*;
+use crate::{json_write, option, root, run};
+use anyhow::{Context, Result, bail};
+use irodoru_model_bundle::{Entry, REQUIRED, validate_files};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     io::{Read, Write},
 };
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
 
 mod distribution;
 #[cfg(test)]
 mod tests;
 
-const MAX_ARCHIVE_SIZE: u64 = 10_000_000_000;
-const REQUIRED: &[(&str, &[&str])] = &[
-    (
-        "anime",
-        &[
-            "LICENSES.txt",
-            "provenance.json",
-            "manifest.json",
-            "tokenizer.json",
-            "caption_tokenizer.json",
-            "forced_splits.json",
-            "backbone.onnx",
-            "text_proj.onnx",
-            "caption_proj.onnx",
-            "speaker_encoder.onnx",
-            "duration.onnx",
-            "dit_context.onnx",
-            "dit_step.onnx",
-        ],
-    ),
-    (
-        "codec",
-        &[
-            "LICENSES.txt",
-            "provenance.json",
-            "codec.json",
-            "dacvae_encoder.onnx",
-            "dacvae_decoder.onnx",
-        ],
-    ),
-];
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Entry {
-    path: String,
-    size: u64,
-    sha256: String,
-}
 #[derive(Debug, Serialize, Deserialize)]
 struct Index {
     model: String,
@@ -99,46 +68,6 @@ fn files(directory: &Path) -> Result<BTreeSet<PathBuf>> {
         }
     }
     Ok(result)
-}
-fn valid_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-fn valid_path(path: &str) -> bool {
-    let Some((folder, name)) = path.split_once('/') else {
-        return false;
-    };
-    let edge = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
-    ["anime", "codec"].contains(&folder)
-        && name.bytes().next().is_some_and(edge)
-        && name.bytes().last().is_some_and(edge)
-        && name.bytes().all(|b| edge(b) || b == b'.')
-}
-fn validate_files(entries: &[Entry]) -> Result<BTreeSet<&str>> {
-    let mut paths = BTreeSet::new();
-    for entry in entries {
-        anyhow::ensure!(valid_path(&entry.path), "Invalid distribution model path");
-        anyhow::ensure!(
-            paths.insert(entry.path.as_str()),
-            "Duplicate model resource"
-        );
-        anyhow::ensure!(
-            entry.size > 0 && entry.size <= MAX_ARCHIVE_SIZE,
-            "Empty or invalid model file"
-        );
-        anyhow::ensure!(valid_sha256(&entry.sha256), "Invalid model file checksum");
-    }
-    for (folder, names) in REQUIRED {
-        for name in *names {
-            anyhow::ensure!(
-                paths.contains(format!("{folder}/{name}").as_str()),
-                "Incomplete model resources: {folder}/{name}"
-            );
-        }
-    }
-    Ok(paths)
 }
 fn separate_directories(source: &Path, destination: &Path) -> Result<(PathBuf, PathBuf)> {
     let source = source.canonicalize()?;

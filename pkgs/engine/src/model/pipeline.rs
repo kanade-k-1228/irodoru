@@ -1,3 +1,4 @@
+use crate::backend::{Graph, Input, Runtime};
 use crate::{CacheConfig, cache::ConditionCache};
 use anyhow::{Context, Result, bail, ensure};
 use ndarray::{Array, ArrayD, Axis, IxDyn, Slice};
@@ -9,7 +10,6 @@ use super::{
     codec::Codec,
     condition::{Condition, valid_mask},
     diagnostics::{DebugDump, Stopwatch},
-    onnx::{Graph, Input, Runtime},
     sampling::{Sampler, noise},
     text::{TextTokenizer, normalize_text},
 };
@@ -20,7 +20,7 @@ const MAX_SECONDS: f64 = 30.0;
 pub struct SynthParams {
     pub text: String,
     pub caption: Option<String>,
-    pub speaker: Option<Condition>,
+    pub(crate) speaker: Option<Condition>,
     pub seed: Option<u64>,
     pub num_steps: Option<usize>,
     pub cfg_scale_text: f32,
@@ -145,11 +145,7 @@ impl TTSModel {
         Ok(())
     }
 
-    pub fn synthesize(&mut self, codec: &mut Codec, p: &SynthParams) -> Result<SynthOutput> {
-        self.synthesize_cancellable(codec, p, &|| false)
-    }
-
-    pub fn synthesize_cancellable(
+    pub fn synthesize(
         &mut self,
         codec: &mut Codec,
         p: &SynthParams,

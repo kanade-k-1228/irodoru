@@ -21,16 +21,11 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        engine::TTSJob,
-        error::AppError,
-        generation::GenerationConditions,
-        inference::{Audio, SynthOutput},
-    };
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
+    use irodoru_engine::{AppError, Audio, GenerationConditions, SynthOutput, TTSJob};
     use tower::ServiceExt;
 
     struct Fake;

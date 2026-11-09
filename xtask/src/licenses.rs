@@ -1,7 +1,12 @@
 //! Generate the same complete notice bundle for desktop and container releases.
-use super::*;
+use crate::{option, output, root};
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 const ABOUT_VERSION: &str = "cargo-about 0.9.3";
 

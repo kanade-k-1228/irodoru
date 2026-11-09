@@ -24,7 +24,7 @@ impl Studio {
             return;
         }
         if self.state.status.id.is_some() {
-            self.state.status.state = "saving".into();
+            self.state.status.state = crate::project::SaveState::Saving;
             self.send(Command::SaveEditor(self.state.snapshot.editor.clone()));
         }
     }

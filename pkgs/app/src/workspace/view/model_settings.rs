@@ -38,7 +38,7 @@ fn status_label(status: &InferenceStatus) -> String {
 
 impl Studio {
     fn model_status(&self) -> InferenceStatus {
-        self.service
+        self.inference
             .as_ref()
             .map(|service| service.status())
             .unwrap_or_else(|| InferenceStatus::Error {
@@ -68,7 +68,7 @@ impl Studio {
             return;
         }
         let directory = self
-            .service
+            .inference
             .as_ref()
             .and_then(|service| service.model_directory())
             .map(|path| path.display().to_string())
@@ -131,7 +131,7 @@ impl Studio {
         let p = self.palette();
         let status = self.model_status();
         let failed = matches!(status, InferenceStatus::Error { .. });
-        let editable = self.service.is_some()
+        let editable = self.inference.is_some()
             && !self.state.busy
             && !self.model_picker_open
             && matches!(
@@ -139,7 +139,7 @@ impl Studio {
                 InferenceStatus::Ready | InferenceStatus::Error { .. }
             );
         let directory = self
-            .service
+            .inference
             .as_ref()
             .and_then(|service| service.model_directory());
         let entered_path = self
@@ -206,13 +206,13 @@ impl Studio {
                         .disabled(!editable)
                         .when(!editable, |el| el.cursor_default())
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.model_error = this.service.as_ref()
-                                .and_then(|service| service.retry_models().err())
+                            this.model_error = this.inference.as_ref()
+                                .and_then(|service| service.retry().err())
                                 .map(|error| format!("{error:#}"));
                             cx.notify();
                         })),
                 )))
-            .when(!editable && self.service.is_some(), |el| el.child(
+            .when(!editable && self.inference.is_some(), |el| el.child(
                 div().text_xs().text_color(p.muted).child(if self.model_picker_open {
                     "フォルダを選択中…"
                 } else {
@@ -229,7 +229,7 @@ impl Studio {
         self.model_picker_open = true;
         self.model_error = None;
         let current = self
-            .service
+            .inference
             .as_ref()
             .and_then(|service| service.model_directory());
         cx.spawn_in(window, async move |this, cx| {
@@ -259,7 +259,7 @@ impl Studio {
         cx: &mut Context<Self>,
     ) {
         self.model_error = self
-            .service
+            .inference
             .as_ref()
             .and_then(|service| service.configure_models(directory).err())
             .map(|error| format!("{error:#}"));

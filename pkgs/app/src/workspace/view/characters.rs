@@ -1,7 +1,6 @@
 use super::Studio;
 use super::appearance::tool;
 use crate::domain::Character;
-use crate::workspace::editor;
 use gpui_kit::component::Disableable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -75,13 +74,8 @@ impl Studio {
             })
             .when(!disabled, |el| {
                 el.on_click(cx.listener(move |this, _, w, cx| {
-                    this.state.snapshot.editor.active_character = id.clone();
-                    match editor::insert(&mut this.state.snapshot.editor, None, false) {
-                        Ok(id) => this.select(id, w, cx),
-                        Err(e) => {
-                            this.state.error = Some(e.to_string());
-                            cx.notify();
-                        }
+                    if this.state.append_character_row(id.clone()) {
+                        this.edited(w, cx);
                     }
                 }))
             })

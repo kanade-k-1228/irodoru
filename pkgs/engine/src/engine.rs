@@ -1,4 +1,4 @@
-pub use crate::request::TTSJob;
+use crate::request::TTSJob;
 
 use std::time::Instant;
 
@@ -6,10 +6,11 @@ use anyhow::{Context, Result};
 
 use tracing::info;
 
-pub(crate) use crate::cache::voices::Voices;
+use crate::backend::Runtime;
+use crate::cache::voices::Voices;
 use crate::config::EngineConfig;
 use crate::error::AppError;
-use crate::model::{Codec, Runtime, SynthOutput, TTSModel};
+use crate::model::{Codec, SynthOutput, TTSModel};
 use crate::output::{GenerationConditions, sha256};
 
 pub struct Engine {
@@ -80,7 +81,7 @@ impl Engine {
         }
         model.validate(&params).map_err(AppError::invalid)?;
         let out = model
-            .synthesize_cancellable(&mut self.codec, &params, is_cancelled)
+            .synthesize(&mut self.codec, &params, is_cancelled)
             .map_err(AppError::internal)?;
         let mut conditions = GenerationConditions::from_params(
             model.manifest.name.clone(),

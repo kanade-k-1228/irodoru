@@ -7,7 +7,7 @@
 ## Projects
 
 - Click the menu button at the far right of the footer to open the centered menu modal and create, open, or save a project. Close it with Escape, the close button, or a click on the backdrop.
-- A `.iro` file contains the script, characters, reference audio, icons, and generated audio. Older `.zip` projects also work.
+- A `.iro` file contains the script, characters, reference audio, icons, and generated audio. Only `.iro` projects are supported.
 - Edits are saved automatically. If saving fails, use the menu's save action to retry.
 - Before switching projects, save or cancel character edits and wait for generation to finish.
 - Opening a `.iro` file from your OS creates a separate window. A project can be open in only one window at a time.

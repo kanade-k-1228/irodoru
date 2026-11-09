@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::error::AppError;
+use irodoru_engine::AppError;
 
 #[derive(Serialize, ToSchema)]
 pub struct ErrorBody {

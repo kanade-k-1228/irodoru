@@ -1,5 +1,5 @@
 use super::archive::{snapshot, write_archive};
-use crate::domain::new_id;
+use crate::domain::{AudioSource, new_id};
 use std::io::Write;
 use std::{fs::File, path::PathBuf};
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
@@ -52,7 +52,7 @@ fn fixture(path: PathBuf) -> Session {
 }
 #[test]
 fn archive_round_trip_is_portable_and_has_no_shared_or_draft_files() {
-    for extension in ["iro", "zip"] {
+    for extension in ["iro", "IRO"] {
         let dir = tempfile::tempdir().unwrap();
         let session = fixture(dir.path().join(format!("first.{extension}")));
         write_archive(&snapshot(&session).unwrap()).unwrap();
@@ -82,7 +82,7 @@ fn archive_round_trip_is_portable_and_has_no_shared_or_draft_files() {
 #[test]
 fn only_latest_audio_and_saved_character_preview_survive_reopening() {
     let dir = tempfile::tempdir().unwrap();
-    let session = fixture(dir.path().join("project.zip"));
+    let session = fixture(dir.path().join("project.iro"));
     let character = session.library.characters().unwrap().remove(0);
     let wav = session
         .library
@@ -119,8 +119,20 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
         .library
         .save_character_preview(&character.id, &session.previews, &take.id)
         .unwrap();
+    for source in [
+        AudioSource::Take(latest.id.clone()),
+        AudioSource::Preview(take.id.clone()),
+        AudioSource::CharacterPreview(character.id.clone()),
+    ] {
+        assert_eq!(session.audio(&source).unwrap(), wav);
+    }
     write_archive(&snapshot(&session).unwrap()).unwrap();
     let reopened = Session::open(session.path.clone()).unwrap();
+    assert!(
+        reopened
+            .audio(&AudioSource::Preview(take.id.clone()))
+            .is_err()
+    );
     assert_eq!(reopened.library.takes().unwrap().len(), 1);
     assert_eq!(
         reopened.library.editor().unwrap().rows[0]
@@ -147,7 +159,7 @@ fn only_latest_audio_and_saved_character_preview_survive_reopening() {
 #[test]
 fn snapshot_keeps_the_content_captured_before_editing() {
     let dir = tempfile::tempdir().unwrap();
-    let session = fixture(dir.path().join("project.zip"));
+    let session = fixture(dir.path().join("project.iro"));
     let old = snapshot(&session).unwrap();
     let mut editor = session.library.editor().unwrap();
     editor.rows[0].text = "更新".into();
@@ -168,14 +180,14 @@ fn invalid_archives_do_not_escape_the_project_or_silently_open_empty() {
         "characters\\outside",
         "unrelated.txt",
     ] {
-        let path = dir.path().join("bad.zip");
+        let path = dir.path().join("bad.iro");
         let mut zip = ZipWriter::new(File::create(&path).unwrap());
         zip.start_file(name, SimpleFileOptions::default()).unwrap();
         zip.write_all(b"bad").unwrap();
         zip.finish().unwrap();
         assert!(Session::open(path).is_err(), "{name}");
     }
-    let path = dir.path().join("empty.zip");
+    let path = dir.path().join("empty.iro");
     ZipWriter::new(File::create(&path).unwrap())
         .finish()
         .unwrap();

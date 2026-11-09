@@ -18,18 +18,41 @@ struct Fields {
     color: Entity<ColorPickerState>,
     model_directory: Entity<InputState>,
 }
+struct GenerationSliders {
+    speed: Entity<SliderState>,
+    text: Entity<SliderState>,
+    speaker: Entity<SliderState>,
+    caption: Entity<SliderState>,
+}
+impl GenerationSliders {
+    fn iter(
+        &self,
+    ) -> [(
+        crate::workspace::state::GenerationField,
+        &Entity<SliderState>,
+    ); 4] {
+        use crate::workspace::state::GenerationField::*;
+        [
+            (Speed, &self.speed),
+            (TextGuidance, &self.text),
+            (SpeakerGuidance, &self.speaker),
+            (CaptionGuidance, &self.caption),
+        ]
+    }
+}
 pub(crate) struct Studio {
     state: WorkspaceState,
     service: Option<Service>,
+    inference: Option<std::sync::Arc<crate::synthesis::Inference>>,
     fields: Fields,
-    sliders: Vec<Entity<SliderState>>,
+    sliders: GenerationSliders,
     seek: Entity<SliderState>,
     subscriptions: Vec<Subscription>,
     advanced: bool,
     script_scroll: ScrollHandle,
     settings: Settings,
     playback: Option<Playback>,
-    audio_id: Option<String>,
+    audio_id: Option<crate::domain::AudioSource>,
     sync: bool,
     focus: FocusHandle,
     menu_focus: FocusHandle,

@@ -20,48 +20,25 @@ pub struct Inference {
     state: Arc<Mutex<ModelState>>,
 }
 impl Inference {
-    /// Share one model worker across windows while any window still uses it.
-    pub(crate) fn shared() -> Result<Arc<Self>> {
-        static ENGINE: std::sync::OnceLock<Mutex<std::sync::Weak<Inference>>> =
-            std::sync::OnceLock::new();
-        let mut shared = ENGINE
-            .get_or_init(Default::default)
-            .lock()
-            .map_err(|_| anyhow::anyhow!("engine lock poisoned"))?;
-        let inference = if let Some(engine) = shared.upgrade() {
-            engine
-        } else {
-            let settings = crate::preferences::ModelSettings::load()?;
-            Arc::new(Self::start_configured(
-                settings.directory,
-                |directory, progress| {
-                    Ok(EngineConfig::anime(
-                        super::resources::models_with_directory(directory, progress)?,
-                    ))
-                },
-                |directory| crate::preferences::ModelSettings { directory }.save(),
-            )?)
-        };
-        *shared = Arc::downgrade(&inference);
-        drop(shared);
-        Ok(inference)
-    }
-
-    pub fn start_with(config: impl Fn() -> Result<EngineConfig> + Send + 'static) -> Result<Self> {
+    #[cfg(test)]
+    pub(crate) fn start_with(
+        config: impl Fn() -> Result<EngineConfig> + Send + 'static,
+    ) -> Result<Self> {
         Self::start_with_progress(move |_| config())
     }
-    pub fn start_with_progress(
+    #[cfg(test)]
+    pub(crate) fn start_with_progress(
         config: impl Fn(&dyn Fn(InferenceStatus)) -> Result<EngineConfig> + Send + 'static,
     ) -> Result<Self> {
-        Self::start_configured(None, move |_, progress| config(progress), |_| Ok(()))
+        Self::start_configured(None, move |_, progress| config(progress), Ok)
     }
 
-    fn start_configured(
+    pub fn start_configured(
         directory: Option<PathBuf>,
         config: impl Fn(Option<&Path>, &dyn Fn(InferenceStatus)) -> Result<EngineConfig>
         + Send
         + 'static,
-        save_directory: impl Fn(Option<PathBuf>) -> Result<()> + Send + 'static,
+        configure_directory: impl Fn(Option<PathBuf>) -> Result<Option<PathBuf>> + Send + 'static,
     ) -> Result<Self> {
         let (sender, receiver) = mpsc::sync_channel::<Command>(1);
         let state = Arc::new(Mutex::new(ModelState {
@@ -94,11 +71,7 @@ impl Inference {
                         Ok(Command::Retry) => initialize = true,
                         Ok(Command::Configure(directory)) => {
                             let configure = || -> Result<()> {
-                                let directory = directory
-                                    .as_deref()
-                                    .map(super::resources::local_models)
-                                    .transpose()?;
-                                save_directory(directory.clone())?;
+                                let directory = configure_directory(directory)?;
                                 worker_state.lock().unwrap().directory = directory;
                                 Ok(())
                             };
@@ -242,8 +215,12 @@ mod tests {
                 bail!("test: stop before loading real models")
             },
             move |directory| {
-                persisted.lock().unwrap().push(directory);
-                Ok(())
+                let directory = directory
+                    .as_deref()
+                    .map(super::super::resources::local_models)
+                    .transpose()?;
+                persisted.lock().unwrap().push(directory.clone());
+                Ok(directory)
             },
         )
         .unwrap();
