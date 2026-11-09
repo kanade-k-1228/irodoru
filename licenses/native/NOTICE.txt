@@ -1,0 +1,33 @@
+Native runtime notices (reviewed 2026-11-08)
+
+ONNX Runtime 1.31.0
+https://github.com/microsoft/onnxruntime/tree/v1.31.0
+LICENSE and ThirdPartyNotices.txt are preserved from that tag. These apply to
+the native runtime even when statically linked; ort/ort-sys licensing alone is
+not sufficient. The generator checks ort-sys 2.0.0-rc.15 and its binary version
+table, and fails after a version update pending review of these notices.
+The accompanying onnxruntime-1.31.0-sources.txt contains the exact upstream
+dependency source URLs, including the MPL-2.0 Eigen headers used by the runtime.
+
+Windows DirectML 1.15.4
+https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
+The ort-sys Windows archive ships DirectML.dll (file version
+1.15.4+241025-1615.1.dml-1.15.fac7597). Its SHA-256 archive checksum is
+f99aaef23f12986abb05924c944d8433521263ad756b462df762a5a982c98405.
+The Microsoft DirectML binary is governed by Microsoft's separate software
+license terms, not the application's MIT license or the DirectML sample-code
+MIT license. Section 1(a) permits redistribution in applications built with
+machine learning tools/frameworks for use on Windows/Xbox. Its LICENSE.txt
+and ThirdPartyNotices.txt are copied from the official 1.15.4 NuGet package.
+Those terms apply to the DirectML component only, which is shipped on Windows.
+
+OpenVINO (optional GPU container)
+The container preserves license and notice files from the exact installed
+OpenVINO wheel and its dependencies in licenses/openvino/. Do not copy only
+the shared libraries when changing this container.
+
+System libraries and AppImage
+Crate notices include vendored native source notices such as FreeType's FTL.
+OS packages retain their own copyright files in Docker images. AppImage
+bundling can copy additional system libraries; the package checks and
+distribution documentation must cover those libraries as well.

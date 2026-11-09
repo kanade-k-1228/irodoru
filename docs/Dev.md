@@ -45,12 +45,22 @@ See CI for tests using real models and packaged apps. Check Japanese input, drag
 
 ```bash
 cargo install cargo-packager --version 0.11.8 --locked
+cargo install cargo-about --version 0.9.3 --locked --features cli
+cargo fetch --locked
 cargo xtask package
 ```
 
 - Linux also requires `patchelf`; Windows requires 7-Zip.
 - Add `--no-bundle` to create an app directory without an installer. App packages do not include models.
 - Use `cargo xtask models distribute` to create model ZIPs and distribution manifests.
+
+Packaging uses `cargo-about` to inspect locked dependencies and include a shared `licenses/` bundle covering supported targets and build dependencies. Some listed components are absent on a particular OS. Generate it separately with `cargo xtask licenses --destination /path/to/output`; run `cargo fetch --locked` first, since generation is offline. MPL sources are included as `.crate` archives (gzip-compressed tar).
+
+Notices are in `licenses/` in Windows ZIPs, `Contents/Resources/licenses/` in macOS apps, `usr/lib/irodoru/licenses/` in Linux packages, and `/app/licenses/` in Docker. `THIRD-PARTY-NOTICES.txt` contains license texts; `THIRD-PARTY-SOURCES.txt` identifies versions and source availability. The generator only replaces empty directories or previously generated bundles.
+
+When updating dependencies, review `about.toml` and the generated notices. If a crate lacks original copyright notices, investigate the upstream source and add a version-specific entry to `licenses/clarifications.json`. Native ONNX Runtime and DirectML are reviewed separately; updating `ort-sys` requires reviewing `licenses/native/`. The optional OpenVINO GPU image preserves notices from the installed wheels.
+
+Models are downloaded from reviewed revisions in `licenses/model/revisions.json`. Review model cards and ancestor licenses before updating these pins, then update notices and re-export. Each exported model and codec includes `LICENSES.txt` and `provenance.json`, which packaging and downloads require. Re-export old model directories that lack these files before distribution.
 
 Release flow:
 

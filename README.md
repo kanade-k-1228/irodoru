@@ -27,4 +27,6 @@ Script edits and saved character settings are saved automatically.
 
 ## License
 
-[MIT](LICENSE). Dependencies and models have their own licenses. See the model's [usage restrictions](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions).
+The application is [MIT](LICENSE). Dependencies, models, and bundled runtimes have their own terms. Release packages include license texts, copyright notices, and MPL source archives and download links in `licenses/`. DirectML in the Windows package has separate Microsoft license terms.
+
+The app uses [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime), which inherits the base model's [usage restrictions](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions). Do not impersonate someone without consent or generate deceptive audio. Each model and codec includes `LICENSES.txt`; see the [source and license review](licenses/model/NOTICE.txt).

@@ -36,9 +36,14 @@ class PackageSmokeTests(unittest.TestCase):
             environment = {**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
                            "IRODORU_TEST_MODELS": str(models), "SMOKE_MARKER": str(marker)}
             script = Path(__file__).with_name("smoke-package.sh").resolve()
-            for weights in (False, True):
+            for weights, licenses in ((False, True), (True, True), (False, False)):
                 with zipfile.ZipFile(archive, "w") as output:
                     output.writestr("irodoru.exe", runtime)
+                    if licenses:
+                        for name in ("LICENSE", "THIRD-PARTY-NOTICES.txt", "THIRD-PARTY-SOURCES.txt",
+                                     "model/ETHICAL-RESTRICTIONS.txt", "sources/symphonia-0.6.1.crate",
+                                     "sources/option-ext-0.2.0.crate"):
+                            output.writestr("licenses/" + name, "notice or source fixture")
                     if weights:
                         output.writestr("models/anime/backbone.onnx.data", "accidental weights")
                 result = subprocess.run(["bash", str(script), "x86_64-pc-windows-msvc"], cwd=root,
@@ -47,6 +52,10 @@ class PackageSmokeTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("contains model weights", result.stderr)
                     self.assertFalse(marker.exists(), "Do not run packages that accidentally contain models")
+                elif not licenses:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("missing third-party licenses", result.stderr)
+                    self.assertFalse(marker.exists())
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertTrue(marker.exists(), "Extracted runtime must see the external model fixture")

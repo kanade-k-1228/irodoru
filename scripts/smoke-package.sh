@@ -20,6 +20,18 @@ check_package() {
     echo "::error::App package contains model weights: $1" >&2
     exit 1
   fi
+  local license_dir
+  license_dir=$(find "$1" -type f -name THIRD-PARTY-NOTICES.txt -print -quit)
+  if [[ -z "$license_dir" ]]; then
+    echo "::error::App package is missing third-party licenses: $1" >&2
+    exit 1
+  fi
+  license_dir=$(dirname "$license_dir")
+  test -s "$license_dir/LICENSE"
+  test -s "$license_dir/THIRD-PARTY-SOURCES.txt"
+  test -s "$license_dir/model/ETHICAL-RESTRICTIONS.txt"
+  test -s "$license_dir/sources/symphonia-0.6.1.crate"
+  test -s "$license_dir/sources/option-ext-0.2.0.crate"
 }
 case "$target" in
   x86_64-pc-windows-msvc)

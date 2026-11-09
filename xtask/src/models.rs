@@ -15,6 +15,8 @@ const REQUIRED: &[(&str, &[&str])] = &[
     (
         "anime",
         &[
+            "LICENSES.txt",
+            "provenance.json",
             "manifest.json",
             "tokenizer.json",
             "caption_tokenizer.json",
@@ -30,7 +32,13 @@ const REQUIRED: &[(&str, &[&str])] = &[
     ),
     (
         "codec",
-        &["codec.json", "dacvae_encoder.onnx", "dacvae_decoder.onnx"],
+        &[
+            "LICENSES.txt",
+            "provenance.json",
+            "codec.json",
+            "dacvae_encoder.onnx",
+            "dacvae_decoder.onnx",
+        ],
     ),
 ];
 
@@ -146,6 +154,7 @@ fn read_bundle(source: &Path) -> Result<(Vec<u8>, Index)> {
     let bytes = fs::read(source.join("bundle.json"))?;
     let index: Index = serde_json::from_slice(&bytes)?;
     anyhow::ensure!(index.model == "anime", "App model resources must use anime");
+    validate_provenance(source)?;
     let expected = validate_files(&index.files)?
         .into_iter()
         .chain(["bundle.json"])
@@ -173,9 +182,11 @@ fn prepare(source: &Path, destination: &Path) -> Result<()> {
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(source.join("anime/manifest.json"))?)?;
     anyhow::ensure!(
-        manifest["name"] == "anime",
+        manifest["name"] == "anime"
+            && manifest["checkpoint"] == "phasefield-audio/Irodori-TTS-v4.1-Anime",
         "App model resources must use anime"
     );
+    validate_provenance(source)?;
     let mut entries = Vec::new();
     for (folder, names) in REQUIRED {
         let directory = source.join(folder);
@@ -234,6 +245,32 @@ fn prepare(source: &Path, destination: &Path) -> Result<()> {
         index.files.iter().map(|e| e.size).sum::<u64>(),
         index.files.len()
     );
+    Ok(())
+}
+
+fn validate_provenance(source: &Path) -> Result<()> {
+    let reviewed: serde_json::Value =
+        serde_json::from_slice(&fs::read(root().join("licenses/model/revisions.json"))?)?;
+    for (folder, repository) in [
+        ("anime", "phasefield-audio/Irodori-TTS-v4.1-Anime"),
+        ("codec", "Aratako/Semantic-DACVAE-Japanese-32dim"),
+    ] {
+        let path = source.join(folder).join("provenance.json");
+        let provenance: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).with_context(|| {
+                format!(
+                    "Missing model provenance: {}; re-export models",
+                    path.display()
+                )
+            })?)?;
+        anyhow::ensure!(
+            provenance["repository"] == repository
+                && reviewed[repository].is_string()
+                && provenance["revision"] == reviewed[repository],
+            "Unreviewed model revision in {}; review the license and re-export",
+            path.display()
+        );
+    }
     Ok(())
 }
 

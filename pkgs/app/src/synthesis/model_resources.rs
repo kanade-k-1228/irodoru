@@ -10,6 +10,10 @@ use std::{
 };
 
 const REQUIRED: &[&str] = &[
+    "anime/LICENSES.txt",
+    "anime/provenance.json",
+    "codec/LICENSES.txt",
+    "codec/provenance.json",
     "anime/manifest.json",
     "anime/tokenizer.json",
     "anime/caption_tokenizer.json",

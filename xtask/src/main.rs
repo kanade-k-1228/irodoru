@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+mod licenses;
 mod models;
 mod package;
 mod release;
@@ -87,6 +88,7 @@ fn main() -> Result<()> {
             )?;
         }
         Some("models") => models::cli(rest)?,
+        Some("licenses") => licenses::cli(rest)?,
         Some("package") => package::cli(rest)?,
         Some("release") => release::cli(rest)?,
         Some("generate") => {
@@ -142,7 +144,7 @@ fn main() -> Result<()> {
             ],
         )?,
         None | Some("help" | "--help") => println!(
-            "cargo xtask dev | models export/prepare/check/distribute/publish | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] | release version/app/container | verify | verify-export"
+            "cargo xtask dev | models export/prepare/check/distribute/publish | licenses [--destination DIR] | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] | release version/app/container | verify | verify-export"
         ),
         _ => bail!("Unknown task; run cargo xtask help"),
     }

@@ -1,0 +1,11 @@
+SeaHash 4.1.0
+Source: https://crates.io/api/v1/crates/seahash/4.1.0/download
+Repository: https://gitlab.redox-os.org/redox-os/seahash
+Published source revision: 94b632aeac099031c373599313d5b5f0acbbaec0
+
+The published Cargo.toml and Cargo.toml.orig declare MIT and identify the authors
+as ticki <ticki@users.noreply.github.com> and Tom Almeida <tom@tommoa.me>.
+The crate archive contains no separate license file or copyright notice. This
+version-specific clarification preserves the published authors and the standard
+MIT license reproduced in the generated report; it does not invent a copyright
+year or claim that a missing upstream license file has been retrieved.

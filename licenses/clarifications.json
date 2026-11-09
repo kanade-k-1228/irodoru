@@ -1,0 +1,18 @@
+{
+  "block2-0.6.2": "objc2.txt",
+  "harfrust-0.5.2": "harfrust.txt",
+  "objc-sys-0.3.5": "objc2.txt",
+  "objc2-app-kit-0.2.2": "objc2.txt",
+  "objc2-encode-4.1.0": "objc2.txt",
+  "objc2-foundation-0.2.2": "objc2.txt",
+  "objc2-foundation-0.3.2": "objc2.txt",
+  "objc2-0.5.3": "objc2.txt",
+  "objc2-0.6.5": "objc2.txt",
+  "pulp-wasm-simd-flag-0.1.1": "pulp.txt",
+  "rust-i18n-macro-4.2.4": "rust-i18n.txt",
+  "rust-i18n-support-4.2.4": "rust-i18n.txt",
+  "seahash-4.1.0": "seahash.txt",
+  "taffy-0.15.1": "taffy.txt",
+  "xim-ctext-0.3.0": "xim.txt",
+  "xim-parser-0.2.2": "xim.txt"
+}
