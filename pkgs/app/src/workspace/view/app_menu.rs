@@ -12,21 +12,16 @@ pub(super) enum MenuAction {
     NewProject,
     OpenProject,
     SaveProject,
-    Theme,
     Preferences,
-    About,
     CloseWindow,
 }
 use MenuAction::*;
 
-const MENU_ITEMS: [(MenuAction, &str, &str); 8] = [
+const MENU_ITEMS: [(MenuAction, &str, &str); 5] = [
     (NewWindow, "新規ウィンドウ", "app-window"),
     (NewProject, "新規プロジェクト…", "new"),
     (OpenProject, "プロジェクトを開く…", "folder"),
     (SaveProject, "プロジェクトを保存", "save"),
-    (Theme, "カラーテーマ", "palette"),
-    (Preferences, "環境設定…", "settings"),
-    (About, "irodoruについて", "info"),
     (CloseWindow, "ウィンドウを閉じる", "close"),
 ];
 
@@ -93,24 +88,16 @@ impl Studio {
                                 .justify_between()
                                 .px_3()
                                 .pb_2()
-                                .child(if self.project_menu {
-                                    "プロジェクト"
-                                } else {
-                                    "メニュー"
-                                })
-                                .child(tool("menu-close", "close", "メニューを閉じる").on_click(
+                                .child("ファイル")
+                                .child(tool("menu-close", "close", "ファイルを閉じる").on_click(
                                     cx.listener(|this, _, window, cx| this.close_menu(window, cx)),
                                 )),
                         )
-                        .children(
-                            MENU_ITEMS
-                                .iter()
-                                .enumerate()
-                                .filter(|(index, _)| self.menu_visible(*index))
-                                .map(|(index, (_, label, icon_name))| {
-                                    self.menu_item(index, label, icon_name, cx)
-                                }),
-                        ),
+                        .children(MENU_ITEMS.iter().enumerate().map(
+                            |(index, (_, label, icon_name))| {
+                                self.menu_item(index, label, icon_name, cx)
+                            },
+                        )),
                 ),
         )
         .with_priority(10)
@@ -119,7 +106,7 @@ impl Studio {
 
     fn close_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.menu_open = false;
-        self.menu_trigger_focus.focus(window, cx);
+        self.file_trigger_focus.focus(window, cx);
         cx.notify();
     }
 
@@ -133,9 +120,6 @@ impl Studio {
         let p = self.palette();
         let disabled = self.menu_disabled(index);
         div()
-            .when(matches!(MENU_ITEMS[index].0, Theme | About), |el| {
-                el.child(div().h(px(1.)).my_1().bg(p.line))
-            })
             .child(
                 div()
                     .id(("menu-item", index))
@@ -161,9 +145,6 @@ impl Studio {
                             .child(icon(icon_name).flex_shrink_0())
                             .child(label),
                     )
-                    .when(MENU_ITEMS[index].0 == Theme, |el| {
-                        el.child(self.theme_track())
-                    })
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.menu_select(MENU_ITEMS[index].0, w, cx)
                     })),
@@ -171,35 +152,16 @@ impl Studio {
             .into_any_element()
     }
 
-    pub(super) fn open_menu(&mut self, last: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.dialog_open {
+            return;
+        }
         self.menu_open = true;
-        self.project_menu = false;
-        self.menu_index = if last {
-            (0..MENU_ITEMS.len())
-                .rev()
-                .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
-                .unwrap_or(0)
-        } else {
-            0
-        };
+        self.menu_index = (0..MENU_ITEMS.len())
+            .find(|i| !self.menu_disabled(*i))
+            .unwrap_or(0);
         self.menu_focus.focus(window, cx);
         cx.notify();
-    }
-
-    pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_menu(false, window, cx);
-        self.project_menu = true;
-        self.menu_index = (0..MENU_ITEMS.len())
-            .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
-            .unwrap_or(1);
-    }
-
-    fn menu_visible(&self, index: usize) -> bool {
-        !self.project_menu
-            || matches!(
-                MENU_ITEMS[index].0,
-                NewProject | OpenProject | SaveProject | CloseWindow
-            )
     }
 
     fn menu_key_down(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
@@ -209,13 +171,13 @@ impl Studio {
             "enter" | "space" => self.menu_select(MENU_ITEMS[self.menu_index].0, w, cx),
             "home" => {
                 self.menu_index = (0..MENU_ITEMS.len())
-                    .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
+                    .find(|i| !self.menu_disabled(*i))
                     .unwrap_or(0);
             }
             "end" => {
                 self.menu_index = (0..MENU_ITEMS.len())
                     .rev()
-                    .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
+                    .find(|i| !self.menu_disabled(*i))
                     .unwrap_or(0)
             }
             "up" | "down" => self.move_menu_selection(key == "up"),
@@ -229,7 +191,7 @@ impl Studio {
         let delta = if backwards { MENU_ITEMS.len() - 1 } else { 1 };
         for _ in 0..MENU_ITEMS.len() {
             self.menu_index = (self.menu_index + delta) % MENU_ITEMS.len();
-            if self.menu_visible(self.menu_index) && !self.menu_disabled(self.menu_index) {
+            if !self.menu_disabled(self.menu_index) {
                 break;
             }
         }
@@ -256,9 +218,9 @@ impl Studio {
         if self.dialog_open || self.action_disabled(action) {
             return;
         }
-        if action != Theme && self.menu_open {
+        if self.menu_open {
             self.menu_open = false;
-            self.menu_trigger_focus.focus(window, cx);
+            self.file_trigger_focus.focus(window, cx);
         }
         match action {
             NewWindow => {
@@ -270,8 +232,7 @@ impl Studio {
                 self.autosave();
                 self.send(Command::Flush { close: false });
             }
-            Theme => self.toggle_theme(window, cx),
-            Preferences | About => self.show_app_dialog(action == Preferences, window, cx),
+            Preferences => self.show_settings(window, cx),
             CloseWindow => self.close(),
         }
         cx.notify();

@@ -116,6 +116,7 @@ impl Studio {
             .child(
                 div()
                     .id("project-menu-trigger")
+                    .track_focus(&self.file_trigger_focus)
                     .flex_1()
                     .min_w_0()
                     .cursor_pointer()
@@ -123,6 +124,9 @@ impl Studio {
                     .hover(|style| style.bg(p.hover))
                     .overflow_hidden()
                     .text_ellipsis()
+                    .when(self.state.status.path.is_none(), |el| {
+                        el.text_color(p.warning)
+                    })
                     .child(
                         self.state
                             .status
@@ -136,12 +140,12 @@ impl Studio {
             )
             .child(self.model_status_button(cx))
             .child(
-                tool("footer-menu", "menu", "メニュー")
+                tool("footer-settings", "settings", "設定")
                     .track_focus(&self.menu_trigger_focus)
                     .size(px(24.))
                     .flex_shrink_0()
                     .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_menu(false, window, cx);
+                        this.menu_select(MenuAction::Preferences, window, cx);
                     })),
             )
             .into_any_element()

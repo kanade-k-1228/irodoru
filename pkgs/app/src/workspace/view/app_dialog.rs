@@ -1,4 +1,4 @@
-//! Preferences and About dialog layouts.
+//! Application settings and information in one dialog.
 use super::appearance::{icon, tool};
 use super::{Studio, appearance};
 use gpui_kit::component::WindowExt;
@@ -6,23 +6,21 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn show_app_dialog(
-        &mut self,
-        preferences: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn show_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.dialog_open {
+            return;
+        }
         self.dialog_open = true;
         let weak = cx.entity().downgrade();
         let on_close = weak.clone();
         window.open_dialog(cx, move |dialog, _, cx| {
             let content = weak
                 .update(cx, |this, cx| {
-                    if preferences {
-                        this.preferences_content(cx)
-                    } else {
-                        this.about_content()
-                    }
+                    div()
+                        .child(this.preferences_content(cx))
+                        .child(div().h(px(1.)).mt_5().bg(this.palette().line))
+                        .child(this.about_content())
+                        .into_any_element()
                 })
                 .unwrap_or_else(|_| div().into_any_element());
             let p = appearance::Palette::new(crate::preferences::theme::light(cx));
@@ -33,11 +31,7 @@ impl Studio {
                         .flex()
                         .items_center()
                         .justify_between()
-                        .child(if preferences {
-                            "環境設定"
-                        } else {
-                            "irodoruについて"
-                        })
+                        .child("設定")
                         .child(tool("dialog-close", "close", "閉じる").on_click(
                             |_, window, cx| {
                                 window.close_dialog(cx);
@@ -52,7 +46,7 @@ impl Studio {
                 .bg(p.panel)
                 .text_color(p.ink)
                 .border_color(p.line)
-                .overlay_closable(false)
+                .overlay_closable(true)
                 .child(content)
                 .on_close(move |_, window, cx| {
                     let _ = on_close.update(cx, |this, cx| {
@@ -90,6 +84,7 @@ impl Studio {
             .flex_col()
             .gap_2()
             .text_sm()
+            .child(div().text_color(p.muted).child("irodoruについて"))
             .child(
                 div()
                     .flex()
