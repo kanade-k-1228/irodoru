@@ -3,7 +3,6 @@ use super::appearance::{button, icon, tool};
 use super::{Studio, appearance};
 use crate::domain::InferenceStatus;
 use gpui_kit::component::button::ButtonVariants;
-use gpui_kit::component::input::Input;
 use gpui_kit::component::{Disableable, WindowExt};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -67,15 +66,6 @@ impl Studio {
         if self.dialog_open {
             return;
         }
-        let directory = self
-            .inference
-            .as_ref()
-            .and_then(|service| service.model_directory())
-            .map(|path| path.display().to_string())
-            .unwrap_or_default();
-        self.fields
-            .model_directory
-            .update(cx, |input, cx| input.set_value(directory, window, cx));
         self.dialog_open = true;
         self.model_dialog_open = true;
         self.model_error = None;
@@ -138,22 +128,11 @@ impl Studio {
                 status,
                 InferenceStatus::Ready | InferenceStatus::Error { .. }
             );
-        let directory = self
+        let model_name = self
             .inference
             .as_ref()
-            .and_then(|service| service.model_directory());
-        let entered_path = self
-            .fields
-            .model_directory
-            .read(cx)
-            .value()
-            .trim()
-            .to_owned();
-        let can_apply = editable && !entered_path.is_empty();
-        let source = directory
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "既定のモデル".into());
+            .and_then(|service| service.model_name());
+        let source = model_name.clone().unwrap_or_else(|| "既定のモデル".into());
         let error = self.model_error.clone().or_else(|| match &status {
             InferenceStatus::Error { error } => Some(error.clone()),
             _ => None,
@@ -181,26 +160,19 @@ impl Studio {
                     .p_3().rounded(px(8.)).bg(p.warning_soft).text_color(p.warning).child(error),
             ))
             .child(div().h(px(1.)).bg(p.line))
-            .child(div().text_color(p.muted).child("モデルフォルダ"))
-            .child(div().id("model-directory").max_h(px(72.)).overflow_y_scroll().child(source))
-            .child(Input::new(&self.fields.model_directory).disabled(!editable))
+            .child(div().text_color(p.muted).child("使用するモデル"))
+            .child(div().id("model-source").max_h(px(72.)).overflow_y_scroll().child(source))
             .child(div().text_xs().text_color(p.muted)
-                .child("anime と codec を含むフォルダを選択するか、パスを入力して適用してください。設定はすべてのウィンドウと次回起動時に使用します。"))
+                .child("モデルZIPを取り込むと、すべてのウィンドウと次回起動時に使用します。取り込み後は元のZIPを移動・削除しても使えます。"))
             .child(div().flex().flex_wrap().gap_2()
-                .child(button("choose-model-directory", "フォルダを選択…")
+                .child(button("import-model-archive", "ZIPファイルを選択して取り込む…")
                     .icon(icon("folder")).disabled(!editable)
                     .when(!editable, |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, window, cx| this.choose_model_directory(window, cx))))
-                .child(button("apply-model-directory", "適用")
-                    .disabled(!can_apply)
-                    .when(!can_apply, |el| el.cursor_default())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.configure_model_directory(Some(std::path::PathBuf::from(&entered_path)), cx);
-                    })))
-                .child(button("reset-model-directory", "既定に戻す")
-                    .disabled(!editable || directory.is_none())
-                    .when(!editable || directory.is_none(), |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, _, cx| this.configure_model_directory(None, cx))))
+                    .on_click(cx.listener(|this, _, window, cx| this.choose_model_archive(window, cx))))
+                .child(button("reset-model-archive", "既定に戻す")
+                    .disabled(!editable || model_name.is_none())
+                    .when(!editable || model_name.is_none(), |el| el.cursor_default())
+                    .on_click(cx.listener(|this, _, _, cx| this.configure_model_archive(None, cx))))
                 .when(failed, |el| el.child(
                     button("retry-models", "再試行")
                         .disabled(!editable)
@@ -214,37 +186,30 @@ impl Studio {
                 )))
             .when(!editable && self.inference.is_some(), |el| el.child(
                 div().text_xs().text_color(p.muted).child(if self.model_picker_open {
-                    "フォルダを選択中…"
+                    "ZIPファイルを選択中…"
                 } else {
-                    "処理が完了するとモデルフォルダを変更できます。"
+                    "処理が完了するとモデルを変更できます。"
                 }),
             ))
             .into_any_element()
     }
 
-    fn choose_model_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn choose_model_archive(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.model_picker_open || self.state.busy {
             return;
         }
         self.model_picker_open = true;
         self.model_error = None;
-        let current = self
-            .inference
-            .as_ref()
-            .and_then(|service| service.model_directory());
         cx.spawn_in(window, async move |this, cx| {
-            let mut picker = rfd::AsyncFileDialog::new().set_title("モデルフォルダを選択");
-            if let Some(path) = current {
-                picker = picker.set_directory(path);
-            }
-            let selected = picker.pick_folder().await;
-            let _ = this.update_in(cx, |this, window, cx| {
+            let selected = rfd::AsyncFileDialog::new()
+                .set_title("モデルZIPを取り込む")
+                .add_filter("モデルZIP", &["zip"])
+                .pick_file()
+                .await;
+            let _ = this.update_in(cx, |this, _, cx| {
                 this.model_picker_open = false;
-                if let Some(folder) = selected {
-                    this.fields.model_directory.update(cx, |input, cx| {
-                        input.set_value(folder.path().display().to_string(), window, cx);
-                    });
-                    this.configure_model_directory(Some(folder.path().to_owned()), cx);
+                if let Some(file) = selected {
+                    this.configure_model_archive(Some(file.path().to_owned()), cx);
                 }
                 cx.notify();
             });
@@ -253,15 +218,15 @@ impl Studio {
         cx.notify();
     }
 
-    fn configure_model_directory(
+    fn configure_model_archive(
         &mut self,
-        directory: Option<std::path::PathBuf>,
+        archive: Option<std::path::PathBuf>,
         cx: &mut Context<Self>,
     ) {
         self.model_error = self
             .inference
             .as_ref()
-            .and_then(|service| service.configure_models(directory).err())
+            .and_then(|service| service.configure_models(archive).err())
             .map(|error| format!("{error:#}"));
         cx.notify();
     }

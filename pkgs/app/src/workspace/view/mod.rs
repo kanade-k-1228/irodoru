@@ -16,7 +16,6 @@ struct Fields {
     name: Entity<InputState>,
     sample: Entity<TextareaState>,
     color: Entity<ColorPickerState>,
-    model_directory: Entity<InputState>,
 }
 struct GenerationSliders {
     speed: Entity<SliderState>,

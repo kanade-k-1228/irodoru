@@ -16,23 +16,13 @@ fn start_inference() -> anyhow::Result<std::sync::Arc<crate::synthesis::Inferenc
     };
     let settings = ModelSettings::load()?;
     Ok(std::sync::Arc::new(Inference::start_configured(
-        settings.directory,
+        settings,
         |directory, progress| {
             Ok(irodoru_engine::EngineConfig::anime(
                 resources::models_with_directory(directory, progress)?,
             ))
         },
-        |directory| {
-            let directory = directory
-                .as_deref()
-                .map(resources::local_models)
-                .transpose()?;
-            ModelSettings {
-                directory: directory.clone(),
-            }
-            .save()?;
-            Ok(directory)
-        },
+        |settings| settings.save(),
     )?))
 }
 

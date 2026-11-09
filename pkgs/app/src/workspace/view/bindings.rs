@@ -32,7 +32,6 @@ impl Studio {
             seed: input("ランダム", window, cx),
             steps: input("モデル既定（40）", window, cx),
             name: input("キャラクター名", window, cx),
-            model_directory: input("モデルフォルダのパス", window, cx),
             sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };

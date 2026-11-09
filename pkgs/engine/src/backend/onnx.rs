@@ -6,33 +6,62 @@ use ort::environment::{Environment, GlobalThreadPoolOptions};
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::{Session, SessionInputValue};
 use ort::value::TensorRef;
-use std::path::Path;
+use std::{path::Path, sync::Mutex};
+
+// ort allows only one environment creation per process, even after its last
+// session is dropped. Keep that environment alive; model sessions remain local
+// to each Engine and are still dropped on a model switch.
+static ENVIRONMENT: Mutex<Option<(Environment, usize)>> = Mutex::new(None);
+// Custom-op schema registration also mutates ONNX Runtime's process-wide state.
+// Serialize session construction; running already-created sessions stays independent.
+static SESSION_BUILD: Mutex<()> = Mutex::new(());
+
+fn environment(threads: usize) -> Result<(Environment, usize)> {
+    let mut shared = ENVIRONMENT
+        .lock()
+        .map_err(|_| anyhow::anyhow!("ONNX environment lock poisoned"))?;
+    if let Some(env) = shared.as_ref() {
+        return Ok(env.clone());
+    }
+    let pool = GlobalThreadPoolOptions::default()
+        .with_intra_threads(threads)?
+        .with_inter_threads(1)?
+        .with_spin_control(false)?;
+    let env = ort::init()
+        .with_name("irodori")
+        .with_global_thread_pool(pool)
+        .build()?;
+    *shared = Some((env.clone(), threads));
+    Ok((env, threads))
+}
 
 #[derive(Clone)]
 pub(super) struct OrtRuntime {
     env: Environment,
+    pool_threads: usize,
     threads: usize,
 }
 impl OrtRuntime {
     pub fn new(threads: usize) -> Result<Self> {
-        let pool = GlobalThreadPoolOptions::default()
-            .with_intra_threads(threads)?
-            .with_inter_threads(1)?
-            .with_spin_control(false)?;
-        let env = ort::init()
-            .with_name("irodori")
-            .with_global_thread_pool(pool)
-            .build()?;
-        Ok(Self { env, threads })
+        let (env, pool_threads) = environment(threads)?;
+        Ok(Self {
+            env,
+            pool_threads,
+            threads,
+        })
     }
     pub fn load(&self, path: &Path, spinning: bool) -> Result<OrtGraph> {
+        let _build = SESSION_BUILD
+            .lock()
+            .map_err(|_| anyhow::anyhow!("ONNX session lock poisoned"))?;
         let build = || -> ort::Result<Session> {
             let mut builder = Session::builder(&self.env)?;
-            if spinning {
+            if spinning || self.threads != self.pool_threads {
                 builder = builder
                     .with_independent_thread_pool()?
                     .with_intra_threads(self.threads)?
-                    .with_intra_op_spinning(true)?;
+                    .with_inter_threads(1)?
+                    .with_intra_op_spinning(spinning)?;
             }
             builder
                 .with_optimization_level(GraphOptimizationLevel::Level3)?
