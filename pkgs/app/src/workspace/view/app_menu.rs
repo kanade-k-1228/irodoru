@@ -1,20 +1,20 @@
 //! Menu layout and navigation; header and dialog layouts live in sibling modules.
-use super::appearance::icon;
-use super::{Studio, WindowRequest, appearance};
+use super::appearance::{icon, tool};
+use super::{Studio, WindowRequest, actions, appearance};
 use crate::workspace::protocol::Command;
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-const LABELS: [&str; 8] = [
-    "新規ウィンドウ",
-    "新規プロジェクト…",
-    "プロジェクトを開く…",
-    "プロジェクトを保存",
-    "カラーテーマ",
-    "環境設定…",
-    "irodoruについて",
-    "ウィンドウを閉じる",
+const MENU_ITEMS: [(&str, &str); 8] = [
+    ("新規ウィンドウ", "app-window"),
+    ("新規プロジェクト…", "new"),
+    ("プロジェクトを開く…", "folder"),
+    ("プロジェクトを保存", "save"),
+    ("カラーテーマ", "palette"),
+    ("環境設定…", "settings"),
+    ("irodoruについて", "info"),
+    ("ウィンドウを閉じる", "close"),
 ];
 
 impl Studio {
@@ -22,39 +22,101 @@ impl Studio {
         let p = self.palette();
         deferred(
             div()
-                .id("app-menu")
+                .id("app-menu-modal")
                 .absolute()
-                .left(px(8.))
-                .top(px(44.))
-                .w(px(256.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(p.line)
-                .bg(p.panel)
-                .p_1()
-                .shadow_xl()
+                .inset_0()
+                .occlude()
+                .cursor_default()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(if self.settings.theme.is_light() {
+                    rgba(0x192c443d)
+                } else {
+                    rgba(0x0000008c)
+                })
                 .track_focus(&self.menu_focus)
-                .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, _, cx| {
-                    // The trigger toggles the menu itself; do not close and reopen on the same click.
-                    if event.position.y < px(40.) && event.position.x < px(140.) {
-                        return;
-                    }
-                    this.menu_open = false;
+                .key_context("AppMenu")
+                .on_action(cx.listener(|this, _: &actions::MenuNext, _, cx| {
+                    this.move_menu_selection(false);
+                    cx.stop_propagation();
                     cx.notify();
                 }))
-                .on_key_down(cx.listener(Self::menu_key_down))
-                .children(
-                    LABELS
-                        .iter()
-                        .enumerate()
-                        .map(|(index, label)| self.menu_item(index, label, cx)),
+                .on_action(cx.listener(|this, _: &actions::MenuPrevious, _, cx| {
+                    this.move_menu_selection(true);
+                    cx.stop_propagation();
+                    cx.notify();
+                }))
+                .capture_key_down(cx.listener(Self::menu_key_down))
+                .child(
+                    div()
+                        .id("app-menu-backdrop")
+                        .absolute()
+                        .inset_0()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, window, cx| this.close_menu(window, cx)),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("app-menu")
+                        .relative()
+                        .occlude()
+                        .cursor_default()
+                        .w(px(384.))
+                        .max_w_full()
+                        .mx_4()
+                        .rounded(px(12.))
+                        .border_1()
+                        .border_color(p.line)
+                        .bg(p.panel)
+                        .p_3()
+                        .shadow_xl()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .px_3()
+                                .pb_2()
+                                .child(if self.project_menu {
+                                    "プロジェクト"
+                                } else {
+                                    "メニュー"
+                                })
+                                .child(tool("menu-close", "close", "メニューを閉じる").on_click(
+                                    cx.listener(|this, _, window, cx| this.close_menu(window, cx)),
+                                )),
+                        )
+                        .children(
+                            MENU_ITEMS
+                                .iter()
+                                .enumerate()
+                                .filter(|(index, _)| self.menu_visible(*index))
+                                .map(|(index, (label, icon_name))| {
+                                    self.menu_item(index, label, icon_name, cx)
+                                }),
+                        ),
                 ),
         )
         .with_priority(10)
         .into_any_element()
     }
 
-    fn menu_item(&self, index: usize, label: &'static str, cx: &mut Context<Self>) -> AnyElement {
+    fn close_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.menu_open = false;
+        self.menu_trigger_focus.focus(window, cx);
+        cx.notify();
+    }
+
+    fn menu_item(
+        &self,
+        index: usize,
+        label: &'static str,
+        icon_name: &'static str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = self.palette();
         let disabled = self.menu_disabled(index);
         div()
@@ -78,7 +140,14 @@ impl Studio {
                     .when(disabled, |el| el.opacity(0.4))
                     .when(!disabled, |el| el.cursor_pointer().hover(|s| s.bg(p.hover)))
                     .when(self.menu_index == index, |el| el.bg(p.hover))
-                    .child(label)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(icon(icon_name).flex_shrink_0())
+                            .child(label),
+                    )
                     .when(index == 4, |el| el.child(self.theme_track()))
                     .on_click(cx.listener(move |this, _, w, cx| this.menu_select(index, w, cx))),
             )
@@ -87,10 +156,11 @@ impl Studio {
 
     pub(super) fn open_menu(&mut self, last: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.menu_open = true;
+        self.project_menu = false;
         self.menu_index = if last {
-            (0..LABELS.len())
+            (0..MENU_ITEMS.len())
                 .rev()
-                .find(|i| !self.menu_disabled(*i))
+                .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
                 .unwrap_or(0)
         } else {
             0
@@ -99,34 +169,49 @@ impl Studio {
         cx.notify();
     }
 
+    pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_menu(false, window, cx);
+        self.project_menu = true;
+        self.menu_index = (0..MENU_ITEMS.len())
+            .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
+            .unwrap_or(1);
+    }
+
+    fn menu_visible(&self, index: usize) -> bool {
+        !self.project_menu || matches!(index, 1 | 2 | 3 | 7)
+    }
+
     fn menu_key_down(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
         match key {
-            "escape" | "tab" => {
-                self.menu_open = false;
-                self.menu_trigger_focus.focus(w, cx);
-            }
+            "escape" => self.close_menu(w, cx),
             "enter" | "space" => self.menu_select(self.menu_index, w, cx),
-            "home" => self.menu_index = 0,
+            "home" => {
+                self.menu_index = (0..MENU_ITEMS.len())
+                    .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
+                    .unwrap_or(0);
+            }
             "end" => {
-                self.menu_index = (0..LABELS.len())
+                self.menu_index = (0..MENU_ITEMS.len())
                     .rev()
-                    .find(|i| !self.menu_disabled(*i))
+                    .find(|i| self.menu_visible(*i) && !self.menu_disabled(*i))
                     .unwrap_or(0)
             }
-            "up" | "down" => {
-                let delta = if key == "up" { LABELS.len() - 1 } else { 1 };
-                for _ in 0..LABELS.len() {
-                    self.menu_index = (self.menu_index + delta) % LABELS.len();
-                    if !self.menu_disabled(self.menu_index) {
-                        break;
-                    }
-                }
-            }
+            "up" | "down" => self.move_menu_selection(key == "up"),
             _ => return,
         };
         cx.stop_propagation();
         cx.notify();
+    }
+
+    fn move_menu_selection(&mut self, backwards: bool) {
+        let delta = if backwards { MENU_ITEMS.len() - 1 } else { 1 };
+        for _ in 0..MENU_ITEMS.len() {
+            self.menu_index = (self.menu_index + delta) % MENU_ITEMS.len();
+            if self.menu_visible(self.menu_index) && !self.menu_disabled(self.menu_index) {
+                break;
+            }
+        }
     }
 
     fn menu_disabled(&self, index: usize) -> bool {

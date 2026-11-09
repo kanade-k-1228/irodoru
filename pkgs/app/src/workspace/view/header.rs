@@ -1,8 +1,7 @@
 //! Window header: menu trigger, drag area and window controls.
 use super::Studio;
 use super::appearance::{icon, tool};
-use gpui_kit::component::FocusableExt;
-use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::button::{ButtonCustomVariant, ButtonVariants};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -35,13 +34,14 @@ impl Studio {
             .flex()
             .items_center()
             .gap_2()
-            .child(self.menu_trigger(cx))
+            .child(self.app_title())
             .child(
                 div()
                     .id("window-drag-area")
                     .flex_1()
                     .min_w(px(64.))
                     .h(px(32.))
+                    .cursor_pointer()
                     .window_control_area(WindowControlArea::Drag)
                     .on_mouse_down(MouseButton::Left, |event, w, _| {
                         if event.click_count == 2 {
@@ -55,46 +55,27 @@ impl Studio {
             .into_any_element()
     }
 
-    fn menu_trigger(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn app_title(&self) -> AnyElement {
         let p = self.palette();
-        Button::new("app-menu-trigger")
-            .cursor_pointer()
-            .track_focus(&self.menu_trigger_focus)
-            .focus_ring(false)
-            .ghost()
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
             .px_1()
             .py_1()
             .h(px(32.))
-            .rounded(px(8.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_base()
-                    .font_weight(FontWeight::BOLD)
-                    .child(icon("audio").size(px(20.)).text_color(p.accent))
-                    .child("irodoru"),
-            )
-            .on_click(cx.listener(|this, _, w, cx| {
-                if this.menu_open {
-                    this.menu_open = false;
-                    this.menu_trigger_focus.focus(w, cx);
-                } else {
-                    this.open_menu(false, w, cx);
-                }
-                cx.notify();
-            }))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, w, cx| {
-                if ["up", "down"].contains(&event.keystroke.key.as_str()) {
-                    this.open_menu(event.keystroke.key == "up", w, cx);
-                    cx.stop_propagation();
-                }
-            }))
+            .text_base()
+            .font_weight(FontWeight::BOLD)
+            .child(icon("audio").size(px(20.)).text_color(p.accent))
+            .child("irodoru")
             .into_any_element()
     }
 
     fn window_controls(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette();
+        let control_style = ButtonCustomVariant::new(cx)
+            .hover(p.hover)
+            .active(p.control);
         div()
             .flex()
             .flex_shrink_0()
@@ -102,6 +83,7 @@ impl Studio {
             .mr(px(-8.))
             .child(
                 tool("minimize", "minus", "最小化")
+                    .custom(control_style)
                     .w(px(44.))
                     .h(px(40.))
                     .rounded_none()
@@ -121,6 +103,7 @@ impl Studio {
                         "最大化"
                     },
                 )
+                .custom(control_style)
                 .w(px(44.))
                 .h(px(40.))
                 .rounded_none()

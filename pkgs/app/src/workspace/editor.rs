@@ -36,15 +36,20 @@ pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool)
         .insert(index.map_or(editor.rows.len(), |i| i + 1), row);
     Ok(id)
 }
-pub fn reorder(rows: &mut Vec<ScriptRow>, id: &str, target: &str, after: bool) {
-    if id == target || !rows.iter().any(|r| r.id == target) {
-        return;
+/// Move a row after another row, or to the beginning when `after` is absent.
+pub fn move_row(rows: &mut Vec<ScriptRow>, id: &str, after: Option<&str>) -> Option<usize> {
+    let index = rows.iter().position(|row| row.id == id)?;
+    let slot = match after {
+        Some(after) => rows.iter().position(|row| row.id == after)? + 1,
+        None => 0,
+    };
+    if slot == index || slot == index + 1 {
+        return None;
     }
-    if let Some(index) = rows.iter().position(|r| r.id == id) {
-        let row = rows.remove(index);
-        let target = rows.iter().position(|r| r.id == target).unwrap() + usize::from(after);
-        rows.insert(target, row);
-    }
+    let target = slot - usize::from(index < slot);
+    let row = rows.remove(index);
+    rows.insert(target, row);
+    Some(target)
 }
 pub fn remove(editor: &mut EditorState, id: &str) -> Option<String> {
     if editor.rows.len() <= 1 {
@@ -164,7 +169,7 @@ mod tests {
         let a = insert(&mut e, None, false).unwrap();
         let b = insert(&mut e, None, false).unwrap();
         let c = insert(&mut e, None, false).unwrap();
-        reorder(&mut e.rows, &a, &c, true);
+        assert_eq!(move_row(&mut e.rows, &a, Some(&c)), Some(2));
         assert_eq!(
             e.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             vec![b.as_str(), c.as_str(), a.as_str()]
@@ -172,6 +177,35 @@ mod tests {
         assert_eq!(remove(&mut e, &c), Some(a.clone()));
         assert_eq!(remove(&mut e, &a), Some(b.clone()));
         assert_eq!(remove(&mut e, &b), None);
+    }
+
+    #[test]
+    fn move_row_preserves_content_and_ignores_unchanged_or_invalid_positions() {
+        let mut e = EditorState::default();
+        assert_eq!(move_row(&mut e.rows, "missing", None), None);
+        let a = insert(&mut e, None, false).unwrap();
+        assert_eq!(move_row(&mut e.rows, &a, None), None);
+        assert_eq!(move_row(&mut e.rows, &a, Some(&a)), None);
+        let b = insert(&mut e, None, false).unwrap();
+        e.rows[1].text = "移動する台詞".into();
+        e.rows[1].character_id = "character".into();
+        e.rows[1].take_id = Some("generated-audio".into());
+        e.rows[1].prompt = Some("明るく".into());
+        let original = serde_yaml::to_string(&e).unwrap();
+        let moved_row = serde_yaml::to_string(&e.rows[1]).unwrap();
+
+        assert_eq!(move_row(&mut e.rows, &b, Some(&a)), None);
+        assert_eq!(move_row(&mut e.rows, &b, Some("missing")), None);
+        assert_eq!(serde_yaml::to_string(&e).unwrap(), original);
+        assert_eq!(move_row(&mut e.rows, &b, None), Some(0));
+        assert_eq!(serde_yaml::to_string(&e.rows[0]).unwrap(), moved_row);
+        assert_eq!(e.rows[1].id, a);
+        assert_eq!(move_row(&mut e.rows, &b, None), None);
+        assert_eq!(move_row(&mut e.rows, &a, Some(&a)), None);
+        assert_eq!(move_row(&mut e.rows, "missing", Some(&b)), None);
+
+        assert_eq!(move_row(&mut e.rows, &b, Some(&a)), Some(1));
+        assert_eq!(serde_yaml::to_string(&e).unwrap(), original);
     }
     #[test]
     fn validates_numbers_and_skips_blank_rows() {

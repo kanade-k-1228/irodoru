@@ -18,13 +18,13 @@ impl Studio {
             let dialog = rfd::AsyncFileDialog::new();
             let file = if create {
                 dialog
-                    .add_filter("irodoru project", &["iro"])
+                    .add_filter("irodoru プロジェクト", &["iro"])
                     .set_file_name("project.iro")
                     .save_file()
                     .await
             } else {
                 dialog
-                    .add_filter("irodoru project", &["iro", "zip"])
+                    .add_filter("irodoru プロジェクト", &["iro", "zip"])
                     .pick_file()
                     .await
             };

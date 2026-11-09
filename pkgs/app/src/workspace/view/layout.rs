@@ -1,6 +1,5 @@
 use super::Studio;
-use super::appearance::{button, icon, tool};
-use crate::domain::InferenceStatus;
+use super::appearance::{icon, tool};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -43,66 +42,20 @@ impl Render for Studio {
             .bg(p.surface)
             .text_color(p.ink)
             .text_sm()
-            .child(self.header(window, cx))
-            .when_some(self.model_status_row(cx), |el, status| el.child(status))
+            .when(!cfg!(target_os = "macos"), |el| {
+                el.child(self.header(window, cx))
+            })
             .when_some(self.state.error.clone(), |el, error| {
                 el.child(self.error_banner(error, cx))
             })
             .child(self.script(cx))
             .child(self.editor_panel(window, cx))
-            .child(self.project_path())
+            .child(self.footer(cx))
             .when(self.menu_open, |el| el.child(self.app_menu(cx)))
     }
 }
 
 impl Studio {
-    fn model_status_row(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (message, failed) = match self.service.as_ref()?.status() {
-            InferenceStatus::Checking { checked, total } => {
-                (model_progress("確認中", checked, total), false)
-            }
-            InferenceStatus::Downloading { downloaded, total } => {
-                (model_progress("ダウンロード中", downloaded, total), false)
-            }
-            InferenceStatus::Extracting { extracted, total } => {
-                (model_progress("展開中", extracted, total), false)
-            }
-            InferenceStatus::Loading => ("anime · モデルを読み込み中".into(), false),
-            InferenceStatus::Error { error } => (format!("モデルエラー: {error}"), true),
-            InferenceStatus::Ready | InferenceStatus::Generating => return None,
-        };
-        let p = self.palette();
-        Some(
-            div()
-                .flex()
-                .flex_shrink_0()
-                .items_center()
-                .gap_2()
-                .px_3()
-                .py_1()
-                .border_b_1()
-                .border_color(p.line)
-                .bg(p.panel)
-                .text_xs()
-                .text_color(p.muted)
-                .when(failed, |el| el.bg(p.warning_soft).text_color(p.warning))
-                .child(div().flex_1().min_w_0().child(message))
-                .when(failed, |el| {
-                    el.child(button("retry-models", "再試行").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            if let Some(service) = &this.service
-                                && let Err(error) = service.retry_models()
-                            {
-                                this.state.error = Some(error.to_string());
-                            }
-                            cx.notify();
-                        },
-                    )))
-                })
-                .into_any_element(),
-        )
-    }
-
     fn error_banner(&self, error: String, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         div()
@@ -148,9 +101,12 @@ impl Studio {
             .into_any_element()
     }
 
-    fn project_path(&self) -> AnyElement {
+    fn footer(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         div()
+            .flex()
+            .items_center()
+            .gap_2()
             .flex_shrink_0()
             .border_t_1()
             .border_color(p.line)
@@ -160,28 +116,37 @@ impl Studio {
             .text_xs()
             .line_height(px(16.))
             .text_color(p.muted)
-            .overflow_hidden()
-            .whitespace_nowrap()
             .child(
-                self.state
-                    .status
-                    .path
-                    .clone()
-                    .unwrap_or_else(|| "プロジェクト未選択".into()),
+                div()
+                    .id("project-menu-trigger")
+                    .flex_1()
+                    .min_w_0()
+                    .cursor_pointer()
+                    .rounded(px(4.))
+                    .hover(|style| style.bg(p.hover))
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(
+                        self.state
+                            .status
+                            .path
+                            .clone()
+                            .unwrap_or_else(|| "プロジェクト未選択".into()),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_project_menu(window, cx);
+                    })),
+            )
+            .child(self.model_status_button(cx))
+            .child(
+                tool("footer-menu", "menu", "メニュー")
+                    .track_focus(&self.menu_trigger_focus)
+                    .size(px(24.))
+                    .flex_shrink_0()
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_menu(false, window, cx);
+                    })),
             )
             .into_any_element()
     }
-}
-
-fn model_progress(label: &str, completed: u64, total: u64) -> String {
-    let percent = if total == 0 {
-        0.0
-    } else {
-        (completed as f64 / total as f64 * 100.0).min(100.0)
-    };
-    format!(
-        "anime · {label} {percent:.0}% ({:.1} / {:.1} MiB)",
-        completed as f64 / 1_048_576.0,
-        total as f64 / 1_048_576.0,
-    )
 }

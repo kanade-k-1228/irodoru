@@ -5,6 +5,21 @@ use crate::workspace::protocol::Command;
 use gpui_kit::*;
 
 impl Studio {
+    pub(super) fn move_row(&mut self, after: Option<&str>, cx: &mut Context<Self>) {
+        if self.state.busy || self.state.draft.is_some() {
+            return;
+        }
+        let Some(id) = self.state.selected.as_deref() else {
+            return;
+        };
+        if let Some(index) = editor::move_row(&mut self.state.snapshot.editor.rows, id, after) {
+            self.autosave();
+            // A leading gap precedes the alternating rows and insertion gaps.
+            self.script_scroll.scroll_to_item(index * 2 + 1);
+            cx.notify();
+        }
+    }
+
     pub(super) fn select(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.select(id) {
             self.autosave();

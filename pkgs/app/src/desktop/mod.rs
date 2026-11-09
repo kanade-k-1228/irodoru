@@ -24,9 +24,13 @@ pub(crate) fn open_studio(path: Option<std::path::PathBuf>, cx: &mut App) -> any
             )?
             .into_rgba8(),
         )),
-        titlebar: None,
-        window_decorations: Some(WindowDecorations::Client),
-        app_owns_titlebar_drag: true,
+        titlebar: cfg!(target_os = "macos").then(TitlebarOptions::default),
+        window_decorations: if cfg!(target_os = "macos") {
+            None
+        } else {
+            Some(WindowDecorations::Client)
+        },
+        app_owns_titlebar_drag: !cfg!(target_os = "macos"),
         ..Default::default()
     };
     gpui_kit::open_window(options, cx, move |window, cx| {
@@ -116,6 +120,8 @@ pub fn run() {
             ]
         };
         cx.bind_keys([
+            KeyBinding::new("tab", MenuNext, Some("AppMenu")),
+            KeyBinding::new("shift-tab", MenuPrevious, Some("AppMenu")),
             KeyBinding::new(q, Quit, None),
             KeyBinding::new(w, CloseWindow, None),
             KeyBinding::new(nw, NewWindow, None),
