@@ -68,11 +68,7 @@ fn main() {
         cx.set_global(SharedInference(
             start_inference().map_err(|error| format!("{error:#}")),
         ));
-        if let Err(error) = preferences::theme::initialize(cx) {
-            eprintln!("{error:#}");
-            cx.quit();
-            return;
-        }
+        preferences::theme::initialize(cx);
         cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {
                 #[cfg(target_os = "macos")]

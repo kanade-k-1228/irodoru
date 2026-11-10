@@ -29,7 +29,8 @@ impl Settings {
     pub fn load() -> Self {
         Self::path()
             .ok()
-            .and_then(|p| confy::load_path(p).ok())
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| serde_yaml::from_slice(&bytes).ok())
             .unwrap_or_default()
     }
     pub fn save(&self) -> Result<()> {
@@ -56,49 +57,4 @@ pub fn lock_instance() -> Result<std::fs::File> {
     file.try_lock()
         .context("irodoruは既に起動しています。開いているウィンドウを使用してください。")?;
     Ok(file)
-}
-
-/// One application-wide writer: theme changes must not wait behind a window's inference queue.
-pub struct SettingsWriter {
-    sender: Option<std::sync::mpsc::Sender<Theme>>,
-    worker: Option<std::thread::JoinHandle<()>>,
-    pub errors: std::sync::mpsc::Receiver<String>,
-}
-impl SettingsWriter {
-    pub fn start() -> Result<Self> {
-        Self::with_save(|theme| Settings { theme }.save())
-    }
-    fn with_save(mut save: impl FnMut(Theme) -> Result<()> + Send + 'static) -> Result<Self> {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let (report, errors) = std::sync::mpsc::channel();
-        let worker = std::thread::Builder::new()
-            .name("irodoru-settings".into())
-            .spawn(move || {
-                for theme in receiver {
-                    if let Err(error) = save(theme) {
-                        let _ = report.send(format!("テーマを保存できませんでした: {error:#}"));
-                    }
-                }
-            })?;
-        Ok(Self {
-            sender: Some(sender),
-            worker: Some(worker),
-            errors,
-        })
-    }
-    pub fn save(&self, theme: Theme) -> Result<()> {
-        self.sender
-            .as_ref()
-            .context("設定保存が終了しました")?
-            .send(theme)
-            .context("設定保存が終了しました")
-    }
-}
-impl Drop for SettingsWriter {
-    fn drop(&mut self) {
-        self.sender.take();
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
-    }
 }

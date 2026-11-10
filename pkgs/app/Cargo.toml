@@ -26,7 +26,6 @@ rodio = { version = "=0.23.0", default-features = false, features = ["playback",
 rfd = { version = "0.17" }
 clap = { version = "4", features = ["derive"] }
 directories = "6"
-confy = { version = "2", default-features = false, features = ["yaml_conf"] }
 symphonia = { version = "0.6", features = ["all"] }
 rubato = "5.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }

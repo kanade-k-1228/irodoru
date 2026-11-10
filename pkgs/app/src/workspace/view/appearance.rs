@@ -1,7 +1,7 @@
 //! Original studio palette and Lucide-style line icons, shared by native views.
 use gpui_kit::component::{Icon, Sizable};
 use gpui_kit::component::{
-    Theme,
+    Theme, ThemeMode,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::*;
@@ -69,7 +69,14 @@ impl Palette {
         }
     }
 }
-pub(super) fn apply(light: bool, cx: &mut App) {
+/// Switches the component theme and applies this app's palette to it.
+pub(super) fn apply(light: bool, window: &mut Window, cx: &mut App) {
+    let mode = if light {
+        ThemeMode::Light
+    } else {
+        ThemeMode::Dark
+    };
+    Theme::change(mode, Some(window), cx);
     let p = Palette::new(light);
     Theme::update(cx, |theme| {
         theme.radius = px(8.);

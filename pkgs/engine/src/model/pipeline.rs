@@ -9,7 +9,7 @@ use super::{
     audio::Audio,
     codec::Codec,
     condition::{Condition, valid_mask},
-    diagnostics::{DebugDump, Stopwatch},
+    diagnostics::Stopwatch,
     sampling::{Sampler, noise},
     text::{TextTokenizer, normalize_text},
 };
@@ -168,11 +168,7 @@ impl TTSModel {
         clock.lap("context_kv");
 
         ensure!(!is_cancelled(), "synthesis cancelled");
-        let dump = DebugDump::from_env();
         let mut x = noise(latent_steps, self.manifest.latent_dim, seed)?;
-        if let Some(dump) = &dump {
-            dump.f32("noise.f32", &x)?;
-        }
         let schedule = self.sampler.schedule(num_steps, p.sway_coeff)?;
         for w in schedule.windows(2) {
             ensure!(!is_cancelled(), "synthesis cancelled");
@@ -183,23 +179,8 @@ impl TTSModel {
         clock.lap("sample");
 
         ensure!(!is_cancelled(), "synthesis cancelled");
-        if let Some(dump) = &dump {
-            dump.f32("latent.f32", &x)?;
-            let ids = self.tokenizer.encode(&text, self.manifest.max_text_len)?;
-            dump.json(
-                "meta.json",
-                &serde_json::json!({
-                    "text": text, "ids": ids, "latent_steps": latent_steps,
-                    "num_steps": num_steps, "seed": seed,
-                }),
-            )?;
-        }
-        ensure!(!is_cancelled(), "synthesis cancelled");
         let mut audio = codec.decode(&x)?;
         ensure!(!is_cancelled(), "synthesis cancelled");
-        if let Some(dump) = &dump {
-            dump.f32("audio.f32", &audio.samples)?;
-        }
         let mut keep = target_samples;
         if p.trim_tail {
             let tail = flattening_point(&x)? * codec.hop;

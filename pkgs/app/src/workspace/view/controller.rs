@@ -46,9 +46,6 @@ impl Studio {
             window.refresh();
         }
         self.settings.theme = crate::preferences::theme::current(cx);
-        if let Some(error) = crate::preferences::theme::take_error(cx) {
-            self.state.error = Some(error);
-        }
         let events = self
             .service
             .as_ref()

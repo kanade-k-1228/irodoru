@@ -7,7 +7,6 @@ use crate::workspace::state::{Field, GenerationField, WorkspaceState};
 use gpui_kit::component::color_picker::{ColorPickerEvent, ColorPickerState};
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::slider::{SliderEvent, SliderState, SliderValue};
-use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
 use std::time::Duration;
 
@@ -178,16 +177,7 @@ impl Studio {
         let settings = Settings {
             theme: crate::preferences::theme::current(cx),
         };
-        Theme::change(
-            if settings.theme.is_light() {
-                ThemeMode::Light
-            } else {
-                ThemeMode::Dark
-            },
-            Some(window),
-            cx,
-        );
-        appearance::apply(settings.theme.is_light(), cx);
+        appearance::apply(settings.theme.is_light(), window, cx);
         let (service, inference, error) = match inference {
             Ok(inference) => match Service::start(inference.clone()) {
                 Ok(service) => (Some(service), Some(inference), None),
