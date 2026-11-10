@@ -155,8 +155,12 @@ The app workflow saves caches on pull requests as well as `main`. New commits
 wait for the active run to finish and save its caches instead of cancelling an
 expensive build; GitHub retains only the newest pending run in the group:
 
-- Rust uses sccache's GitHub Actions backend to reuse compilation results by
-  content, with incremental compilation disabled. Cargo registry downloads are
+- Rust uses sccache to reuse compilation results by content, with incremental
+  compilation disabled. Each job restores a bounded disk cache and saves it as
+  one archive, including after later failures. This avoids a separate cache-service
+  write for every compiler output. Older archives can seed changed-source builds;
+  sccache validates each object's inputs. Existing individual GitHub cache objects
+  are read-only fallback inputs during migration. Cargo registry downloads are
   cached separately; full target trees are not duplicated in that cache.
 - The prepared model bundle is saved immediately after export. Only model
   licenses, exporter dependencies and bundle preparation code invalidate it;

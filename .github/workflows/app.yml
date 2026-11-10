@@ -49,6 +49,13 @@ jobs:
       - run: docker compose --profile local --profile wsl-gpu config --quiet
       - uses: astral-sh/setup-uv@v7
       - run: cargo xtask verify-export
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   models:
     permissions:
@@ -112,6 +119,13 @@ jobs:
           path: model-assets/model-distribution.json
           if-no-files-found: error
           retention-days: 1
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   licenses:
     runs-on: ubuntu-24.04
@@ -153,6 +167,13 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   build_windows:
     name: build (windows)
@@ -233,6 +254,13 @@ jobs:
           path: target/x86_64-pc-windows-msvc/release/bundle/
           if-no-files-found: error
           compression-level: 0
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   build_macos:
     name: build (macos-arm64)
@@ -294,6 +322,13 @@ jobs:
           path: target/aarch64-apple-darwin/release/bundle/
           if-no-files-found: error
           compression-level: 0
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   build_linux:
     name: build (linux)
@@ -373,6 +408,13 @@ jobs:
           path: target/x86_64-unknown-linux-gnu/release/bundle/
           if-no-files-found: error
           compression-level: 0
+      - name: Save Rust compiler cache
+        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/sccache
+          # A failed run must not occupy the immutable successful-cache key.
+          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   required:
     if: always()
