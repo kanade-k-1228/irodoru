@@ -42,7 +42,7 @@ impl Studio {
         }
     }
     pub(super) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.modal == Some(super::app_dialog::Modal::Model) {
+        if self.modal == Some(super::modal::Modal::Model) {
             window.refresh();
         }
         // Render only when something it reads has changed.

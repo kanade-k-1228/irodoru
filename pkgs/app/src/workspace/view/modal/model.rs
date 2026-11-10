@@ -1,9 +1,9 @@
-//! Shared model status in the footer and model source settings in a modal.
-use super::Studio;
-use super::app_dialog::Modal;
-use super::appearance::{button, icon};
+//! Model source settings, and the model status the footer shows on their trigger.
+use super::Modal;
 use crate::domain::InferenceStatus;
+use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
+use crate::workspace::view::appearance::{button, icon};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -16,7 +16,7 @@ fn progress(status: &InferenceStatus) -> Option<(u64, u64)> {
     }
 }
 
-fn status_label(status: &InferenceStatus) -> String {
+pub(in crate::workspace::view) fn status_label(status: &InferenceStatus) -> String {
     let label = match status {
         InferenceStatus::Checking { .. } => "モデル確認中",
         InferenceStatus::Downloading { .. } => "ダウンロード中",
@@ -36,7 +36,7 @@ fn status_label(status: &InferenceStatus) -> String {
 }
 
 impl Studio {
-    fn model_status(&self) -> InferenceStatus {
+    pub(in crate::workspace::view) fn model_status(&self) -> InferenceStatus {
         self.inference
             .as_ref()
             .map(|service| service.status())
@@ -45,19 +45,11 @@ impl Studio {
             })
     }
 
-    pub(super) fn model_status_button(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette();
-        let status = self.model_status();
-        let failed = matches!(status, InferenceStatus::Error { .. });
-        self.footer_button("model-settings", "model", status_label(&status))
-            .track_focus(&self.model_trigger_focus)
-            .text_color(if failed { p.warning } else { p.muted })
-            .tooltip("モデル設定")
-            .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
-            .into_any_element()
-    }
-
-    fn show_model_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::workspace::view) fn show_model_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.modal.is_some() {
             return;
         }

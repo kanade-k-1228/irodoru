@@ -238,7 +238,6 @@ impl Studio {
             focus: cx.focus_handle(),
             menu_focus: cx.focus_handle(),
             menu_trigger_focus: cx.focus_handle(),
-            menu_open: false,
             file_trigger_focus: cx.focus_handle(),
             menu_index: 0,
             modal: None,

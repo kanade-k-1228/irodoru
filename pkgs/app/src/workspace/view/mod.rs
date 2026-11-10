@@ -64,10 +64,9 @@ pub(crate) struct Studio {
     focus: FocusHandle,
     menu_focus: FocusHandle,
     menu_trigger_focus: FocusHandle,
-    menu_open: bool,
     file_trigger_focus: FocusHandle,
     menu_index: usize,
-    modal: Option<app_dialog::Modal>,
+    modal: Option<modal::Modal>,
     model_picker_open: bool,
     model_error: Option<String>,
     model_trigger_focus: FocusHandle,
@@ -83,10 +82,8 @@ mod appearance;
 mod chara_panel;
 mod footer;
 
-mod app_dialog;
-mod app_menu;
 mod header;
-mod model_settings;
+mod modal;
 
 pub mod actions;
 pub(crate) enum WindowRequest {
