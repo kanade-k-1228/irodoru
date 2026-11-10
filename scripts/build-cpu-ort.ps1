@@ -24,6 +24,10 @@ $generator = switch (([Version]$version).Major) {
 # No DirectML, shared libraries, reduced operator set, or dynamic CRT.
 & "$source/build.bat" --cmake_generator $generator --config Release --parallel 2 --skip_tests --build_dir "$Output/build" --enable_msvc_static_runtime --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_USE_MIMALLOC=OFF onnxruntime_USE_FULL_PROTOBUF=OFF
 if ($LASTEXITCODE -ne 0) { throw 'CPU ORT build failed' }
+# RE2 is excluded from ALL by upstream FetchContent. In a static-only build
+# there is no final ORT shared-library link to pull this target into the build.
+cmake --build "$Output/build/Release" --config Release --target re2 --parallel 2
+if ($LASTEXITCODE -ne 0) { throw 'ORT RE2 dependency build failed' }
 $lib = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1
 if (-not $lib) { throw 'MSVC lib.exe is required' }
 # Flatten the built static libraries including transitive dependencies. Tests
@@ -32,7 +36,9 @@ if (-not $lib) { throw 'MSVC lib.exe is required' }
 $libraries = @(Get-ChildItem "$Output/build/Release" -Recurse -Filter '*.lib' |
     Where-Object { $_.FullName -notmatch '[\\/](CMakeFiles|CompilerIdCXX|CompilerIdC)[\\/]' -and $_.Name -notin @('libprotobuf.lib', 'libprotoc.lib') } |
     Sort-Object FullName)
-if (-not ($libraries.Name -contains 'onnxruntime_session.lib')) { throw 'ORT session library missing' }
+foreach ($required in @('onnxruntime_session.lib', 're2.lib')) {
+    if ($libraries.Name -notcontains $required) { throw "ORT static dependency missing: $required" }
+}
 $destination = Join-Path $Output 'lib'
 New-Item -ItemType Directory -Force $destination | Out-Null
 $response = Join-Path $Output 'libraries.rsp'

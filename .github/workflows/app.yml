@@ -182,7 +182,7 @@ jobs:
         with:
           name: app-licenses
           path: ${{ runner.temp }}/licenses
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         id: cpu-ort
         with:
           path: target/cpu-ort/lib
@@ -191,6 +191,12 @@ jobs:
         if: steps.cpu-ort.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./scripts/build-cpu-ort.ps1
+      - name: Cache completed CPU runtime before application checks
+        if: steps.cpu-ort.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: target/cpu-ort/lib
+          key: ${{ steps.cpu-ort.outputs.cache-primary-key }}
       - name: Configure embedded CPU library
         shell: pwsh
         run: '"IRODORU_CPU_ORT_LIB_DIR=$((Resolve-Path target/cpu-ort/lib).Path)" >> $env:GITHUB_ENV'
