@@ -31,7 +31,10 @@ impl Render for DraggedLine {
     }
 }
 
+mod actions;
+mod editor;
 mod line;
+mod takes;
 
 impl Studio {
     pub(in crate::workspace::view) fn lines(&self, cx: &mut Context<Self>) -> AnyElement {

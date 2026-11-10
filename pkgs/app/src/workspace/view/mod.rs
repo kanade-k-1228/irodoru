@@ -62,8 +62,7 @@ pub(crate) struct Studio {
     menu_open: bool,
     file_trigger_focus: FocusHandle,
     menu_index: usize,
-    dialog_open: bool,
-    model_dialog_open: bool,
+    modal: Option<app_dialog::Modal>,
     model_picker_open: bool,
     model_error: Option<String>,
     model_trigger_focus: FocusHandle,
@@ -73,7 +72,6 @@ mod bindings;
 mod controller;
 mod dialogs;
 mod editing;
-mod playback;
 
 mod appearance;
 

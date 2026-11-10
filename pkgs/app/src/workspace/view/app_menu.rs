@@ -158,7 +158,7 @@ impl Studio {
     }
 
     pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.dialog_open {
+        if self.modal.is_some() {
             return;
         }
         self.menu_open = true;
@@ -221,7 +221,7 @@ impl Studio {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.dialog_open || self.action_disabled(action) {
+        if self.modal.is_some() || self.action_disabled(action) {
             return;
         }
         if self.menu_open {

@@ -65,8 +65,7 @@ impl Studio {
         );
         let select = cx.listener(move |this, checked: &bool, window, cx| {
             if this.state.select_take(&select_id, *checked) {
-                this.playback = None;
-                this.audio_id = None;
+                this.stop_audio();
                 this.sync_fields(window, cx);
                 this.send(Command::SelectTake {
                     line_id: line_id.clone(),
@@ -158,8 +157,7 @@ impl Studio {
                 tool(("delete-take", i), "trash", "音声を削除")
                     .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.playback = None;
-                        this.audio_id = None;
+                        this.stop_audio();
                         this.send(Command::DeleteTake(delete.clone()));
                         cx.notify();
                     })),

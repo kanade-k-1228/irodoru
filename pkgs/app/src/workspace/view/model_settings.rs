@@ -1,9 +1,9 @@
 //! Shared model status in the footer and model source settings in a modal.
-use super::appearance::{button, icon, tool};
-use super::{Studio, appearance};
+use super::Studio;
+use super::app_dialog::Modal;
+use super::appearance::{button, icon};
 use crate::domain::InferenceStatus;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use gpui_kit::component::WindowExt;
 use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -67,58 +67,26 @@ impl Studio {
     }
 
     fn show_model_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.dialog_open {
+        if self.modal.is_some() {
             return;
         }
-        self.dialog_open = true;
-        self.model_dialog_open = true;
         self.model_error = None;
-        let weak = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _, cx| {
-            let content = weak
-                .update(cx, |this, cx| this.model_settings_content(cx))
-                .unwrap_or_else(|_| div().into_any_element());
-            let p = appearance::Palette::new(crate::preferences::theme::light(cx));
-            let on_close = weak.clone();
-            dialog
-                .title(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(icon("model"))
-                                .child("モデル設定"),
-                        )
-                        .child(tool("model-dialog-close", "close", "閉じる").on_click(
-                            |_, window, cx| {
-                                window.close_dialog(cx);
-                            },
-                        )),
-                )
-                .centered()
-                .close_button(false)
-                .width(px(480.))
-                .p_5()
-                .rounded(px(12.))
-                .bg(p.panel)
-                .text_color(p.ink)
-                .border_color(p.line)
-                .overlay_closable(true)
-                .child(content)
-                .on_close(move |_, window, cx| {
-                    let _ = on_close.update(cx, |this, cx| {
-                        this.dialog_open = false;
-                        this.model_dialog_open = false;
-                        this.model_trigger_focus.focus(window, cx);
-                        cx.notify();
-                    });
-                })
-        });
+        self.open_modal(
+            Modal::Model,
+            480.,
+            || {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(icon("model"))
+                    .child("モデル設定")
+                    .into_any_element()
+            },
+            |this, cx| this.model_settings_content(cx),
+            window,
+            cx,
+        );
     }
 
     fn model_settings_content(&self, cx: &mut Context<Self>) -> AnyElement {

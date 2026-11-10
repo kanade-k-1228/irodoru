@@ -59,8 +59,7 @@ impl Studio {
                 return None;
             }
             this.autosave();
-            this.playback = None;
-            this.audio_id = None;
+            this.stop_audio();
             this.state.line_errors.clear();
             Some(if matches!(action, ProjectDialog::FromCharas) {
                 Command::NewFromCharas(path)

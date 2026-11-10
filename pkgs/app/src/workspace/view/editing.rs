@@ -56,8 +56,7 @@ impl Studio {
     pub(super) fn preview(&mut self) {
         match self.state.preview() {
             Ok(Some(command)) => {
-                self.playback = None;
-                self.audio_id = None;
+                self.stop_audio();
                 self.send(command);
             }
             Ok(None) => {}

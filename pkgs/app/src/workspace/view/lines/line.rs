@@ -6,9 +6,6 @@ use gpui_kit::component::Icon;
 use gpui_kit::component::input::Textarea;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
-mod actions;
-mod editor;
-mod takes;
 
 impl Studio {
     pub(in crate::workspace::view) fn line(

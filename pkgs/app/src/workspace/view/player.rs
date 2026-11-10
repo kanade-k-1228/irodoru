@@ -1,11 +1,31 @@
 use super::Studio;
 use super::appearance::tool;
 use crate::domain::AudioSource;
+use crate::workspace::protocol::Command;
 use crate::workspace::view::appearance::DisabledWithCursor;
 use gpui_kit::component::slider::Slider;
 use gpui_kit::*;
 
 impl Studio {
+    pub(super) fn play(&mut self, source: AudioSource) {
+        if self.audio_id.as_ref() == Some(&source)
+            && let Some(p) = &self.playback
+            && p.position() < p.duration
+        {
+            p.toggle();
+            return;
+        }
+        self.start_audio(source);
+    }
+    pub(super) fn start_audio(&mut self, source: AudioSource) {
+        self.playback = None;
+        self.audio_id = Some(source.clone());
+        self.send(Command::Audio(source));
+    }
+    pub(super) fn stop_audio(&mut self) {
+        self.playback = None;
+        self.audio_id = None;
+    }
     pub(super) fn audio_player_controls(
         &self,
         key: (&'static str, usize),

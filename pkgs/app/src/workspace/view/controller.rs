@@ -42,7 +42,7 @@ impl Studio {
         }
     }
     pub(super) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.model_dialog_open {
+        if self.modal == Some(super::app_dialog::Modal::Model) {
             window.refresh();
         }
         self.settings.theme = crate::preferences::theme::current(cx);
