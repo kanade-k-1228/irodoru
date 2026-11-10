@@ -4,11 +4,9 @@ mod archive;
 mod charas;
 mod export;
 pub use export::ExportNaming;
-#[cfg(feature = "desktop")]
 pub(crate) use export::export_lines;
 mod autosave;
-#[cfg(any(feature = "desktop", test))]
-pub(crate) mod incoming;
+pub mod incoming;
 mod ownership;
 mod session;
 pub use active::Project;

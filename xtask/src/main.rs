@@ -82,10 +82,7 @@ fn main() -> Result<()> {
     let rest = args.get(1..).unwrap_or_default();
     match args.first().map(String::as_str) {
         Some("dev") => {
-            run(
-                "cargo",
-                &["run", "--locked", "-p", "irodoru", "--features", "desktop"],
-            )?;
+            run("cargo", &["run", "--locked", "-p", "irodoru"])?;
         }
         Some("models") => models::cli(rest)?,
         Some("licenses") => licenses::cli(rest)?,

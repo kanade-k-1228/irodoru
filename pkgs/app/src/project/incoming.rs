@@ -1,9 +1,6 @@
 //! Native file-open requests, including launches forwarded to the existing process.
-#[cfg(feature = "desktop")]
-use anyhow::Context;
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use std::{
-    ffi::OsString,
     io::{Read, Write},
     path::{Path, PathBuf},
 };
@@ -13,28 +10,23 @@ const MAX_PATHS: usize = 64;
 
 use super::is_project_path;
 
-pub(crate) fn argument_paths(args: impl IntoIterator<Item = OsString>, cwd: &Path) -> Vec<PathBuf> {
-    args.into_iter()
-        .skip(1)
-        .filter_map(|arg| {
-            let text = arg.to_string_lossy();
-            if text.starts_with('-') || text.contains("://") {
-                return None;
+/// Keeps the project files among the positional command-line arguments.
+pub fn argument_paths(paths: impl IntoIterator<Item = PathBuf>, cwd: &Path) -> Vec<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|path| !path.to_string_lossy().contains("://") && is_project_path(path))
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
             }
-            let path = PathBuf::from(arg);
-            is_project_path(&path).then(|| {
-                if path.is_absolute() {
-                    path
-                } else {
-                    cwd.join(path)
-                }
-            })
         })
         .take(MAX_PATHS)
         .collect()
 }
 
-pub(crate) fn url_paths(urls: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
+pub fn url_paths(urls: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
     urls.into_iter()
         .filter(|value| value.len() as u64 <= MAX_BYTES)
         .filter_map(|value| url::Url::parse(&value).ok()?.to_file_path().ok())
@@ -46,10 +38,9 @@ pub(crate) fn url_paths(urls: impl IntoIterator<Item = String>) -> Vec<PathBuf> 
 /// Atomic files survive the primary process starting up before its event loop is ready.
 /// The directory lives beside the existing per-user instance lock, never in a shared temp dir.
 #[derive(Clone)]
-pub(crate) struct Inbox(PathBuf);
+pub struct Inbox(PathBuf);
 impl Inbox {
-    #[cfg(feature = "desktop")]
-    pub(crate) fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let dirs = directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
             .context("設定フォルダが見つかりません")?;
         Self::at(dirs.config_dir().join("open-requests"))
@@ -60,7 +51,7 @@ impl Inbox {
         Ok(Self(path))
     }
 
-    pub(crate) fn forward(&self, paths: &[PathBuf]) -> Result<()> {
+    pub fn forward(&self, paths: &[PathBuf]) -> Result<()> {
         ensure!(
             !paths.is_empty() && paths.len() <= MAX_PATHS,
             "開くファイル数が不正です"
@@ -87,7 +78,7 @@ impl Inbox {
         Ok(())
     }
 
-    pub(crate) fn drain(&self) -> Result<Vec<PathBuf>> {
+    pub fn drain(&self) -> Result<Vec<PathBuf>> {
         let mut paths = Vec::new();
         let mut requests = std::fs::read_dir(&self.0)?.collect::<std::io::Result<Vec<_>>>()?;
         requests.sort_by_key(|entry| entry.file_name());
@@ -136,11 +127,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn arguments_resolve_native_paths_and_ignore_flags_or_remote_urls() {
+    fn arguments_resolve_native_paths_and_ignore_remote_urls() {
         let dir = tempfile::tempdir().unwrap();
         let args = [
-            "irodoru",
-            "--flag.iro",
             "https://host/file.iro",
             "file:///tmp/file.iro",
             "相対 パス.IRO",
@@ -149,7 +138,7 @@ mod tests {
             "other.txt",
         ];
         assert_eq!(
-            argument_paths(args.map(OsString::from), dir.path()),
+            argument_paths(args.map(PathBuf::from), dir.path()),
             vec![
                 dir.path().join("相対 パス.IRO"),
                 dir.path().join("second.iro")

@@ -6,7 +6,7 @@ struct ThemeWriter(pub super::SettingsWriter);
 impl Global for ThemeWriter {}
 impl Global for AppTheme {}
 
-pub(crate) fn initialize(cx: &mut App) -> anyhow::Result<()> {
+pub fn initialize(cx: &mut App) -> anyhow::Result<()> {
     cx.set_global(ThemeWriter(super::SettingsWriter::start()?));
     cx.set_global(AppTheme(super::Settings::load().theme));
     Ok(())

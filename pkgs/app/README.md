@@ -1,6 +1,6 @@
 # Desktop application architecture
 
-The app is one Rust crate. `main.rs` calls `desktop::run`; the `desktop` feature adds GPUI, native dialogs, and playback. Core editing, state, storage, and synthesis can be tested without a display.
+The app is one Rust crate. `main.rs` parses arguments with clap and starts GPUI; the `desktop` module owns window composition, native dialogs, and playback. Core editing, state, storage, and synthesis live in modules that do not depend on GPUI.
 
 ## Modules
 
@@ -70,8 +70,8 @@ Keep assets in `icons/` in sync when changing the logo.
 
 ```bash
 cargo xtask verify
-cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru --features desktop
+cargo clippy --locked -p irodoru --all-targets -- -D warnings
+cargo test --locked -p irodoru
 cargo xtask dev
 ```
 

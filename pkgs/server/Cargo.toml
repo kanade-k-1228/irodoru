@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
-[features]
-default = ["openvino"]
-openvino = ["irodoru-engine/openvino"]
-
 [dependencies]
-irodoru-engine = { path = "../engine" }
+irodoru-engine = { path = "../engine", features = ["openvino"] }
 anyhow = "1"
 base64 = "0.23"
 axum = "0.8"

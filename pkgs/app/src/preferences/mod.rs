@@ -3,5 +3,4 @@ mod models;
 mod store;
 pub use models::ModelSettings;
 pub use store::{Settings, SettingsWriter, Theme, lock_instance};
-#[cfg(feature = "desktop")]
-pub(crate) mod theme;
+pub mod theme;

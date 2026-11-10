@@ -3,6 +3,5 @@ pub mod editor;
 pub mod protocol;
 pub mod service;
 pub mod state;
-#[cfg(feature = "desktop")]
-pub(crate) mod view;
+pub mod view;
 mod worker;

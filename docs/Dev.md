@@ -36,8 +36,8 @@ cargo xtask verify          # Python tests, fmt, Clippy, Rust tests, OpenAPI dif
 cargo xtask verify-export   # Model export tests
 cargo xtask generate        # Regenerate OpenAPI
 # Also run after GUI changes
-cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru --features desktop
+cargo clippy --locked -p irodoru --all-targets -- -D warnings
+cargo test --locked -p irodoru
 ```
 
 See CI for tests using real models and packaged apps. Check Japanese input, dragging, and audio devices manually on each OS.

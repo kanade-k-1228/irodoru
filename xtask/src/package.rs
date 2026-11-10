@@ -90,8 +90,6 @@ pub fn cli(args: &[String]) -> Result<()> {
         "--release",
         "-p",
         "irodoru",
-        "--features",
-        "desktop",
         "--target",
         &target,
     ]);

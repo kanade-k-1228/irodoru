@@ -2,7 +2,6 @@
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::{io::Cursor, path::Path};
-#[cfg(feature = "desktop")]
 pub const IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "svg",
 ];
