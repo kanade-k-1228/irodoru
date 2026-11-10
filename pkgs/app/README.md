@@ -33,13 +33,13 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
 ```
 
 - Build named, stateless view sections in the existing `Studio` context. Keep list iteration separate from item rendering, with lines and insertion gaps as siblings.
-- View modules follow the screen: `layout` composes `lines`, `chara_panel`, and `footer`; `lines/line` owns line actions, the inline editor, and takes; `chara_panel` owns the list and editor. `modal` owns the shared dialog frame, with one module per modal (`menu`, `settings`, `model`). Shared controls remain at the view root.
+- View modules follow the screen: `layout` composes `lines`, `chara_panel`, and `footer`; `lines/line` owns line actions, the inline editor, and takes; `chara_panel` owns the list and editor. `modal` owns the shared dialog frame, with one module per modal (`menu`, `settings`, `model`). Shared controls remain at the view root. Line details use an explicit `expanded_line` target controlled by the rightmost chevron; selecting text does not open details.
 - Keep containers needed for layout, scrolling, or hit testing. Put editing adapters in `editing.rs` and preserve input entities, element IDs, and focus handles.
 - Run storage and inference on workers with owned command data. Only the UI thread drains notifications and updates GPUI entities; its weak-entity timer stops when the window closes.
-- Selected chara settings are always editable and autosaved without a separate edit mode. Preview generation settings are independent of line settings. Passive chara saves do not refresh input snapshots; failed writes retain local values and block project switching until retried.
+- Selected chara settings are always editable and autosaved without a separate edit mode. The editor stays 208 px high while the script area absorbs window resizing. It has a vertical icon/action toolbar on the left, color/name and voice prompt in the center, and a scrollable reference list on the right. Try voices by generating dialogue takes. Passive chara saves do not refresh input snapshots; failed writes retain local values and block project switching until retried.
 - Use `Command::is_passive` to keep editing available without emitting `Done`. The view and worker share this policy; callers do not supply a separate busy flag.
 - The worker resolves charas and reference audio into owned `GenerationInput` values. Generation prepares the complete batch before inference and returns a take plus a plain WAV for the worker to save. The repository alone embeds the app metadata in the WAV. It has no dependency on project or library storage. Takes execute in order, stopping after the current take finishes; failures preserve prior audio.
-- `AudioSource` identifies a generated take, a temporary preview, or a saved chara preview. Playback and export both read it through `Session::audio`.
+- `AudioSource` identifies a generated take or reference recording. Line, take, and reference playback buttons share one view component. `view/audio_item` renders the complete row (selection, playback, export, and removal) for both takes and references; the callers supply only audio data. Take selection remains exclusive. Reference rows omit the selection control: every uploaded reference belongs to the current character and is used automatically. Removing a reference removes it from that character’s list without affecting other characters. Reference durations are read from WAV headers on the worker without loading PCM into the UI. Playback and export both read it through `Session::audio`.
 
 ## Projects and shared services
 
@@ -73,7 +73,7 @@ cargo xtask verify
 cargo xtask dev
 ```
 
-- There are no automated tests. Manually check multiple windows, shortcut focus, save-on-close, IME input, dragging, and audio devices on each platform.
+- Run `cargo test -p irodoru` for playback, line disclosure, and character deletion regression tests. Manually check multiple windows, shortcut focus, save-on-close, IME input, dragging, and audio devices on each platform.
 
 Follow the [GPUI Kit coding guides](https://gpui-kit.com/docs/coding-guides/) and [task model](https://gpui-kit.com/docs/task/) for module boundaries, state ownership, and background work.
 
@@ -84,9 +84,9 @@ Follow the [GPUI Kit coding guides](https://gpui-kit.com/docs/coding-guides/) an
 - `charas/<id>/voices/<voice_id>.wav`: independent reference audio copies owned by that chara. `voice_ids` resolves within this directory.
 - `voices/<id>.wav`: a shared voice table with no metadata sidecars. The standard RIFF `LIST/INFO/ICMT` comment contains JSON under `irodoru_voice`, including the ID and generation conditions. `kind: imported` stores the original recording name; `kind: generated` stores the take's generation snapshot. Resolved parameters live only in `conditions`; text, model, seed, and steps are not duplicated, and default export filenames are derived from those conditions. `line_id`, chara information, and input voice IDs in a generated snapshot record its origin; they do not determine line membership or own the audio's lifetime and may refer to a source project after transfer.
 
-Deleting a line does not delete its voices. Deleting a generated take leaves chara-owned reference copies intact. Removing a chara reference or deleting a chara removes only its own copies. Generation reads every selected reference, apportions the model's maximum reference duration across clips, and combines normalized samples before speaker encoding. Single-reference generation retains its previous behavior.
+Reference lists contain the current character’s recordings in upload order; imports append every uploaded recording. Generated takes are not offered for reuse as references; already assigned generated references remain usable and removable. Deleting a line does not delete its voices. Deleting a generated take leaves chara-owned reference copies intact. Removing a chara reference or deleting a chara removes only its own copies. Generation reads every character reference, apportions the model's maximum reference duration across clips, and combines normalized samples before speaker encoding. Single-reference generation retains its previous behavior.
 
-Only the current archive layout is accepted; there is no migration or legacy field-name handling. Saved chara previews use a single `preview.wav`. Each editor write atomically replaces `project.yaml`, including all lines in their display order. Snapshots capture the project under the existing session lock.
+Only the current archive layout is accepted; there is no migration or legacy field-name handling. Existing `preview.wav` assets are preserved when saving older projects, but character preview generation and playback are no longer available. Each editor write atomically replaces `project.yaml`, including all lines in their display order. Snapshots capture the project under the existing session lock.
 
 Chara bundles (`.irochar`) use the same ZIP schema with one chara, its icon and referenced voices inside the chara directory, and an empty line list. Import assigns fresh IDs to avoid replacing existing records. Creating a project from charas copies each chara with its own referenced audio, and reserves the destination independently so failure leaves the source session open.
 

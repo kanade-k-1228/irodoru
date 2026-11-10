@@ -1,6 +1,6 @@
 //! Window header: menu trigger, drag area and window controls.
 use super::Studio;
-use super::appearance::{icon, tool};
+use super::appearance::{icon, icon_button};
 use gpui_kit::component::button::{ButtonCustomVariant, ButtonVariants};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -72,7 +72,8 @@ impl Studio {
             .my(px(-4.))
             .mr(px(-8.))
             .child(
-                tool("minimize", "minus", "最小化")
+                icon_button("minimize", "minus")
+                    .accessibility_label("最小化")
                     .custom(control_style)
                     .w(px(44.))
                     .h(px(40.))
@@ -80,19 +81,19 @@ impl Studio {
                     .on_click(|_, w, _| w.minimize_window()),
             )
             .child(
-                tool(
+                icon_button(
                     "maximize",
                     if window.is_maximized() {
                         "copy"
                     } else {
                         "square"
                     },
-                    if window.is_maximized() {
-                        "元のサイズに戻す"
-                    } else {
-                        "最大化"
-                    },
                 )
+                .accessibility_label(if window.is_maximized() {
+                    "元のサイズに戻す"
+                } else {
+                    "最大化"
+                })
                 .custom(control_style)
                 .w(px(44.))
                 .h(px(40.))

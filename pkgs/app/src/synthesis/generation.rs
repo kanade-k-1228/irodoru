@@ -35,33 +35,6 @@ pub fn prepare(inputs: Vec<GenerationInput>) -> Result<Vec<PreparedTake>> {
         .collect()
 }
 
-pub fn prepare_preview(
-    request: crate::domain::SynthesisInput,
-    description: String,
-    voice_ids: Vec<String>,
-    reference_audio: Vec<Vec<u8>>,
-) -> Result<PreparedTake> {
-    if description.chars().count() > 2000 {
-        bail!("プロンプトは2000文字以内です");
-    }
-    let chara = crate::domain::Chara {
-        id: new_id(),
-        name: "サンプル".into(),
-        description,
-        voice_ids,
-        color: crate::domain::DEFAULT_CHARA_COLOR.into(),
-        sample_text: request.text.clone(),
-        icon: None,
-    };
-    let request = TakeRequest {
-        line_id: new_id(),
-        chara_id: chara.id.clone(),
-        additional_prompt: None,
-        request,
-    };
-    prepare_one(request, chara, reference_audio)
-}
-
 fn prepare_one(
     req: TakeRequest,
     chara: crate::domain::Chara,

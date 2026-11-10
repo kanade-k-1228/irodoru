@@ -56,14 +56,7 @@ impl Session {
     }
     pub fn audio(&self, source: &AudioSource) -> Result<Vec<u8>> {
         match source {
-            AudioSource::Take(id) => Ok(self.library.audio(id)?),
-            AudioSource::CharaPreview(id) => {
-                let path = self
-                    .library
-                    .chara_preview_path(id)?
-                    .ok_or_else(|| anyhow::anyhow!("サンプル音声がありません"))?;
-                Ok(std::fs::read(path)?)
-            }
+            AudioSource::Take(id) | AudioSource::Reference(id) => self.library.audio(id),
         }
     }
     pub(super) fn validate(&self) -> Result<()> {

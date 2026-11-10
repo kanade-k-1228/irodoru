@@ -1,8 +1,8 @@
 use crate::domain::Line;
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::chara_color;
+use crate::workspace::view::components::speech_row;
 use crate::workspace::view::lines::DraggedLine;
-use gpui_kit::component::Icon;
 use gpui_kit::component::input::Textarea;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -56,25 +56,16 @@ impl Studio {
                         .when(!last, |el| el.bottom_0()),
                 )
             })
-            .child(
-                div()
-                    .relative()
-                    .flex()
-                    .items_start()
-                    .gap_2()
-                    .child(
-                        self.avatar(chara, 28.)
-                            .id(("line-avatar", i))
-                            .when(!disabled, |el| {
-                                el.cursor_move()
-                                    .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
-                            })
-                            // Match the speech field's top border and padding.
-                            .mt(px(6.))
-                            .when(selected, |el| el.border_2().border_color(color)),
-                    )
-                    .child(self.line_speech(i, line, selected, color, cx)),
-            )
+            .child(speech_row(
+                self.avatar(chara, 28.)
+                    .id(("line-avatar", i))
+                    .when(!disabled, |el| {
+                        el.cursor_move()
+                            .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
+                    })
+                    .when(selected, |el| el.border_2().border_color(color)),
+                self.line_speech(i, line, selected, color, cx),
+            ))
             .when_some(self.state.line_errors.get(&id).cloned(), |el, error| {
                 el.child(div().text_xs().text_color(p.warning).child(error))
             })
@@ -99,11 +90,6 @@ impl Studio {
             .flex_col()
             .flex_1()
             .min_w_0()
-            .min_h(px(40.))
-            .rounded(px(8.))
-            .border_2()
-            .border_color(if selected { color } else { p.line })
-            .bg(p.control)
             .text_sm()
             .child(
                 div()
@@ -167,46 +153,15 @@ impl Studio {
                             .child(self.line_actions(i, line, cx)),
                     ),
             )
-            .when(selected, |el| {
+            .when(self.state.expanded_line.as_ref() == Some(&line.id), |el| {
                 el.child(
                     div()
                         .border_t_1()
                         .border_color(p.muted.opacity(0.45))
                         .child(self.line_editor(cx)),
                 )
-            })
-            .into_any_element();
-        div()
-            .relative()
-            .flex_1()
-            .min_w_0()
-            .child(speech)
-            .child(self.speech_tail(if selected { color } else { p.line }))
-            .into_any_element()
-    }
-
-    pub(in crate::workspace::view) fn speech_tail(&self, border: Hsla) -> AnyElement {
-        let p = self.palette();
-        div()
-                    .absolute()
-                    .left(px(-8.))
-                    .top(px(10.))
-                    .size(px(16.))
-                    .child(
-                        Icon::default()
-                            .data(b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='currentColor' d='M16 1H10L2 8L10 15H16Z'/></svg>" as &'static [u8])
-                            .size(px(16.))
-                            .text_color(p.control),
-                    )
-                    .child(
-                        Icon::default()
-                            .data(b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='none' stroke='currentColor' stroke-width='2' stroke-linejoin='round' d='M10 1L2 8L10 15'/></svg>" as &'static [u8])
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .size(px(16.))
-                            .text_color(border),
-                    )
+            });
+        self.speech_bubble(if selected { color } else { p.line }, speech)
             .into_any_element()
     }
 }

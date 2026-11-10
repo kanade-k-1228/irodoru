@@ -13,11 +13,17 @@ impl Studio {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let disabled = self.state.busy;
+        let id = line.id.clone();
+        let expanded = self.state.expanded_line.as_ref() == Some(&id);
+        let label = if expanded {
+            "詳細を閉じる"
+        } else {
+            "詳細を開く"
+        };
         div()
             .flex()
             .children(
                 [
-                    (LineAction::InsertAbove, 0, "plus", "上に追加"),
                     (LineAction::Duplicate, 2, "copy", "複製"),
                     (LineAction::Delete, 3, "trash", "削除"),
                 ]
@@ -37,6 +43,27 @@ impl Studio {
                             }
                         }))
                 }),
+            )
+            .child(
+                tool(
+                    ("toggle-line-details", i),
+                    if expanded {
+                        "chevron-up"
+                    } else {
+                        "chevron-down"
+                    },
+                    label,
+                )
+                .size(px(40.))
+                .rounded_none()
+                .accessibility_label(label)
+                .disabled_with_cursor(disabled)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if this.state.toggle_line_details(id.clone()) {
+                        this.sync_fields(window, cx);
+                        cx.notify();
+                    }
+                })),
             )
             .into_any_element()
     }
@@ -58,31 +85,9 @@ impl Studio {
                     .any(|take| &take.id == *id && line.takes.contains(&take.id))
             })
             .map(|id| AudioSource::Take(id.clone()));
-        let playing = source.is_some()
-            && self.audio_id == source
-            && self
-                .playback
-                .as_ref()
-                .is_some_and(|player| player.playing());
-        let disabled = self.state.busy || source.is_none();
-        tool(
-            ("line-play", i),
-            if playing { "pause" } else { "play" },
-            if source.is_none() {
-                "音声を生成すると再生できます"
-            } else {
-                "再生 / 一時停止"
-            },
-        )
-        .size(px(40.))
-        .rounded_none()
-        .disabled_with_cursor(disabled)
-        .on_click(cx.listener(move |this, _, _, cx| {
-            if let Some(source) = &source {
-                this.play(source.clone());
-                cx.notify();
-            }
-        }))
-        .into_any_element()
+        self.audio_play_button(("line-play", i), source, cx)
+            .size(px(40.))
+            .rounded_none()
+            .into_any_element()
     }
 }

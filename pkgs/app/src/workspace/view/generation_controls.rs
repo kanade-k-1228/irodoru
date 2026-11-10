@@ -1,6 +1,4 @@
 use super::Studio;
-use super::appearance::{button, tool};
-use crate::workspace::view::appearance::DisabledWithCursor;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::slider::{Slider, SliderState};
@@ -8,25 +6,26 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    fn generation_disabled(&self, preview: bool) -> bool {
-        self.state.busy || self.state.status.id.is_none() || (preview && self.state.chara_locked)
+    fn generation_disabled(&self) -> bool {
+        self.state.busy || self.state.status.id.is_none()
     }
-    pub(super) fn speed_controls(&self, preview: bool) -> AnyElement {
-        let form = self.form(preview);
-        let settings = if preview {
-            self.state.preview_settings.clone()
-        } else {
-            self.state.settings_value()
-        };
+    pub(super) fn speed_controls(&self) -> AnyElement {
+        let form = &self.line_form;
+        let settings = self.state.settings_value();
         let p = self.palette();
-        let disabled = self.generation_disabled(preview);
+        let disabled = self.generation_disabled();
         div()
             .flex()
             .flex_col()
             .gap_0()
             .line_height(px(16.))
-            .p_3()
-            .pt(px(6.))
+            .mx_3()
+            .mb_3()
+            .p_2()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.line)
+            .bg(p.control)
             .text_xs()
             .text_color(p.muted)
             .child(
@@ -57,8 +56,8 @@ impl Studio {
             )
             .into_any_element()
     }
-    pub(super) fn advanced_controls(&self, preview: bool, cx: &mut Context<Self>) -> AnyElement {
-        let form = self.form(preview);
+    pub(super) fn advanced_controls(&self, cx: &mut Context<Self>) -> AnyElement {
+        let form = &self.line_form;
         let p = self.palette();
         div()
             .flex()
@@ -68,18 +67,16 @@ impl Studio {
             .pb_3()
             .text_xs()
             .text_color(p.muted)
-            .when(form.expanded, |el| {
-                el.child(self.generation_inputs(preview)).children(
-                    [
-                        (&form.text, "CFG 文"),
-                        (&form.speaker, "CFG 声"),
-                        (&form.caption, "CFG 説明"),
-                    ]
-                    .into_iter()
-                    .map(|(state, label)| self.guidance_slider(state, label, preview, cx)),
-                )
-            })
-            .when(!preview, |el| el.child(self.line_settings_actions(cx)))
+            .child(self.generation_inputs())
+            .children(
+                [
+                    (&form.text, "CFG 文"),
+                    (&form.speaker, "CFG 声"),
+                    (&form.caption, "CFG 説明"),
+                ]
+                .into_iter()
+                .map(|(state, label)| self.guidance_slider(state, label, cx)),
+            )
             .into_any_element()
     }
 
@@ -97,10 +94,10 @@ impl Studio {
             .into_any_element()
     }
 
-    fn generation_inputs(&self, preview: bool) -> AnyElement {
+    fn generation_inputs(&self) -> AnyElement {
         let p = self.palette();
-        let form = self.form(preview);
-        let disabled = self.generation_disabled(preview);
+        let form = &self.line_form;
+        let disabled = self.generation_disabled();
         div()
             .flex()
             .gap_3()
@@ -123,37 +120,14 @@ impl Studio {
             .into_any_element()
     }
 
-    fn line_settings_actions(&self, cx: &mut Context<Self>) -> AnyElement {
-        let disabled = self.state.busy || self.state.status.id.is_none();
-        div()
-            .flex()
-            .gap_2()
-            .child(
-                button("reset-settings", "既定設定に戻す")
-                    .disabled_with_cursor(disabled)
-                    .on_click(cx.listener(|this, _, w, cx| {
-                        if this.state.reset_line_settings() {
-                            this.edited(w, cx);
-                        }
-                    })),
-            )
-            .child(
-                tool("duplicate-line", "copy", "行を複製")
-                    .disabled_with_cursor(disabled)
-                    .on_click(cx.listener(|this, _, w, cx| this.add(true, w, cx))),
-            )
-            .into_any_element()
-    }
-
     fn guidance_slider(
         &self,
         state: &Entity<SliderState>,
         label: &'static str,
-        preview: bool,
         cx: &Context<Self>,
     ) -> AnyElement {
         let p = self.palette();
-        let disabled = self.generation_disabled(preview);
+        let disabled = self.generation_disabled();
         div()
             .flex()
             .flex_col()

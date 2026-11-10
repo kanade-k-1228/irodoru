@@ -1,8 +1,8 @@
 //! Line list composition; lines and insertion gaps are sibling elements.
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use crate::workspace::view::appearance::{button, icon_button, tool};
-use gpui_kit::component::Disableable;
+use crate::workspace::view::appearance::{button, icon_button};
+use crate::workspace::view::components::speech_row;
 use gpui_kit::component::scroll::{AutoScroll, Scrollbar, ScrollbarMode};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -97,7 +97,7 @@ impl Studio {
             )
             .p_1()
             .when(!self.state.snapshot.editor.lines.is_empty(), |el| {
-                el.child(self.line_insert(0, cx))
+                el.child(self.line_gap(0, cx))
             })
             .children(
                 self.state
@@ -106,7 +106,7 @@ impl Studio {
                     .lines
                     .iter()
                     .enumerate()
-                    .flat_map(|(i, line)| [self.line(i, line, cx), self.line_insert(i + 1, cx)]),
+                    .flat_map(|(i, line)| [self.line(i, line, cx), self.line_gap(i + 1, cx)]),
             )
             .into_any_element()
     }
@@ -117,58 +117,44 @@ impl Studio {
             || self.state.status.id.is_none()
             || self.state.snapshot.charas.is_empty();
         let chara = self.state.active_chara();
-        div()
-            .flex()
-            .flex_shrink_0()
-            .items_start()
-            .gap_2()
-            .px_1()
-            .mt_2()
-            .mb_4()
-            .child(self.avatar(chara, 28.).mt(px(6.)))
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        icon_button("append-line", "plus")
-                            .w_full()
-                            .h(px(40.))
-                            .rounded(px(8.))
-                            .bg(p.control)
-                            .border_2()
-                            .border_color(p.line)
-                            .disabled_with_cursor(disabled)
-                            .on_click(cx.listener(|this, _, w, cx| {
-                                let chara = this.state.snapshot.editor.active_chara.clone();
-                                let inserted = if chara.is_empty() {
-                                    this.state.add_line(false)
-                                } else {
-                                    this.state.append_chara_line(chara)
-                                };
-                                if inserted {
-                                    this.edited(w, cx);
-                                    this.line_scroll.scroll_to_bottom();
-                                    this.fields.text.update(cx, |state, cx| state.focus(w, cx));
-                                }
-                            })),
-                    )
-                    .child(self.speech_tail(p.line)),
-            )
-            .into_any_element()
+        speech_row(
+            self.avatar(chara, 28.),
+            self.speech_bubble(
+                p.line,
+                icon_button("append-line", "plus")
+                    .accessibility_label("末尾にセリフを追加")
+                    .w_full()
+                    .disabled_with_cursor(disabled)
+                    .on_click(cx.listener(|this, _, w, cx| {
+                        let chara = this.state.snapshot.editor.active_chara.clone();
+                        let inserted = if chara.is_empty() {
+                            this.state.add_line(false)
+                        } else {
+                            this.state.append_chara_line(chara)
+                        };
+                        if inserted {
+                            this.edited(w, cx);
+                            this.line_scroll.scroll_to_bottom();
+                            this.fields.text.update(cx, |state, cx| state.focus(w, cx));
+                        }
+                    })),
+            ),
+        )
+        .flex_shrink_0()
+        .px_1()
+        .mt_2()
+        .mb_4()
+        .into_any_element()
     }
 
-    fn line_insert(&self, slot: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn line_gap(&self, slot: usize, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let lines = &self.state.snapshot.editor.lines;
-        let after = slot.checked_sub(1).map(|i| lines[i].id.clone());
-        let drop_after = after.clone();
+        let drop_after = slot.checked_sub(1).map(|i| lines[i].id.clone());
         let disabled = self.state.busy;
         let studio = cx.entity_id();
         div()
-            .id(("lines-insert", slot))
-            .group("lines-insert")
+            .id(("lines-gap", slot))
             .relative()
             .h(px(8.))
             .when(slot > 0 && slot < lines.len(), |el| {
@@ -184,22 +170,16 @@ impl Studio {
             })
             .child(
                 div()
-                    .id(("insert-target", slot))
+                    .id(("drop-target", slot))
                     .absolute()
                     .left_0()
                     .right_0()
                     .top(px(-4.))
                     .h(px(16.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
                     .when(!disabled, |el| {
                         el.drag_over::<DraggedLine>(move |style, drag, _, _| {
                             if drag.studio == studio {
-                                style
-                                    .bg(p.accent.opacity(0.25))
-                                    .border_t_2()
-                                    .border_color(p.accent)
+                                style.bg(p.accent.opacity(0.25))
                             } else {
                                 style
                             }
@@ -223,24 +203,7 @@ impl Studio {
                                 this.move_line(drop_after.as_deref(), cx);
                             },
                         ))
-                    })
-                    .child(
-                        tool(("insert", slot), "plus", "ここにセリフを追加")
-                            .w(px(28.))
-                            .h(px(16.))
-                            .bg(p.control)
-                            .disabled(disabled)
-                            .invisible()
-                            .group_hover("lines-insert", |style| style.visible())
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                if this.state.insert_at(after.as_deref()) {
-                                    this.edited(window, cx);
-                                    this.fields
-                                        .text
-                                        .update(cx, |state, cx| state.focus(window, cx));
-                                }
-                            })),
-                    ),
+                    }),
             )
             .into_any_element()
     }

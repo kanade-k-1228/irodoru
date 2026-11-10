@@ -19,11 +19,6 @@ impl Studio {
             self.edited(window, cx);
         }
     }
-    pub(super) fn add(&mut self, duplicate: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.add_line(duplicate) {
-            self.edited(window, cx);
-        }
-    }
     pub(super) fn generate(&mut self, random: bool, window: &mut Window, cx: &mut Context<Self>) {
         if random {
             match self.state.randomize_selected_line(rand::random()) {
@@ -51,16 +46,6 @@ impl Studio {
         if let Some(command) = self.state.create_chara() {
             self.send(command);
             cx.notify();
-        }
-    }
-    pub(super) fn preview(&mut self) {
-        match self.state.preview() {
-            Ok(Some(command)) => {
-                self.stop_audio();
-                self.send(command);
-            }
-            Ok(None) => {}
-            Err(error) => self.state.error = Some(error.to_string()),
         }
     }
 }

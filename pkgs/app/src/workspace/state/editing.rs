@@ -1,16 +1,12 @@
 //! Pure editing transitions; the view decides when to synchronize controls and save.
 use super::{Field, WorkspaceState};
-use crate::domain::Take;
-use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT, GenerationSettings};
+use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, GenerationSettings};
 use crate::workspace::{editor, protocol::Command};
 use anyhow::Result;
 
 impl WorkspaceState {
     pub fn change(&mut self, field: Field, value: String) -> bool {
-        if self.busy
-            || (self.chara_locked
-                && matches!(field, Field::Name | Field::Description | Field::Sample))
-        {
+        if self.busy || (self.chara_locked && matches!(field, Field::Name | Field::Description)) {
             return false;
         }
         match field {
@@ -46,12 +42,6 @@ impl WorkspaceState {
                 }
                 return false;
             }
-            Field::Sample => {
-                if let Some(chara) = self.active_chara_mut() {
-                    chara.sample_text = value;
-                }
-                return false;
-            }
         }
         true
     }
@@ -59,11 +49,23 @@ impl WorkspaceState {
         if self.busy {
             return false;
         }
+        if self.selected.as_ref() != Some(&id) {
+            self.expanded_line = None;
+        }
         self.selected = Some(id);
         if let Some(line) = self.selected_line_mut() {
             let c = line.chara_id.clone();
             self.snapshot.editor.active_chara = c;
         }
+        true
+    }
+    pub fn toggle_line_details(&mut self, id: String) -> bool {
+        if self.busy || !self.snapshot.editor.lines.iter().any(|line| line.id == id) {
+            return false;
+        }
+        let was_open = self.expanded_line.as_ref() == Some(&id);
+        self.select(id.clone());
+        self.expanded_line = (!was_open).then_some(id);
         true
     }
     pub fn select_take(&mut self, id: &str, checked: bool) -> bool {
@@ -110,7 +112,6 @@ impl WorkspaceState {
                 voice_ids: Vec::new(),
                 icon: None,
                 color: Some(DEFAULT_CHARA_COLOR.into()),
-                sample_text: Some(DEFAULT_SAMPLE_TEXT.into()),
             },
         })
     }
@@ -126,7 +127,6 @@ pub enum GenerationField {
 
 #[derive(Clone, Copy)]
 pub enum LineAction {
-    InsertAbove,
     Duplicate,
     Delete,
 }
@@ -137,26 +137,11 @@ impl WorkspaceState {
     }
 
     pub fn edit_line(&mut self, id: &str, action: LineAction) -> bool {
-        if !self.can_edit_lines() {
+        if !self.can_edit_lines() || !self.snapshot.editor.lines.iter().any(|line| line.id == id) {
             return false;
         }
-        let Some(index) = self
-            .snapshot
-            .editor
-            .lines
-            .iter()
-            .position(|line| line.id == id)
-        else {
-            return false;
-        };
         self.select(id.to_owned());
         match action {
-            LineAction::InsertAbove => {
-                let after = index
-                    .checked_sub(1)
-                    .map(|i| self.snapshot.editor.lines[i].id.clone());
-                self.insert_at(after.as_deref())
-            }
             LineAction::Duplicate => self.add_line(true),
             LineAction::Delete => self.remove_line(),
         }
@@ -182,26 +167,6 @@ impl WorkspaceState {
         self.select(id)
     }
 
-    pub fn insert_at(&mut self, after: Option<&str>) -> bool {
-        if !self.can_edit_lines()
-            || after.is_some_and(|id| !self.snapshot.editor.lines.iter().any(|line| line.id == id))
-        {
-            return false;
-        }
-        let source = after
-            .or_else(|| {
-                self.snapshot
-                    .editor
-                    .lines
-                    .first()
-                    .map(|line| line.id.as_str())
-            })
-            .map(str::to_owned);
-        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), false);
-        editor::move_line(&mut self.snapshot.editor.lines, &id, after);
-        self.select(id)
-    }
-
     pub fn select_chara(&mut self, id: String) -> bool {
         if !self.can_edit_lines()
             || self.status.id.is_none()
@@ -211,6 +176,7 @@ impl WorkspaceState {
         }
         self.snapshot.editor.active_chara = id;
         self.selected = None;
+        self.expanded_line = None;
         true
     }
 
@@ -220,16 +186,6 @@ impl WorkspaceState {
         }
         self.snapshot.editor.active_chara = chara;
         let id = editor::insert(&mut self.snapshot.editor, None, false);
-        self.select(id)
-    }
-
-    pub fn copy_take(&mut self, take: &Take) -> bool {
-        if !self.can_edit_lines() {
-            return false;
-        }
-        let line = editor::line_from_take(take, &self.snapshot.charas);
-        let id = line.id.clone();
-        self.snapshot.editor.lines.push(line);
         self.select(id)
     }
 
@@ -244,6 +200,7 @@ impl WorkspaceState {
             return false;
         };
         self.selected = next;
+        self.expanded_line = None;
 
         true
     }
@@ -281,21 +238,16 @@ impl WorkspaceState {
         true
     }
 
-    pub fn toggle_chara_voice(&mut self, voice: Option<String>) {
-        if !self.busy
-            && !self.chara_locked
-            && let Some(chara) = self.active_chara_mut()
-        {
-            if let Some(voice) = voice {
-                if chara.voice_ids.contains(&voice) {
-                    chara.voice_ids.retain(|id| id != &voice);
-                } else {
-                    chara.voice_ids.push(voice);
-                }
-            } else {
-                chara.voice_ids.clear();
-            }
+    pub fn remove_chara_voice(&mut self, voice: &str) -> bool {
+        if self.busy || self.chara_locked {
+            return false;
         }
+        let Some(chara) = self.active_chara_mut() else {
+            return false;
+        };
+        let previous = chara.voice_ids.len();
+        chara.voice_ids.retain(|id| id != voice);
+        chara.voice_ids.len() != previous
     }
     pub fn set_chara_icon(&mut self, icon: String) {
         if !self.busy
@@ -342,7 +294,6 @@ impl WorkspaceState {
                 voice_ids: source.voice_ids.clone(),
                 icon: source.icon.clone(),
                 color: Some(source.color.clone()),
-                sample_text: Some(source.sample_text.clone()),
             },
         })
     }
@@ -353,28 +304,6 @@ impl WorkspaceState {
             id: Some(chara.id.clone()),
             input: chara.into(),
         })
-    }
-    pub fn preview(&self) -> Result<Option<Command>> {
-        if self.busy {
-            return Ok(None);
-        }
-        self.active_chara()
-            .map(|chara| {
-                Ok(Command::Preview {
-                    chara_id: chara.id.clone(),
-                    input: editor::speech(chara.sample_text.clone(), &self.preview_settings)?,
-                    description: chara.description.clone(),
-                    voice_ids: chara.voice_ids.clone(),
-                })
-            })
-            .transpose()
-    }
-    pub fn change_preview_generation(&mut self, field: GenerationField, value: f32) {
-        if self.busy || self.chara_locked {
-            return;
-        }
-        let settings = &mut self.preview_settings;
-        set_generation(settings, field, value);
     }
     pub fn randomize_selected_line(&mut self, seed: u32) -> Result<bool> {
         if !self.can_edit_lines() {

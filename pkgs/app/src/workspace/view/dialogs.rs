@@ -142,14 +142,32 @@ impl Studio {
         if self.state.busy {
             return;
         }
-        let filename = self
-            .state
-            .snapshot
-            .takes
-            .iter()
-            .find(|t| matches!(&source, AudioSource::Take(id) if &t.id == id))
-            .and_then(|t| t.conditions.filename().ok())
-            .unwrap_or_else(|| "sample.wav".into());
+        let filename = match &source {
+            AudioSource::Take(id) => self
+                .state
+                .snapshot
+                .takes
+                .iter()
+                .find(|take| &take.id == id)
+                .and_then(|take| take.conditions.filename().ok()),
+            AudioSource::Reference(id) => self
+                .state
+                .snapshot
+                .voices
+                .iter()
+                .find(|entry| entry.voice.id() == id)
+                .and_then(|entry| match &entry.voice {
+                    crate::domain::Voice::Imported { name, .. } => {
+                        let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+                        std::path::Path::new(name)
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+                            .map(|stem| format!("{stem}.wav"))
+                    }
+                    crate::domain::Voice::Generated(take) => take.conditions.filename().ok(),
+                }),
+        }
+        .unwrap_or_else(|| "audio.wav".into());
         let dialog = async move {
             rfd::AsyncFileDialog::new()
                 .add_filter("WAV", &["wav"])
@@ -203,7 +221,7 @@ impl Studio {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.state.busy || self.state.chara_locked {
+        if self.state.busy || self.state.chara_locked || self.state.chara_in_use(&id) {
             return;
         }
         let dialog = async move {

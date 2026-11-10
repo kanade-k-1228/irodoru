@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_CHARA_COLOR: &str = "#41a2ec";
-pub const DEFAULT_SAMPLE_TEXT: &str = "こんにちは。よろしくお願いします。";
 
 #[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct Chara {
@@ -11,7 +10,6 @@ pub struct Chara {
     pub description: String,
     pub voice_ids: Vec<String>,
     pub color: String,
-    pub sample_text: String,
     pub icon: Option<String>,
 }
 
@@ -21,7 +19,6 @@ pub struct CharaInput {
     pub description: String,
     pub voice_ids: Vec<String>,
     pub color: Option<String>,
-    pub sample_text: Option<String>,
     pub icon: Option<String>,
 }
 
@@ -40,12 +37,6 @@ impl CharaInput {
         {
             return Err(anyhow!("color must be #RRGGBB"));
         }
-        let sample_text = self
-            .sample_text
-            .unwrap_or_else(|| DEFAULT_SAMPLE_TEXT.into());
-        if sample_text.chars().count() > 1000 {
-            return Err(anyhow!("sample_text must be at most 1000 charas"));
-        }
         let mut seen = std::collections::HashSet::new();
         let voice_ids: Vec<_> = self
             .voice_ids
@@ -60,7 +51,6 @@ impl CharaInput {
             name,
             description: self.description.trim().into(),
             color: color.to_ascii_lowercase(),
-            sample_text,
             voice_ids,
             icon: self.icon.filter(|v| !v.is_empty()),
         })
@@ -74,7 +64,6 @@ impl From<Chara> for CharaInput {
             description: chara.description,
             voice_ids: chara.voice_ids,
             color: Some(chara.color),
-            sample_text: Some(chara.sample_text),
             icon: chara.icon,
         }
     }

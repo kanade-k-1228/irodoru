@@ -1,17 +1,22 @@
 use crate::{
-    domain::{AudioSource, Chara, CharaInput, EditorState, SynthesisInput, Take, TakeRequest},
+    domain::{AudioSource, Chara, CharaInput, EditorState, Take, TakeRequest},
     project,
 };
 use std::path::PathBuf;
 
 #[derive(Clone, Default)]
 pub struct Snapshot {
-    pub chara_previews: std::collections::HashSet<String>,
     pub editor: EditorState,
     pub charas: Vec<Chara>,
     pub takes: Vec<Take>,
-    pub voices: Vec<crate::domain::Voice>,
+    pub voices: Vec<ReferenceVoice>,
 }
+#[derive(Clone)]
+pub struct ReferenceVoice {
+    pub voice: crate::domain::Voice,
+    pub audio_seconds: f64,
+}
+
 pub enum Command {
     Open {
         path: PathBuf,
@@ -46,12 +51,6 @@ pub enum Command {
         take_id: Option<String>,
     },
     Generate(Vec<TakeRequest>),
-    Preview {
-        chara_id: String,
-        input: SynthesisInput,
-        description: String,
-        voice_ids: Vec<String>,
-    },
     Audio(AudioSource),
     ExportLines {
         parent: PathBuf,

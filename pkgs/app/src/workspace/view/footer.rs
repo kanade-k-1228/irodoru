@@ -79,7 +79,15 @@ impl Studio {
     fn model_status_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let status = self.model_status();
-        let failed = matches!(status, InferenceStatus::Error { .. });
+        let (icon_name, color, spinning) = match status {
+            InferenceStatus::Ready => ("check", p.success, false),
+            InferenceStatus::Generating => ("audio", p.accent, true),
+            InferenceStatus::Error { .. } => ("alert", p.warning, false),
+            InferenceStatus::Downloading { .. } => ("download", p.accent, false),
+            InferenceStatus::Checking { .. }
+            | InferenceStatus::Extracting { .. }
+            | InferenceStatus::Loading => ("model", p.pending, true),
+        };
         let providers = self
             .inference
             .as_ref()
@@ -94,9 +102,10 @@ impl Studio {
         } else {
             format!("{status_label} · {}", names.join(" + "))
         };
-        self.footer_button("model-settings", "model", label)
+        self.footer_button("model-settings", icon_name, label)
             .track_focus(&self.model_trigger_focus)
-            .text_color(if failed { p.warning } else { p.muted })
+            .text_color(color)
+            .loading(spinning)
             .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
             .into_any_element()
     }
@@ -112,7 +121,6 @@ impl Studio {
             .focus_ring(false)
             .ghost()
             .flex_shrink_0()
-            .h(px(32.))
             .rounded_none()
             .border_l_1()
             .border_color(self.palette().line)
