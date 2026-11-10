@@ -4,7 +4,6 @@ use super::app_dialog::Modal;
 use super::appearance::{button, icon};
 use crate::domain::InferenceStatus;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -50,16 +49,8 @@ impl Studio {
         let p = self.palette();
         let status = self.model_status();
         let failed = matches!(status, InferenceStatus::Error { .. });
-        button("model-settings", "")
-            .ghost()
+        self.footer_button("model-settings", "model", status_label(&status))
             .track_focus(&self.model_trigger_focus)
-            .flex_shrink_0()
-            .h(px(32.))
-            .rounded_none()
-            .border_l_1()
-            .border_color(p.line)
-            .icon(icon("model"))
-            .label(status_label(&status))
             .text_color(if failed { p.warning } else { p.muted })
             .tooltip("モデル設定")
             .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
