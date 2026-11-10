@@ -1,9 +1,10 @@
 //! The window's modals: the shared dialog frame here, one module per modal.
-use super::appearance::tool;
 use super::{Studio, appearance};
 use gpui_kit::component::WindowExt;
+use gpui_kit::component::dialog::DialogEntrance;
 use gpui_kit::*;
 
+mod export;
 mod menu;
 mod model;
 mod settings;
@@ -15,6 +16,7 @@ pub(super) enum Modal {
     Menu,
     Settings,
     Model,
+    Export,
 }
 
 impl Studio {
@@ -40,21 +42,10 @@ impl Studio {
                 .unwrap_or_else(|_| div().into_any_element());
             let p = appearance::Palette::new(crate::preferences::theme::light(cx));
             let on_close = weak.clone();
-            let close = weak.clone();
             dialog
-                .title(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(title())
-                        .child(tool("dialog-close", "close", "閉じる").on_click(
-                            move |_, window, cx| {
-                                let _ = close.update(cx, |this, cx| this.close_modal(window, cx));
-                            },
-                        )),
-                )
+                .title(title())
                 .centered()
+                .entrance(DialogEntrance::None)
                 .close_button(false)
                 .width(px(width))
                 .p_5()
@@ -89,6 +80,7 @@ impl Studio {
             Modal::Menu => &self.file_trigger_focus,
             Modal::Settings => &self.menu_trigger_focus,
             Modal::Model => &self.model_trigger_focus,
+            Modal::Export => &self.export_trigger_focus,
         };
         trigger.focus(window, cx);
         cx.notify();

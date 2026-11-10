@@ -3,7 +3,7 @@ use crate::domain::{EditorState, Take};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ExportNaming {
     Number,
     Chara,

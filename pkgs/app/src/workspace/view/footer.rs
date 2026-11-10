@@ -2,16 +2,14 @@ use super::appearance::{button, icon};
 use super::modal::MenuAction;
 use crate::domain::InferenceStatus;
 use crate::workspace::view::Studio;
-use gpui_kit::component::Disableable;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
+use gpui_kit::component::{Disableable, FocusableExt};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
     pub(in crate::workspace::view) fn footer(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let studio = cx.entity().downgrade();
         div()
             .flex()
             .items_center()
@@ -54,25 +52,15 @@ impl Studio {
             .child(self.model_status_button(cx))
             .child(
                 self.footer_button("footer-export", "download", "出力")
-                    .tooltip("セリフごとにWAVを書き出す")
+                    .track_focus(&self.export_trigger_focus)
                     .disabled(
                         self.state.busy
                             || self.state.status.id.is_none()
                             || self.state.snapshot.editor.lines.is_empty(),
                     )
-                    .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, _| {
-                        for naming in crate::project::ExportNaming::ALL {
-                            let studio = studio.clone();
-                            menu = menu.item(PopupMenuItem::new(naming.label()).on_click(
-                                move |_, window, cx| {
-                                    let _ = studio.update(cx, |this, cx| {
-                                        this.export_lines(naming, window, cx)
-                                    });
-                                },
-                            ));
-                        }
-                        menu
-                    }),
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.show_export(window, cx);
+                    })),
             )
             .child(
                 self.footer_button(
@@ -109,7 +97,6 @@ impl Studio {
         self.footer_button("model-settings", "model", label)
             .track_focus(&self.model_trigger_focus)
             .text_color(if failed { p.warning } else { p.muted })
-            .tooltip("モデル設定")
             .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
             .into_any_element()
     }
@@ -122,6 +109,7 @@ impl Studio {
         label: impl Into<SharedString>,
     ) -> Button {
         button(id, "")
+            .focus_ring(false)
             .ghost()
             .flex_shrink_0()
             .h(px(32.))
