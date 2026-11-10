@@ -4,7 +4,7 @@ use crate::workspace::view::{Studio, WindowRequest, actions::*};
 use gpui_kit::*;
 use std::{cell::RefCell, rc::Rc, time::Duration};
 #[cfg(target_os = "macos")]
-mod macos_quit;
+mod macos;
 mod placement;
 
 struct SharedInference(Result<std::sync::Arc<crate::synthesis::Inference>, String>);
@@ -123,7 +123,7 @@ pub fn run() {
         cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {
                 #[cfg(target_os = "macos")]
-                macos_quit::allow_exit();
+                macos::allow_exit();
                 cx.quit();
             }
         })
@@ -183,7 +183,7 @@ pub fn run() {
             open_projects(paths, cx);
         }
         #[cfg(target_os = "macos")]
-        macos_quit::install(cx);
+        macos::install(cx);
         cx.spawn(async move |cx| {
             loop {
                 cx.background_executor()
