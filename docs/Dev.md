@@ -166,7 +166,9 @@ expensive build; GitHub retains only the newest pending run in the group:
   changing a native-library notice does not export the models again.
 - Windows' embedded CPU ONNX Runtime archive is keyed by its pinned build script
   and saved before application checks, so a later check failure does not discard
-  the expensive native build.
+  the expensive native build. A 90-day Actions artifact is also retained: cache
+  eviction or merging to `main` can restore this archive without recompiling ORT.
+  Only artifacts built from this repository are eligible, excluding fork builds.
 - `cargo-about` and `cargo-packager` are cached by exact version, features, OS and
   architecture, immediately after installation.
 - Completed desktop packages are reused only on an exact match of source,
