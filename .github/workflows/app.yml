@@ -12,9 +12,7 @@ permissions:
 
 concurrency:
   group: app-${{ github.event.pull_request.number || github.ref }}
-  # Let the running build save its caches; newer commits wait and reuse them.
-  # GitHub replaces an older pending run with the newest commit.
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
@@ -43,18 +41,12 @@ jobs:
           components: clippy,rustfmt
       - name: Linux desktop dependencies
         run: sudo apt-get update && sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libzstd-dev libasound2-dev libvulkan1
-      - uses: ./.github/actions/rust-cache
+      - uses: Swatinem/rust-cache@v2
         with:
-          key: check
+          workspaces: . -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo xtask verify
       - run: docker compose --profile local --profile wsl-gpu config --quiet
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   models:
     permissions:
@@ -66,34 +58,29 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: ./.github/actions/rust-cache
+      - uses: Swatinem/rust-cache@v2
         with:
+          workspaces: . -> target
           key: models
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo build --locked --release -p xtask
-      - id: model-inputs
-        run: |
-          rust_key=$(python3 scripts/model-build-key.py Cargo.lock)
-          echo "rust=$rust_key" >> "$GITHUB_OUTPUT"
       # Cache only the prepared bundle (~3.4 GB), not unused portable exports.
       # Both the exporter inputs and the bundle preparation code affect its contents.
       - uses: actions/cache/restore@v6
         id: models
         with:
           path: pkgs/app/resources/models
-          key: anime-bundle-v2-${{ steps.model-inputs.outputs.rust }}-${{ hashFiles('scripts/model-build-key.py', 'Cargo.toml', 'xtask/src/main.rs', 'licenses/model/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/src/models/**', 'pkgs/model-bundle/**', 'xtask/Cargo.toml') }}
+          key: anime-bundle-v1-${{ hashFiles('licenses/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/src/models/**', 'pkgs/model-bundle/**', 'xtask/Cargo.toml') }}
       - uses: astral-sh/setup-uv@v7
         if: steps.models.outputs.cache-hit != 'true'
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - name: Export and prepare models on cache miss
         if: steps.models.outputs.cache-hit != 'true'
         run: |
           uv sync --project pkgs/engine/script --frozen
           uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models anime
           target/release/xtask models prepare
-      - uses: actions/cache/save@v6
-        if: steps.models.outputs.cache-hit != 'true'
-        with:
-          path: pkgs/app/resources/models
-          key: ${{ steps.models.outputs.cache-primary-key }}
       # Distribution verifies file checksums even when the bundle came from cache.
       - name: Prepare one model ZIP for GHCR
         env:
@@ -104,6 +91,11 @@ jobs:
             args+=(--repository "${GITHUB_REPOSITORY,,}-models")
           fi
           target/release/xtask models distribute "${args[@]}"
+      - uses: actions/cache/save@v6
+        if: steps.models.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: pkgs/app/resources/models
+          key: ${{ steps.models.outputs.cache-primary-key }}
       - uses: oras-project/setup-oras@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -122,13 +114,6 @@ jobs:
           path: model-assets/model-distribution.json
           if-no-files-found: error
           retention-days: 1
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   licenses:
     runs-on: ubuntu-24.04
@@ -138,9 +123,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: ./.github/actions/rust-cache
+      - uses: Swatinem/rust-cache@v2
         with:
+          workspaces: . -> target
           key: licenses
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Set release version
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -152,15 +139,10 @@ jobs:
         with:
           path: ${{ runner.temp }}/licenses
           key: licenses-v1-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'pkgs/*/Cargo.toml', 'xtask/Cargo.toml', 'about.toml', 'LICENSE', 'licenses/**', 'pkgs/app/icons/ui/LICENSE', 'xtask/src/licenses.rs') }}
-      - uses: ./.github/actions/cargo-tool
-        if: steps.licenses.outputs.cache-hit != 'true'
-        with:
-          name: cargo-about
-          version: 0.9.3
-          features: cli
       - name: Generate shared license bundle on cache miss
         if: steps.licenses.outputs.cache-hit != 'true'
         run: |
+          cargo install cargo-about --version 0.9.3 --locked --features cli
           cargo fetch --locked
           cargo xtask licenses --destination "$RUNNER_TEMP/licenses"
       - uses: actions/upload-artifact@v7
@@ -170,103 +152,46 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
-  build_windows:
-    name: build (windows)
-    permissions:
-      contents: read
-      actions: read
+  build:
+    name: build (${{ matrix.platform }})
     needs: [models, licenses]
     timeout-minutes: 120
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: target/x86_64-pc-windows-msvc/release/bundle/
+          - platform: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: target/aarch64-apple-darwin/release/bundle/
+          - platform: linux
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            artifact: target/x86_64-unknown-linux-gnu/release/bundle/
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
           components: rustfmt,clippy
-      - uses: ./.github/actions/rust-cache
+      - name: Linux desktop dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libzstd-dev libasound2-dev libvulkan1 patchelf libfuse2
+      - uses: Swatinem/rust-cache@v2
         with:
-          key: x86_64-pc-windows-msvc
-      - uses: actions/download-artifact@v8
-        with:
-          name: app-model-manifest
-          path: pkgs/app/resources
-      - uses: actions/download-artifact@v8
-        with:
-          name: app-licenses
-          path: ${{ runner.temp }}/licenses
-      - uses: ./.github/actions/cpu-ort
-      - name: Check desktop native code
-        run: |
-          cargo clippy --locked -p irodoru --all-targets -- -D warnings
-      - name: Set release version
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: cargo xtask release version "$RELEASE_TAG"
-      - uses: ./.github/actions/desktop-cache
-        id: desktop
-        with:
-          target: x86_64-pc-windows-msvc
-      - name: Build and package desktop
-        if: steps.desktop.outputs.cache-hit != 'true'
-        env:
-          TARGET: x86_64-pc-windows-msvc
-        run: |
-          cargo xtask package --target "$TARGET" --licenses-dir "$RUNNER_TEMP/licenses"
-      - name: Verify package contents
-        env:
-          TARGET: x86_64-pc-windows-msvc
-        run: bash scripts/check-package.sh "$TARGET"
-      - name: Verify embedded CPU without Windows ML
-        shell: pwsh
-        run: ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe -EmbeddedCpu
-      - name: Install shared Windows ML runtime
-        shell: pwsh
-        run: ./scripts/install-windows-ml.ps1
-      - name: Verify shared Windows ML without bundled DLLs
-        shell: pwsh
-        run: ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe
-      - uses: actions/upload-artifact@v7
-        with:
-          name: irodoru-x86_64-pc-windows-msvc
-          path: target/x86_64-pc-windows-msvc/release/bundle/
-          if-no-files-found: error
-          compression-level: 0
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
-
-  build_macos:
-    name: build (macos-arm64)
-    needs: [models, licenses]
-    timeout-minutes: 120
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-          components: rustfmt,clippy
-      - uses: ./.github/actions/rust-cache
-        with:
-          key: aarch64-apple-darwin
+          workspaces: . -> target
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+          # PR caches cannot be reused by other PRs and evict the shared main cache.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/download-artifact@v8
         with:
           name: app-model-manifest
@@ -278,94 +203,18 @@ jobs:
       - name: Check desktop native code
         env:
           MACOSX_DEPLOYMENT_TARGET: "15.0"
-        run: |
-          cargo clippy --locked -p irodoru --all-targets -- -D warnings
+        run: cargo clippy --locked -p irodoru --all-targets -- -D warnings
       - name: Set release version
         if: startsWith(github.ref, 'refs/tags/')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: cargo xtask release version "$RELEASE_TAG"
-      - uses: ./.github/actions/desktop-cache
-        id: desktop
-        with:
-          target: aarch64-apple-darwin
       - name: Install packager
-        if: steps.desktop.outputs.cache-hit != 'true'
-        uses: ./.github/actions/cargo-tool
-        with:
-          name: cargo-packager
-          version: 0.11.8
-      - name: Build and package desktop
-        if: steps.desktop.outputs.cache-hit != 'true'
-        env:
-          TARGET: aarch64-apple-darwin
-        run: |
-          cargo xtask package --target "$TARGET" --licenses-dir "$RUNNER_TEMP/licenses"
-      - name: Verify package contents
-        env:
-          TARGET: aarch64-apple-darwin
-        run: bash scripts/check-package.sh "$TARGET"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: irodoru-aarch64-apple-darwin
-          path: target/aarch64-apple-darwin/release/bundle/
-          if-no-files-found: error
-          compression-level: 0
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
-
-  build_linux:
-    name: build (linux)
-    needs: [models, licenses]
-    timeout-minutes: 120
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-          components: rustfmt,clippy
-      - name: Linux desktop dependencies
-        run: sudo apt-get update && sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libzstd-dev libasound2-dev libvulkan1 patchelf libfuse2
-      - uses: ./.github/actions/rust-cache
-        with:
-          key: x86_64-unknown-linux-gnu
-      - uses: actions/download-artifact@v8
-        with:
-          name: app-model-manifest
-          path: pkgs/app/resources
-      - uses: actions/download-artifact@v8
-        with:
-          name: app-licenses
-          path: ${{ runner.temp }}/licenses
-      - name: Check desktop native code
-        run: |
-          cargo clippy --locked -p irodoru --all-targets -- -D warnings
-      - name: Set release version
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: cargo xtask release version "$RELEASE_TAG"
-      - uses: ./.github/actions/desktop-cache
-        id: desktop
-        with:
-          target: x86_64-unknown-linux-gnu
-      - name: Install packager
-        if: steps.desktop.outputs.cache-hit != 'true'
-        uses: ./.github/actions/cargo-tool
-        with:
-          name: cargo-packager
-          version: 0.11.8
+        if: matrix.platform != 'windows'
+        run: cargo install cargo-packager --version 0.11.8 --locked
       # Fetch cargo-packager 0.11.8 tools through the API; browser download URLs return 504.
       - name: Fetch AppImage tools
-        if: steps.desktop.outputs.cache-hit != 'true'
+        if: matrix.platform == 'linux'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -382,32 +231,34 @@ jobs:
           printf '%s  %s\n' 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46 "$appimage_tools/runtime-x86_64" | sha256sum --check
           printf 'LDAI_RUNTIME_FILE=%s\n' "$appimage_tools/runtime-x86_64" >> "$GITHUB_ENV"
       - name: Build and package desktop
-        if: steps.desktop.outputs.cache-hit != 'true'
         env:
-          TARGET: x86_64-unknown-linux-gnu
+          TARGET: ${{ matrix.target }}
         run: |
           cargo xtask package --target "$TARGET" --licenses-dir "$RUNNER_TEMP/licenses"
       - name: Verify package contents
+        if: startsWith(github.ref, 'refs/tags/')
         env:
-          TARGET: x86_64-unknown-linux-gnu
+          TARGET: ${{ matrix.target }}
         run: bash scripts/check-package.sh "$TARGET"
+      # The embedded CPU runtime must work alone, and the shared Windows ML runtime once installed.
+      - name: Verify Windows runtimes
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $exe = 'target/x86_64-pc-windows-msvc/release/native/irodoru.exe'
+          ./scripts/check-windows-runtime.ps1 -Executable $exe -EmbeddedCpu
+          ./scripts/install-windows-ml.ps1
+          ./scripts/check-windows-runtime.ps1 -Executable $exe
       - uses: actions/upload-artifact@v7
         with:
-          name: irodoru-x86_64-unknown-linux-gnu
-          path: target/x86_64-unknown-linux-gnu/release/bundle/
+          name: irodoru-${{ matrix.target }}
+          path: ${{ matrix.artifact }}
           if-no-files-found: error
           compression-level: 0
-      - name: Save Rust compiler cache
-        if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          # A failed run must not occupy the immutable successful-cache key.
-          key: ${{ env.SCCACHE_ARCHIVE_KEY }}${{ job.status != 'success' && format('-partial-{0}-{1}', github.run_id, github.run_attempt) || '' }}
 
   required:
     if: always()
-    needs: [check, models, licenses, build_windows, build_macos, build_linux]
+    needs: [check, models, licenses, build]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:

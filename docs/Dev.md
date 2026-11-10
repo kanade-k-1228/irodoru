@@ -48,7 +48,7 @@ cargo xtask package
 ```
 
 - Linux also requires `patchelf`; Windows requires 7-Zip.
-- Windows packages contain the executable and license materials, without runtime DLLs. They use Windows ML when available and an embedded CPU ONNX Runtime otherwise. Both Rust and the embedded runtime use a static CRT.
+- Windows packages contain the executable and license materials, without runtime DLLs. They use Windows ML when available and the CPU ONNX Runtime statically linked into the executable otherwise.
 - Add `--no-bundle` to create an app directory without an installer. App packages do not include models.
 - Use `cargo xtask models distribute` to create model ZIPs and distribution manifests.
 
@@ -96,22 +96,13 @@ Windows builds require Windows 11 24H2 or later. CPU inference needs no separate
 
 The script downloads the pinned official NuGet package, verifies its SHA-256, and installs its signed framework and companion MSIX packages for the current user. It does not add these binaries to the app ZIP.
 
-Before building on Windows, run the pinned CPU runtime build (Visual Studio C++ tools, Python, CMake and Git required):
+At startup the engine selects one ORT API for the entire process. If the shared package cannot be loaded or does not support API 27, it keeps the CPU runtime that `ort` links statically from its prebuilt archive (the same one used before Windows ML support, so no native build step is needed). It never mixes handles from two runtimes. With Windows ML available, even CPU fallback sessions use that selected shared runtime.
 
-```powershell
-./scripts/build-cpu-ort.ps1
-$env:IRODORU_CPU_ORT_LIB_DIR = (Resolve-Path target/cpu-ort/lib).Path
-```
-
-This builds ONNX Runtime 1.31.0 with `/MT`, no accelerator DLL dependencies, and full ONNX operator support. CI caches the static library. Its linked executable size increase must be measured from Windows release artifacts; the earlier 20–40 MiB figure was an estimate.
-
-At startup the engine selects one ORT API for the entire process. If the shared package cannot be loaded or does not support API 27, it selects the statically linked CPU API. It never mixes handles from two runtimes. With Windows ML available, even CPU fallback sessions use that selected shared runtime.
-
-The engine adds `Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe` to the process package dependency graph using the Windows dynamic-dependency APIs. It loads ONNX Runtime and the Windows ML catalog from that resolved package's absolute directory. Rust `ort` uses API version 27, matching the reviewed Microsoft.Windows.AI.MachineLearning 2.4.89 headers, rather than requiring the bundled runtime to expose API 31.
+The engine adds `Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe` to the process package dependency graph using the Windows dynamic-dependency APIs. It loads ONNX Runtime and the Windows ML catalog from that resolved package's absolute directory. Rust `ort` uses API version 27, matching the reviewed Microsoft.Windows.AI.MachineLearning 2.4.89 headers, rather than requiring the shared runtime to expose API 31.
 
 Windows ML prepares certified execution providers and their dependencies; the engine registers their library paths in its own ORT environment. Windows defaults to automatic GPU/NPU selection. Original ONNX graphs and the custom Snake operator remain in use, with CPU graph fallback for automatic mode. Explicit CPU selection suppresses automatic EP selection. Explicit GPU/NPU requests fail if no matching device is available or no session can be created; individual unsupported operators may still run on CPU. Non-Windows backend behavior remains unchanged. The catalog can download providers on first use; deployment in an offline environment requires preparing them beforehand.
 
-Validate the staged executable with MSVC tools installed:
+Validate the staged executable:
 
 ```powershell
 ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe
@@ -119,7 +110,7 @@ Validate the staged executable with MSVC tools installed:
 ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe -Gpu
 ```
 
-The check rejects direct ONNX Runtime, DirectML, and MSVC runtime imports, then launches a temporary copy of only the executable with a system-only PATH. The application reports the framework package or embedded CPU runtime used. `-EmbeddedCpu` forces the embedded path in a fresh diagnostic process even if Windows ML is installed. CI checks that path before installing Windows ML, then checks the shared runtime, with a tiny CPU Add inference in each; GPU mode additionally executes a tiny Add graph with CPU fallback disabled. Hardware GPU/NPU execution, full speech synthesis and offline reuse must still be tested on Windows; a successful loader check is not evidence of those checks.
+The check launches a temporary copy of only the executable, so it cannot rely on app-local DLLs (the linked runtime imports DirectML.dll, which Windows provides in System32). The application reports the framework package or embedded CPU runtime used. `-EmbeddedCpu` forces the embedded path in a fresh diagnostic process even if Windows ML is installed. CI checks that path before installing Windows ML, then checks the shared runtime, with a tiny CPU Add inference in each; GPU mode additionally executes a tiny Add graph with CPU fallback disabled. Hardware GPU/NPU execution, full speech synthesis and offline reuse must still be tested on Windows; a successful loader check is not evidence of those checks.
 
 References: [Windows ML deployment](https://learn.microsoft.com/windows/ai/new-windows-ml/distributing-your-app), [provider registration](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers), [reviewed runtime package](https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Runtime/2.6.5).
 
@@ -148,39 +139,3 @@ when importing replacement models. Mac CI checks the native code and package con
 and actual accelerator use still require validation on a Mac.
 
 Reference: [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).
-
-## CI build caches
-
-The app workflow saves caches on pull requests as well as `main`. New commits
-wait for the active run to finish and save its caches instead of cancelling an
-expensive build; GitHub retains only the newest pending run in the group:
-
-- Rust uses sccache to reuse compilation results by content, with incremental
-  compilation disabled. Each job restores a bounded disk cache and saves it as
-  one archive, including after later failures. This avoids a separate cache-service
-  write for every compiler output. Older archives can seed changed-source builds;
-  sccache validates each object's inputs. Cargo registry downloads are
-  cached separately; full target trees are not duplicated in that cache.
-- The prepared model bundle is saved immediately after export. Only model
-  licenses, exporter dependencies and bundle preparation code invalidate it.
-  The Rust dependency key follows xtask’s locked dependency graph, so unrelated
-  app dependency changes or native-library notices do not export the models again.
-- Windows' embedded CPU ONNX Runtime archive is keyed by its pinned build script
-  and saved before application checks, so a later check failure does not discard
-  the expensive native build. A 90-day Actions artifact is also retained: cache
-  eviction or merging to `main` can restore this archive without recompiling ORT.
-  Only artifacts built from this repository are eligible, excluding fork builds.
-- `cargo-about` and `cargo-packager` are cached by exact version, features, OS and
-  architecture, immediately after installation.
-- Completed desktop packages are reused only on an exact match of source,
-  manifests, resources (including the downloaded model distribution manifest),
-  licenses, build scripts, workflow configuration, Rust compiler and runner image.
-  Release versions are applied before computing the key. A hit skips release
-  compilation and packaging; Clippy, package inspection and Windows runtime
-  probes still run. README-only edits do not invalidate packages.
-
-Changed inputs rebuild the affected layer. GitHub's cache scope still applies:
-PR caches can be reused by that PR, while `main` cannot read a PR's private cache.
-Cache eviction, a new runner image or compiler, and a first run on a new branch
-can therefore require a fresh build. Check the restore steps and sccache's final
-statistics when investigating a slow run.

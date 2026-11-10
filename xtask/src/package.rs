@@ -14,8 +14,8 @@ fn platform() -> &'static str {
 
 fn bundle_library(name: &str, windows: bool, mac: bool) -> Result<bool> {
     if windows {
-        // Ignore a stale DirectML copy from older build caches. Windows now loads
-        // its shared Windows ML package; no runtime DLL belongs in our ZIP.
+        // ort-sys copies DirectML.dll next to the build output, but the ZIP ships
+        // only the executable: it resolves the copy Windows provides in System32.
         if name.eq_ignore_ascii_case("DirectML.dll") {
             return Ok(false);
         }

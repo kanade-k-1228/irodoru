@@ -139,48 +139,42 @@ fn runtime() -> Result<&'static SharedRuntime> {
     result.as_ref().map_err(|e| anyhow::anyhow!("{e}"))
 }
 
-// Select exactly one API before creating any ORT object. Never pass handles
-// between the shared runtime and the statically linked fallback.
+// Select the API before creating any ORT object. `true` means the shared
+// Windows ML runtime; otherwise `ort` keeps its statically linked CPU runtime.
+// Handles are never passed between the two.
 static SELECTED: OnceLock<std::result::Result<bool, String>> = OnceLock::new();
-unsafe extern "system" {
-    fn OrtGetApiBase() -> *const ort::sys::OrtApiBase;
-}
 
-unsafe fn read_api(base: *const ort::sys::OrtApiBase) -> Result<ort::sys::OrtApi> {
-    ensure!(!base.is_null(), "Missing ONNX Runtime API base");
-    let api = unsafe { ((*base).GetApi)(ort::sys::ORT_API_VERSION) };
-    ensure!(!api.is_null(), "ONNX Runtime does not support API 27");
-    Ok(unsafe { std::ptr::read(api) })
+fn shared_api() -> Result<ort::sys::OrtApi> {
+    let runtime = runtime()?;
+    unsafe {
+        let get: Symbol<unsafe extern "system" fn() -> *const ort::sys::OrtApiBase> =
+            runtime._ort_library.get(b"OrtGetApiBase\0")?;
+        let base = get();
+        ensure!(!base.is_null(), "Missing ONNX Runtime API base");
+        let api = ((*base).GetApi)(ort::sys::ORT_API_VERSION);
+        ensure!(!api.is_null(), "ONNX Runtime does not support API 27");
+        Ok(std::ptr::read(api))
+    }
 }
 
 fn select_api(force_cpu: bool) -> Result<bool> {
     let selected = SELECTED.get_or_init(|| {
-        let shared = (|| -> Result<ort::sys::OrtApi> {
-            ensure!(
-                !force_cpu,
-                "Embedded CPU runtime requested by diagnostic probe"
-            );
-            let runtime = runtime()?;
-            unsafe {
-                let get: Symbol<unsafe extern "system" fn() -> *const ort::sys::OrtApiBase> =
-                    runtime._ort_library.get(b"OrtGetApiBase\0")?;
-                read_api(get())
-            }
-        })();
-        let (api, windows_ml) = match shared {
-            Ok(api) => (api, true),
-            Err(error) => {
-                tracing::warn!(%error, "Windows ML unavailable; using embedded ONNX Runtime CPU");
-                match unsafe { read_api(OrtGetApiBase()) } {
-                    Ok(api) => (api, false),
-                    Err(error) => return Err(format!("{error:#}")),
+        if force_cpu {
+            return Ok(false);
+        }
+        match shared_api() {
+            Ok(api) => {
+                if ort::set_api(api) {
+                    Ok(true)
+                } else {
+                    Err("ONNX Runtime was initialized before runtime selection".into())
                 }
             }
-        };
-        if !ort::set_api(api) {
-            return Err("ONNX Runtime was initialized before runtime selection".into());
+            Err(error) => {
+                tracing::warn!(error = %format!("{error:#}"), "Windows ML unavailable; using embedded ONNX Runtime CPU");
+                Ok(false)
+            }
         }
-        Ok(windows_ml)
     });
     selected
         .as_ref()
