@@ -1,117 +1,118 @@
 //! Pure editing transitions; the view decides when to synchronize controls and save.
-use super::{Draft, Field, WorkspaceState};
+use super::{Field, WorkspaceState};
 use crate::domain::Take;
-use crate::domain::{Character, CharacterInput, DEFAULT_CHARACTER_COLOR, DEFAULT_SAMPLE_TEXT};
+use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT};
 use crate::workspace::{editor, protocol::Command};
 use anyhow::Result;
 
 impl WorkspaceState {
     pub fn change(&mut self, field: Field, value: String) -> bool {
-        if self.busy || (self.draft.is_some() && matches!(field, Field::Text | Field::Prompt)) {
+        if self.busy
+            || (self.chara_locked
+                && matches!(field, Field::Name | Field::Description | Field::Sample))
+        {
             return false;
         }
         match field {
             Field::Text => {
-                if let Some(row) = self.selected_row_mut() {
-                    row.text = value;
+                if let Some(line) = self.selected_line_mut() {
+                    line.text = value;
                 }
             }
             Field::Description => {
-                if let Some(d) = &mut self.draft {
-                    d.input.description = value;
+                if let Some(chara) = self.active_chara_mut() {
+                    chara.description = value;
                 }
                 return false;
             }
             Field::Prompt => {
-                if let Some(row) = self.selected_row_mut() {
-                    row.prompt = Some(value);
+                if let Some(line) = self.selected_line_mut() {
+                    line.prompt = Some(value);
                 }
             }
-            Field::Seed => self.generation_settings_mut().seed = value,
-            Field::Steps => self.generation_settings_mut().num_steps = value,
+            Field::Seed | Field::Steps => {
+                let Some(settings) = self.generation_settings_mut() else {
+                    return false;
+                };
+                if matches!(field, Field::Seed) {
+                    settings.seed = value;
+                } else {
+                    settings.num_steps = value;
+                }
+            }
             Field::Name => {
-                if let Some(d) = &mut self.draft {
-                    d.input.name = value;
+                if let Some(chara) = self.active_chara_mut() {
+                    chara.name = value;
                 }
                 return false;
             }
             Field::Sample => {
-                if let Some(d) = &mut self.draft {
-                    d.input.sample_text = Some(value);
+                if let Some(chara) = self.active_chara_mut() {
+                    chara.sample_text = value;
                 }
                 return false;
             }
         }
-        self.draft.is_none()
+        true
     }
     pub fn select(&mut self, id: String) -> bool {
-        if self.busy || self.draft.is_some() {
+        if self.busy {
             return false;
         }
         self.selected = Some(id);
-        if let Some(row) = self.selected_row_mut() {
-            let c = row.character_id.clone();
-            self.snapshot.editor.active_character = c;
+        if let Some(line) = self.selected_line_mut() {
+            let c = line.chara_id.clone();
+            self.snapshot.editor.active_chara = c;
         }
         true
     }
     pub fn select_take(&mut self, id: &str, checked: bool) -> bool {
-        if self.busy || self.draft.is_some() || self.status.id.is_none() {
+        if self.busy || self.status.id.is_none() {
             return false;
         }
         let Some(take) = self
             .snapshot
             .takes
             .iter()
-            .find(|take| take.id == id && Some(&take.row_id) == self.selected.as_ref())
+            .find(|take| take.id == id)
             .cloned()
         else {
             return false;
         };
-        let Some(row) = self.selected_row_mut() else {
+        let Some(line) = self.selected_line_mut() else {
             return false;
         };
+        if !line.takes.contains(&take.id) {
+            return false;
+        }
         if checked {
-            take.restore_row(row);
-        } else if row.take_id.as_deref() == Some(id) {
-            row.take_id = None;
+            take.restore_line(line);
+        } else if line.take_id.as_deref() == Some(id) {
+            line.take_id = None;
         } else {
             return false;
         }
         true
     }
 
-    pub fn edit_character(&mut self, character: Option<Character>) -> bool {
-        if self.busy || self.draft.is_some() {
-            return false;
+    pub fn create_chara(&self) -> Option<Command> {
+        if self.busy || self.status.id.is_none() {
+            return None;
         }
-        let (id, input) = match character {
-            Some(c) => (Some(c.id.clone()), c.into()),
-            None => (
-                None,
-                CharacterInput {
-                    name: String::new(),
-                    description: String::new(),
-                    voice_ids: Vec::new(),
-                    icon: None,
-                    color: Some(DEFAULT_CHARACTER_COLOR.into()),
-                    sample_text: Some(DEFAULT_SAMPLE_TEXT.into()),
-                },
-            ),
-        };
-        let mut settings = self.snapshot.editor.preferences.clone();
-        settings.num_steps.clear();
-        if settings.seed.is_empty() {
-            settings.seed = "1".into();
-        }
-        self.draft = Some(Draft {
-            id,
-            original: input.clone(),
-            input,
-            preview: None,
-            settings,
-        });
-        true
+        let name = (1..)
+            .map(|i| format!("キャラクター {i}"))
+            .find(|name| !self.snapshot.charas.iter().any(|c| &c.name == name))?;
+        Some(Command::SaveChara {
+            id: None,
+            input: CharaInput {
+                name,
+                description: String::new(),
+                voice_ids: Vec::new(),
+                icon: None,
+                color: Some(DEFAULT_CHARA_COLOR.into()),
+                sample_text: Some(DEFAULT_SAMPLE_TEXT.into()),
+            },
+        })
     }
 }
 
@@ -123,58 +124,52 @@ pub enum GenerationField {
     CaptionGuidance,
 }
 
-impl Draft {
-    pub fn is_dirty(&self) -> bool {
-        self.preview.is_some() || self.input != self.original
-    }
-}
-
 #[derive(Clone, Copy)]
-pub enum RowAction {
+pub enum LineAction {
     InsertAbove,
     Duplicate,
     Delete,
 }
 
 impl WorkspaceState {
-    fn can_edit_rows(&self) -> bool {
-        !self.busy && self.draft.is_none()
+    fn can_edit_lines(&self) -> bool {
+        !self.busy
     }
 
-    pub fn edit_row(&mut self, id: &str, action: RowAction) -> bool {
-        if !self.can_edit_rows() {
+    pub fn edit_line(&mut self, id: &str, action: LineAction) -> bool {
+        if !self.can_edit_lines() {
             return false;
         }
         let Some(index) = self
             .snapshot
             .editor
-            .rows
+            .lines
             .iter()
-            .position(|row| row.id == id)
+            .position(|line| line.id == id)
         else {
             return false;
         };
         self.select(id.to_owned());
         match action {
-            RowAction::InsertAbove => {
+            LineAction::InsertAbove => {
                 let after = index
                     .checked_sub(1)
-                    .map(|i| self.snapshot.editor.rows[i].id.clone());
+                    .map(|i| self.snapshot.editor.lines[i].id.clone());
                 self.insert_at(after.as_deref(), false)
             }
-            RowAction::Duplicate => self.add_row(true),
-            RowAction::Delete => self.remove_row(),
+            LineAction::Duplicate => self.add_line(true),
+            LineAction::Delete => self.remove_line(),
         }
     }
 
-    pub fn add_row(&mut self, duplicate: bool) -> bool {
-        if !self.can_edit_rows() {
+    pub fn add_line(&mut self, duplicate: bool) -> bool {
+        if !self.can_edit_lines() {
             return false;
         }
-        if self.snapshot.editor.active_character.is_empty() {
-            self.snapshot.editor.active_character = self
+        if self.snapshot.editor.active_chara.is_empty() {
+            self.snapshot.editor.active_chara = self
                 .snapshot
-                .characters
+                .charas
                 .first()
                 .map(|c| c.id.clone())
                 .unwrap_or_default();
@@ -188,8 +183,8 @@ impl WorkspaceState {
     }
 
     pub fn insert_at(&mut self, after: Option<&str>, duplicate: bool) -> bool {
-        if !self.can_edit_rows()
-            || after.is_some_and(|id| !self.snapshot.editor.rows.iter().any(|row| row.id == id))
+        if !self.can_edit_lines()
+            || after.is_some_and(|id| !self.snapshot.editor.lines.iter().any(|line| line.id == id))
         {
             return false;
         }
@@ -197,57 +192,59 @@ impl WorkspaceState {
             let Some(id) = self
                 .selected
                 .as_deref()
-                .filter(|id| self.snapshot.editor.rows.iter().any(|row| row.id == *id))
+                .filter(|id| self.snapshot.editor.lines.iter().any(|line| line.id == *id))
             else {
                 return false;
             };
             Some(id)
         } else {
-            after.or_else(|| self.snapshot.editor.rows.first().map(|row| row.id.as_str()))
+            after.or_else(|| {
+                self.snapshot
+                    .editor
+                    .lines
+                    .first()
+                    .map(|line| line.id.as_str())
+            })
         }
         .map(str::to_owned);
         let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), duplicate);
-        editor::move_row(&mut self.snapshot.editor.rows, &id, after);
+        editor::move_line(&mut self.snapshot.editor.lines, &id, after);
         self.select(id)
     }
 
-    pub fn select_character(&mut self, id: String) -> bool {
-        if !self.can_edit_rows()
+    pub fn select_chara(&mut self, id: String) -> bool {
+        if !self.can_edit_lines()
             || self.status.id.is_none()
-            || !self
-                .snapshot
-                .characters
-                .iter()
-                .any(|character| character.id == id)
+            || !self.snapshot.charas.iter().any(|chara| chara.id == id)
         {
             return false;
         }
-        self.snapshot.editor.active_character = id;
+        self.snapshot.editor.active_chara = id;
         self.selected = None;
         true
     }
 
-    pub fn append_character_row(&mut self, character: String) -> bool {
-        if !self.can_edit_rows() {
+    pub fn append_chara_line(&mut self, chara: String) -> bool {
+        if !self.can_edit_lines() {
             return false;
         }
-        self.snapshot.editor.active_character = character;
+        self.snapshot.editor.active_chara = chara;
         let id = editor::insert(&mut self.snapshot.editor, None, false);
         self.select(id)
     }
 
     pub fn copy_take(&mut self, take: &Take) -> bool {
-        if !self.can_edit_rows() {
+        if !self.can_edit_lines() {
             return false;
         }
-        let row = editor::row_from_take(take, &self.snapshot.characters);
-        let id = row.id.clone();
-        self.snapshot.editor.rows.push(row);
+        let line = editor::line_from_take(take, &self.snapshot.charas);
+        let id = line.id.clone();
+        self.snapshot.editor.lines.push(line);
         self.select(id)
     }
 
-    pub fn remove_row(&mut self) -> bool {
-        if !self.can_edit_rows() {
+    pub fn remove_line(&mut self) -> bool {
+        if !self.can_edit_lines() {
             return false;
         }
         let Some(id) = self.selected.clone() else {
@@ -261,25 +258,25 @@ impl WorkspaceState {
         true
     }
 
-    pub fn move_row(&mut self, after: Option<&str>) -> Option<usize> {
-        if !self.can_edit_rows() {
+    pub fn move_line(&mut self, after: Option<&str>) -> Option<usize> {
+        if !self.can_edit_lines() {
             return None;
         }
-        editor::move_row(
-            &mut self.snapshot.editor.rows,
+        editor::move_line(
+            &mut self.snapshot.editor.lines,
             self.selected.as_deref()?,
             after,
         )
     }
 
-    pub fn reset_row_settings(&mut self) -> bool {
-        if !self.can_edit_rows() {
+    pub fn reset_line_settings(&mut self) -> bool {
+        if !self.can_edit_lines() {
             return false;
         }
-        let Some(row) = self.selected_row_mut() else {
+        let Some(line) = self.selected_line_mut() else {
             return false;
         };
-        row.settings = None;
+        line.settings = None;
         true
     }
 
@@ -287,64 +284,62 @@ impl WorkspaceState {
         if self.busy {
             return false;
         }
-        let settings = self.generation_settings_mut();
+        let Some(settings) = self.generation_settings_mut() else {
+            return false;
+        };
         match field {
             GenerationField::Speed => settings.set_speed(value.into()),
             GenerationField::TextGuidance => settings.cfg_text = value,
             GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
             GenerationField::CaptionGuidance => settings.cfg_caption = value,
         }
-        self.draft.is_none()
+        true
     }
 
-    pub fn toggle_draft_voice(&mut self, voice: Option<String>) {
+    pub fn toggle_chara_voice(&mut self, voice: Option<String>) {
         if !self.busy
-            && let Some(draft) = &mut self.draft
+            && !self.chara_locked
+            && let Some(chara) = self.active_chara_mut()
         {
             if let Some(voice) = voice {
-                if draft.input.voice_ids.contains(&voice) {
-                    draft.input.voice_ids.retain(|id| id != &voice);
+                if chara.voice_ids.contains(&voice) {
+                    chara.voice_ids.retain(|id| id != &voice);
                 } else {
-                    draft.input.voice_ids.push(voice);
+                    chara.voice_ids.push(voice);
                 }
             } else {
-                draft.input.voice_ids.clear();
+                chara.voice_ids.clear();
             }
         }
     }
-    pub fn set_draft_icon(&mut self, icon: String) {
+    pub fn set_chara_icon(&mut self, icon: String) {
         if !self.busy
-            && let Some(draft) = &mut self.draft
+            && !self.chara_locked
+            && let Some(chara) = self.active_chara_mut()
         {
-            draft.input.icon = Some(icon);
+            chara.icon = Some(icon);
         }
     }
-    pub fn set_draft_color(&mut self, color: String) {
+    pub fn set_chara_color(&mut self, color: String) {
         if !self.busy
-            && let Some(draft) = &mut self.draft
+            && !self.chara_locked
+            && let Some(chara) = self.active_chara_mut()
         {
-            draft.input.color = Some(color);
+            chara.color = color;
         }
     }
-    pub fn discard_character(&mut self) -> Option<Command> {
-        if self.busy {
-            return None;
-        }
-        self.draft.take()?.preview.map(Command::RemovePreview)
+    pub fn delete_chara(&mut self, id: String) -> Command {
+        Command::DeleteChara(id)
     }
-    pub fn delete_character(&mut self, id: String) -> Command {
-        self.saving_draft = self.draft.is_some();
-        Command::DeleteCharacter(id)
-    }
-    pub fn duplicate_character(&self) -> Option<Command> {
-        if self.busy || self.draft.is_some() || self.status.id.is_none() {
+    pub fn duplicate_chara(&self) -> Option<Command> {
+        if self.busy || self.status.id.is_none() {
             return None;
         }
         let source = self
             .snapshot
-            .characters
+            .charas
             .iter()
-            .find(|c| c.id == self.snapshot.editor.active_character)?;
+            .find(|c| c.id == self.snapshot.editor.active_chara)?;
         let base = source
             .name
             .rsplit_once(" - ")
@@ -356,10 +351,10 @@ impl WorkspaceState {
                 let base: String = base.chars().take(64 - suffix.chars().count()).collect();
                 format!("{}{suffix}", base.trim_end())
             })
-            .find(|name| !self.snapshot.characters.iter().any(|c| &c.name == name))?;
-        Some(Command::SaveCharacter {
+            .find(|name| !self.snapshot.charas.iter().any(|c| &c.name == name))?;
+        Some(Command::SaveChara {
             id: None,
-            input: CharacterInput {
+            input: CharaInput {
                 name,
                 description: source.description.clone(),
                 voice_ids: source.voice_ids.clone(),
@@ -367,73 +362,79 @@ impl WorkspaceState {
                 color: Some(source.color.clone()),
                 sample_text: Some(source.sample_text.clone()),
             },
-            preview: None,
         })
     }
 
-    pub fn save_character(&mut self) -> Option<Command> {
-        if self.busy {
-            return None;
-        }
-        let draft = self.draft.as_ref()?;
-        self.saving_draft = true;
-        Some(Command::SaveCharacter {
-            id: draft.id.clone(),
-            input: draft.input.clone(),
-            preview: draft.preview.clone(),
+    pub fn save_chara(&self) -> Option<Command> {
+        let chara = self.active_chara()?.clone();
+        Some(Command::SaveChara {
+            id: Some(chara.id.clone()),
+            input: chara.into(),
         })
     }
     pub fn preview(&self) -> Result<Option<Command>> {
         if self.busy {
             return Ok(None);
         }
-        self.draft
-            .as_ref()
-            .map(|d| {
+        self.active_chara()
+            .map(|chara| {
                 Ok(Command::Preview {
-                    input: editor::speech(
-                        d.input.sample_text.clone().unwrap_or_default(),
-                        &d.settings,
-                    )?,
-                    description: d.input.description.clone(),
-                    voice_ids: d.input.voice_ids.clone(),
+                    chara_id: chara.id.clone(),
+                    input: editor::speech(chara.sample_text.clone(), &self.preview_settings)?,
+                    description: chara.description.clone(),
+                    voice_ids: chara.voice_ids.clone(),
                 })
             })
             .transpose()
     }
-    pub fn randomize_selected_row(&mut self, seed: u32) -> Result<bool> {
-        if !self.can_edit_rows() {
+    pub fn change_preview_generation(&mut self, field: GenerationField, value: f32) {
+        if self.busy || self.chara_locked {
+            return;
+        }
+        let settings = &mut self.preview_settings;
+        match field {
+            GenerationField::Speed => settings.set_speed(value.into()),
+            GenerationField::TextGuidance => settings.cfg_text = value,
+            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
+            GenerationField::CaptionGuidance => settings.cfg_caption = value,
+        }
+    }
+    pub fn randomize_selected_line(&mut self, seed: u32) -> Result<bool> {
+        if !self.can_edit_lines() {
             return Ok(false);
         }
         let Some(id) = self.selected.as_deref() else {
             return Ok(false);
         };
+        let newest = self
+            .snapshot
+            .editor
+            .lines
+            .iter()
+            .find(|line| line.id == id)
+            .and_then(|line| line.takes.first());
         let previous = self
             .snapshot
             .takes
             .iter()
-            .find(|take| take.row_id == id)
+            .find(|take| Some(&take.id) == newest)
             .map(|take| take.conditions.seed);
-        editor::randomize_row(&mut self.snapshot.editor, id, previous, seed)?;
+        editor::randomize_line(&mut self.snapshot.editor, id, previous, seed)?;
         Ok(true)
     }
     pub fn generate(&self, all: bool) -> Result<Option<Command>> {
-        if !self.can_edit_rows() {
+        if !self.can_edit_lines() {
             return Ok(None);
         }
-        let rows = self
+        let lines = self
             .snapshot
             .editor
-            .rows
+            .lines
             .iter()
-            .filter(|row| all || Some(&row.id) == self.selected.as_ref())
+            .filter(|line| all || Some(&line.id) == self.selected.as_ref())
             .cloned()
             .collect::<Vec<_>>();
-        let requests = editor::requests(
-            &rows,
-            &self.snapshot.characters,
-            &self.snapshot.editor.preferences,
-        )?;
+        let requests = editor::requests(&lines, &self.snapshot.charas)?;
         Ok((!requests.is_empty()).then_some(Command::Generate(requests)))
     }
 }

@@ -11,6 +11,15 @@ use gpui_kit::*;
 impl Studio {
     pub(in crate::workspace::view) fn take_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
+        let takes = self
+            .state
+            .snapshot
+            .editor
+            .lines
+            .iter()
+            .find(|line| Some(&line.id) == self.state.selected.as_ref())
+            .map(|line| line.takes.as_slice())
+            .unwrap_or_default();
         div()
             .w(relative(0.5))
             .flex_shrink_0()
@@ -19,28 +28,18 @@ impl Studio {
             .flex()
             .flex_col()
             .gap_2()
-            .when(
-                !self
-                    .state
-                    .snapshot
-                    .takes
-                    .iter()
-                    .any(|take| Some(&take.row_id) == self.state.selected.as_ref()),
-                |el| {
-                    el.child(
-                        div()
-                            .text_xs()
-                            .text_color(p.muted)
-                            .child("音声を生成すると、ここにテイクが表示されます。"),
-                    )
-                },
-            )
+            .when(takes.is_empty(), |el| {
+                el.child(
+                    div()
+                        .text_xs()
+                        .text_color(p.muted)
+                        .child("音声を生成すると、ここにテイクが表示されます。"),
+                )
+            })
             .children(
-                self.state
-                    .snapshot
-                    .takes
+                takes
                     .iter()
-                    .filter(|take| Some(&take.row_id) == self.state.selected.as_ref())
+                    .filter_map(|id| self.state.snapshot.takes.iter().find(|take| &take.id == id))
                     .enumerate()
                     .map(|(i, take)| self.take_item(i, take, cx)),
             )
@@ -52,11 +51,11 @@ impl Studio {
 
         let id = take.id.clone();
         let select_id = id.clone();
-        let row_id = take.row_id.clone();
-        let selected = self.state.snapshot.editor.rows.iter().any(|row| {
-            Some(&row.id) == self.state.selected.as_ref() && row.take_id.as_ref() == Some(&id)
+        let line_id = self.state.selected.clone().unwrap_or_default();
+        let selected = self.state.snapshot.editor.lines.iter().any(|line| {
+            Some(&line.id) == self.state.selected.as_ref() && line.take_id.as_ref() == Some(&id)
         });
-        let disabled = self.state.busy || self.state.draft.is_some();
+        let disabled = self.state.busy;
         let tooltip = format!(
             "テイク {} · シード {} · {} ステップ · {:.1}秒で生成",
             i + 1,
@@ -70,7 +69,7 @@ impl Studio {
                 this.audio_id = None;
                 this.sync_fields(window, cx);
                 this.send(Command::SelectTake {
-                    row_id: row_id.clone(),
+                    line_id: line_id.clone(),
                     take_id: checked.then(|| select_id.clone()),
                 });
                 cx.notify();

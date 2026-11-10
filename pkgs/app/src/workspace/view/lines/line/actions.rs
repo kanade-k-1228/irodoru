@@ -1,5 +1,5 @@
-use crate::domain::{AudioSource, ScriptRow};
-use crate::workspace::state::RowAction;
+use crate::domain::{AudioSource, Line};
+use crate::workspace::state::LineAction;
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::tool;
 use gpui_kit::component::Disableable;
@@ -7,34 +7,34 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(in crate::workspace::view) fn script_row_actions(
+    pub(in crate::workspace::view) fn line_actions(
         &self,
         i: usize,
-        row: &ScriptRow,
+        line: &Line,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let disabled = self.state.busy || self.state.draft.is_some();
+        let disabled = self.state.busy;
         div()
             .flex()
             .children(
                 [
-                    (RowAction::InsertAbove, 0, "plus", "上に追加"),
-                    (RowAction::Duplicate, 2, "copy", "複製"),
-                    (RowAction::Delete, 3, "trash", "削除"),
+                    (LineAction::InsertAbove, 0, "plus", "上に追加"),
+                    (LineAction::Duplicate, 2, "copy", "複製"),
+                    (LineAction::Delete, 3, "trash", "削除"),
                 ]
                 .into_iter()
                 .map(|(action, key, icon, label)| {
-                    let id = row.id.clone();
+                    let id = line.id.clone();
                     let disabled = disabled
-                        || (matches!(action, RowAction::Delete)
-                            && self.state.snapshot.editor.rows.len() <= 1);
-                    tool(("row-action", i * 4 + key), icon, label)
+                        || (matches!(action, LineAction::Delete)
+                            && self.state.snapshot.editor.lines.len() <= 1);
+                    tool(("line-action", i * 4 + key), icon, label)
                         .size(px(40.))
                         .rounded_none()
                         .disabled(disabled)
                         .when(disabled, |el| el.cursor_default())
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            if this.state.edit_row(&id, action) {
+                            if this.state.edit_line(&id, action) {
                                 this.edited(window, cx);
                                 this.fields
                                     .text
@@ -46,13 +46,13 @@ impl Studio {
             .into_any_element()
     }
 
-    pub(in crate::workspace::view) fn script_play_button(
+    pub(in crate::workspace::view) fn line_play_button(
         &self,
         i: usize,
-        row: &ScriptRow,
+        line: &Line,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let source = row
+        let source = line
             .take_id
             .as_ref()
             .filter(|id| {
@@ -60,7 +60,7 @@ impl Studio {
                     .snapshot
                     .takes
                     .iter()
-                    .any(|take| &take.id == *id && take.row_id == row.id)
+                    .any(|take| &take.id == *id && line.takes.contains(&take.id))
             })
             .map(|id| AudioSource::Take(id.clone()));
         let playing = source.is_some()
@@ -71,7 +71,7 @@ impl Studio {
                 .is_some_and(|player| player.playing());
         let disabled = self.state.busy || source.is_none();
         tool(
-            ("row-play", i),
+            ("line-play", i),
             if playing { "pause" } else { "play" },
             if source.is_none() {
                 "音声を生成すると再生できます"

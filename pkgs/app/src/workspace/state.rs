@@ -1,18 +1,11 @@
 //! Window-local application state. Transitions return effects; no GUI or I/O runs here.
 use super::protocol::{Event, Snapshot};
 use crate::{
-    domain::{CharacterInput, GenerationSettings, ScriptRow},
+    domain::{GenerationSettings, Line},
     project::ProjectStatus,
 };
 use std::collections::HashMap;
 
-pub struct Draft {
-    pub id: Option<String>,
-    pub input: CharacterInput,
-    pub preview: Option<String>,
-    pub settings: GenerationSettings,
-    pub original: CharacterInput,
-}
 #[derive(Clone, Copy)]
 pub enum Field {
     Text,
@@ -29,18 +22,17 @@ pub struct WorkspaceState {
     pub snapshot: Snapshot,
     pub status: ProjectStatus,
     pub selected: Option<String>,
-    pub draft: Option<Draft>,
+    pub preview_settings: GenerationSettings,
+    pub chara_locked: bool,
     pub busy: bool,
-    pub saving_draft: bool,
     pub error: Option<String>,
-    pub row_errors: HashMap<String, String>,
+    pub line_errors: HashMap<String, String>,
     pub running: Option<String>,
     pub stopping: bool,
 }
 
 pub enum Effect {
     SyncInputs,
-    RemovePreview(String),
     PlayAudio(Vec<u8>),
     Exported {
         directory: std::path::PathBuf,
@@ -50,71 +42,84 @@ pub enum Effect {
 }
 
 impl WorkspaceState {
-    fn selected_row_mut(&mut self) -> Option<&mut ScriptRow> {
+    pub fn active_chara(&self) -> Option<&crate::domain::Chara> {
+        self.snapshot
+            .charas
+            .iter()
+            .find(|c| c.id == self.snapshot.editor.active_chara)
+    }
+    fn active_chara_mut(&mut self) -> Option<&mut crate::domain::Chara> {
+        self.snapshot
+            .charas
+            .iter_mut()
+            .find(|c| c.id == self.snapshot.editor.active_chara)
+    }
+    fn selected_line_mut(&mut self) -> Option<&mut Line> {
         let id = self.selected.as_ref()?;
-        self.snapshot.editor.rows.iter_mut().find(|r| &r.id == id)
+        self.snapshot.editor.lines.iter_mut().find(|r| &r.id == id)
     }
     pub fn settings_value(&self) -> GenerationSettings {
-        if let Some(draft) = &self.draft {
-            return draft.settings.clone();
-        }
-        if let Some(row) = self
+        if let Some(line) = self
             .snapshot
             .editor
-            .rows
+            .lines
             .iter()
             .find(|r| Some(&r.id) == self.selected.as_ref())
         {
-            return row
-                .settings
-                .clone()
-                .unwrap_or_else(|| self.snapshot.editor.preferences.clone());
+            return line.settings.clone().unwrap_or_default();
         }
-        self.snapshot.editor.preferences.clone()
+        GenerationSettings::default()
     }
-    fn generation_settings_mut(&mut self) -> &mut GenerationSettings {
-        if let Some(draft) = &mut self.draft {
-            return &mut draft.settings;
-        }
-        if let Some(index) = self
+    fn generation_settings_mut(&mut self) -> Option<&mut GenerationSettings> {
+        let id = self.selected.as_ref()?;
+        let line = self
             .snapshot
             .editor
-            .rows
-            .iter()
-            .position(|r| Some(&r.id) == self.selected.as_ref())
-        {
-            let defaults = self.snapshot.editor.preferences.clone();
-            return self.snapshot.editor.rows[index]
-                .settings
-                .get_or_insert(defaults);
-        }
-        &mut self.snapshot.editor.preferences
+            .lines
+            .iter_mut()
+            .find(|line| &line.id == id)?;
+        Some(
+            line.settings
+                .get_or_insert_with(GenerationSettings::default),
+        )
     }
     pub fn close_error(&self) -> Option<&'static str> {
         if self.busy {
             Some("処理の完了後に閉じてください。")
-        } else if self.draft.is_some() {
-            Some("キャラクターの編集を保存またはキャンセルしてから閉じてください。")
         } else {
             None
         }
     }
     pub fn apply(&mut self, event: Event) -> Option<Effect> {
         match event {
-            Event::Snapshot(snapshot) => {
-                self.snapshot = snapshot;
-                if self.saving_draft {
-                    self.saving_draft = false;
-                    self.draft = None;
+            Event::Snapshot(mut snapshot) => {
+                let active = &self.snapshot.editor.active_chara;
+                if snapshot.charas.iter().any(|c| &c.id == active) {
+                    snapshot.editor.active_chara = active.clone();
                 }
+                self.snapshot = snapshot;
                 if !self
                     .snapshot
                     .editor
-                    .rows
+                    .lines
                     .iter()
                     .any(|r| Some(&r.id) == self.selected.as_ref())
                 {
-                    self.selected = self.snapshot.editor.rows.first().map(|r| r.id.clone());
+                    self.selected = self.snapshot.editor.lines.first().map(|r| r.id.clone());
+                }
+                if self.active_chara().is_none() {
+                    self.snapshot.editor.active_chara = self
+                        .snapshot
+                        .editor
+                        .lines
+                        .iter()
+                        .find(|line| Some(&line.id) == self.selected.as_ref())
+                        .and_then(|line| {
+                            self.snapshot.charas.iter().find(|c| c.id == line.chara_id)
+                        })
+                        .or_else(|| self.snapshot.charas.first())
+                        .map(|c| c.id.clone())
+                        .unwrap_or_default();
                 }
                 return Some(Effect::SyncInputs);
             }
@@ -122,6 +127,9 @@ impl WorkspaceState {
                 if status.id == self.status.id || self.busy {
                     if let Some(e) = &status.error {
                         self.error = Some(format!("保存できませんでした: {e}"));
+                    }
+                    if status.id != self.status.id {
+                        self.snapshot.editor.active_chara.clear();
                     }
                     self.status = status;
                 }
@@ -133,34 +141,15 @@ impl WorkspaceState {
             }
             Event::Error(e) => {
                 self.error = Some(e);
-                self.saving_draft = false;
             }
-            Event::RowStarted(id) => {
-                self.row_errors.remove(&id);
+            Event::LineStarted(id) => {
+                self.line_errors.remove(&id);
                 self.running = Some(id);
             }
-            Event::RowFailed(id, e) => {
-                self.row_errors.insert(id, e);
+            Event::LineFailed(id, e) => {
+                self.line_errors.insert(id, e);
             }
-            Event::Preview(id) => {
-                if let Some(d) = &mut self.draft
-                    && let Some(old) = d.preview.replace(id)
-                {
-                    return Some(Effect::RemovePreview(old));
-                }
-            }
-            Event::Voice(voice) => {
-                if let Some(d) = &mut self.draft
-                    && !d.input.voice_ids.contains(&voice)
-                {
-                    d.input.voice_ids.push(voice);
-                }
-            }
-            Event::Icon(icon) => {
-                if let Some(d) = &mut self.draft {
-                    d.input.icon = Some(icon);
-                }
-            }
+            Event::CharaCreated(id) => self.snapshot.editor.active_chara = id,
             Event::Audio(bytes) => return Some(Effect::PlayAudio(bytes)),
             Event::Exported { directory, count } => {
                 return Some(Effect::Exported { directory, count });
@@ -174,4 +163,4 @@ impl WorkspaceState {
 mod tests;
 
 mod editing;
-pub use editing::{GenerationField, RowAction};
+pub use editing::{GenerationField, LineAction};

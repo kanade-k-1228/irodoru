@@ -1,16 +1,16 @@
 //! Shared value contracts. No GUI, filesystem or service dependencies.
-mod character;
+mod chara;
 mod error;
 mod id;
-mod script;
+mod line;
 mod speech;
 mod take;
 mod voice;
-pub use character::{Character, CharacterInput, DEFAULT_CHARACTER_COLOR, DEFAULT_SAMPLE_TEXT};
+pub use chara::{Chara, CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT};
 pub use error::AppError;
 pub use id::new_id;
 pub(crate) use id::valid_id;
-pub use script::{EditorState, GenerationSettings, ScriptRow};
+pub use line::{EditorState, GenerationSettings, Line};
 pub use speech::{InferenceStatus, SynthesisInput, TakeRequest};
 pub use take::Take;
 pub use voice::Voice;
@@ -19,5 +19,5 @@ pub use voice::Voice;
 pub enum AudioSource {
     Take(String),
     Preview(String),
-    CharacterPreview(String),
+    CharaPreview(String),
 }

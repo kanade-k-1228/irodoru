@@ -15,8 +15,8 @@ pub struct SynthesisInput {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TakeRequest {
-    pub row_id: String,
-    pub character_id: String,
+    pub line_id: String,
+    pub chara_id: String,
     pub additional_prompt: Option<String>,
     pub request: SynthesisInput,
 }

@@ -217,7 +217,7 @@ fn open_projects(paths: Vec<std::path::PathBuf>, cx: &mut App) {
         if !seen.insert(path.canonicalize().unwrap_or_else(|_| path.clone())) {
             continue;
         }
-        // OS requests get independent windows. Existing editors, drafts, synthesis jobs and
+        // OS requests get independent windows. Existing editors, synthesis jobs and
         // failed saves stay intact; WindowProject still prevents two writers for one archive.
         if let Err(error) = open_studio(Some(path), cx) {
             show_error(error);

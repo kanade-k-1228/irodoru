@@ -8,6 +8,17 @@ impl Studio {
     pub(super) fn send(&mut self, command: Command) {
         let busy = !command.is_passive();
         if let Some(service) = &self.service {
+            if busy && self.state.status.id.is_some() {
+                for chara in &self.state.snapshot.charas {
+                    if let Err(error) = service.send(Command::SaveChara {
+                        id: Some(chara.id.clone()),
+                        input: chara.clone().into(),
+                    }) {
+                        self.state.error = Some(error.to_string());
+                        return;
+                    }
+                }
+            }
             match service.send(command) {
                 Ok(()) => {
                     if busy {
@@ -19,10 +30,14 @@ impl Studio {
             }
         }
     }
-    pub(super) fn autosave(&mut self) {
-        if self.state.draft.is_some() {
-            return;
+    pub(super) fn autosave_chara(&mut self) {
+        if let Some(command) = self.state.save_chara() {
+            self.state.status.state = crate::project::SaveState::Saving;
+            self.state.error = None;
+            self.send(command);
         }
+    }
+    pub(super) fn autosave(&mut self) {
         if self.state.status.id.is_some() {
             self.state.status.state = crate::project::SaveState::Saving;
             self.send(Command::SaveEditor(self.state.snapshot.editor.clone()));
@@ -44,7 +59,6 @@ impl Studio {
         for event in events {
             match self.state.apply(event) {
                 Some(Effect::SyncInputs) => self.sync_fields(window, cx),
-                Some(Effect::RemovePreview(id)) => self.send(Command::RemovePreview(id)),
                 Some(Effect::PlayAudio(bytes)) => match Playback::new(bytes) {
                     Ok(p) => self.playback = Some(p),
                     Err(e) => {

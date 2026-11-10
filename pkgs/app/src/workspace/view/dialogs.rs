@@ -3,7 +3,7 @@ use super::Studio;
 pub(super) enum ProjectDialog {
     New,
     Open,
-    FromCharacters,
+    FromCharas,
 }
 use crate::domain::AudioSource;
 use crate::workspace::protocol::Command;
@@ -16,7 +16,7 @@ impl Studio {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.state.busy || self.state.draft.is_some() {
+        if self.state.busy {
             return;
         }
         let create = !matches!(action, ProjectDialog::Open);
@@ -40,9 +40,9 @@ impl Studio {
                     this.autosave();
                     this.playback = None;
                     this.audio_id = None;
-                    this.state.row_errors.clear();
-                    this.send(if matches!(action, ProjectDialog::FromCharacters) {
-                        Command::NewFromCharacters(file.path().to_owned())
+                    this.state.line_errors.clear();
+                    this.send(if matches!(action, ProjectDialog::FromCharas) {
+                        Command::NewFromCharas(file.path().to_owned())
                     } else {
                         Command::Open {
                             path: file.path().to_owned(),
@@ -58,9 +58,12 @@ impl Studio {
         .detach();
     }
     pub(super) fn import(&mut self, icon: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.busy {
+        if self.state.busy || self.state.chara_locked {
             return;
         }
+        let Some(chara_id) = self.state.active_chara().map(|chara| chara.id.clone()) else {
+            return;
+        };
         self.state.busy = true;
         cx.spawn_in(window, async move |this, cx| {
             let dialog = rfd::AsyncFileDialog::new().add_filter(
@@ -81,12 +84,12 @@ impl Studio {
                     let paths: Vec<_> = files.into_iter().map(|f| f.path().to_owned()).collect();
                     if icon {
                         if let Some(path) = paths.into_iter().next() {
-                            this.send(Command::ImportIcon(path));
+                            this.send(Command::ImportIcon { chara_id, path });
                         } else {
                             this.state.busy = false;
                         }
                     } else {
-                        this.send(Command::ImportVoices(paths));
+                        this.send(Command::ImportVoices { chara_id, paths });
                     }
                 } else {
                     this.state.busy = false;
@@ -96,20 +99,15 @@ impl Studio {
         })
         .detach();
     }
-    pub(super) fn character_file(
-        &mut self,
-        export: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn chara_file(&mut self, export: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.busy || self.state.status.id.is_none() {
             return;
         }
         let input = if export {
-            let Some(draft) = &self.state.draft else {
+            let Some(chara) = self.state.active_chara() else {
                 return;
             };
-            Some(draft.input.clone())
+            Some(chara.clone().into())
         } else {
             None
         };
@@ -118,18 +116,18 @@ impl Studio {
             let dialog =
                 rfd::AsyncFileDialog::new().add_filter("irodoru キャラクター", &["irochar"]);
             let file = if export {
-                dialog.set_file_name("character.irochar").save_file().await
+                dialog.set_file_name("chara.irochar").save_file().await
             } else {
                 dialog.pick_file().await
             };
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(file) = file {
                     this.send(match input {
-                        Some(input) => Command::ExportCharacter {
+                        Some(input) => Command::ExportChara {
                             input,
                             path: file.path().to_owned(),
                         },
-                        None => Command::ImportCharacter(file.path().to_owned()),
+                        None => Command::ImportChara(file.path().to_owned()),
                     });
                 } else {
                     this.state.busy = false;
@@ -178,17 +176,17 @@ impl Studio {
         })
         .detach();
     }
-    pub(super) fn export_script(
+    pub(super) fn export_lines(
         &mut self,
         naming: crate::project::ExportNaming,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.state.busy || self.state.draft.is_some() || self.state.status.id.is_none() {
+        if self.state.busy || self.state.status.id.is_none() {
             return;
         }
         if let Err(error) =
-            crate::project::export_rows(&self.state.snapshot.editor, &self.state.snapshot.takes)
+            crate::project::export_lines(&self.state.snapshot.editor, &self.state.snapshot.takes)
         {
             self.state.error = Some(error.to_string());
             cx.notify();
@@ -203,7 +201,7 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if let Some(folder) = folder {
-                    this.send(Command::ExportScript {
+                    this.send(Command::ExportLines {
                         parent: folder.path().to_owned(),
                         naming,
                     });
@@ -217,41 +215,14 @@ impl Studio {
         cx.notify();
     }
 
-    pub(super) fn cancel_character(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.busy {
-            return;
-        }
-        let dirty = self.state.draft.as_ref().is_some_and(|d| d.is_dirty());
-        if !dirty {
-            self.discard_character(window, cx);
-            return;
-        }
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
-            let choice = rfd::AsyncMessageDialog::new()
-                .set_title("irodoru")
-                .set_description("未保存の変更を破棄しますか？")
-                .set_buttons(rfd::MessageButtons::YesNo)
-                .show()
-                .await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                this.state.busy = false;
-                if choice == rfd::MessageDialogResult::Yes {
-                    this.discard_character(window, cx);
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-    pub(super) fn delete_character(
+    pub(super) fn delete_chara(
         &mut self,
         id: String,
         name: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.state.busy {
+        if self.state.busy || self.state.chara_locked {
             return;
         }
         self.state.busy = true;
@@ -266,7 +237,7 @@ impl Studio {
                 .await;
             let _ = this.update_in(cx, |this, _, cx| {
                 if choice == rfd::MessageDialogResult::Yes {
-                    let command = this.state.delete_character(id);
+                    let command = this.state.delete_chara(id);
                     this.send(command);
                 } else {
                     this.state.busy = false;

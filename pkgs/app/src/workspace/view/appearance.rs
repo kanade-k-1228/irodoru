@@ -108,6 +108,8 @@ pub(super) fn apply(light: bool, cx: &mut App) {
 }
 pub(super) fn icon(name: &str) -> Icon {
     let data: &[u8] = match name {
+        "lock" => include_bytes!("../../../icons/ui/lock.svg"),
+        "unlock" => include_bytes!("../../../icons/ui/unlock.svg"),
         "menu" => include_bytes!("../../../icons/ui/menu.svg"),
         "model" => include_bytes!("../../../icons/ui/box.svg"),
         "app-window" => include_bytes!("../../../icons/ui/app-window.svg"),
@@ -172,7 +174,7 @@ pub(super) fn blend(a: Hsla, b: Hsla, f: f32) -> Hsla {
     }
     .into()
 }
-pub(super) fn character_color(color: Option<&str>, fallback: Hsla) -> Hsla {
+pub(super) fn chara_color(color: Option<&str>, fallback: Hsla) -> Hsla {
     color
         .and_then(|s| u32::from_str_radix(s.trim_start_matches('#'), 16).ok())
         .map(|v| rgb(v).into())

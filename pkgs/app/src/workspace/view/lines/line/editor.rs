@@ -28,8 +28,8 @@ impl Studio {
             .flex()
             .flex_col()
             .child(self.line_prompt())
-            .child(self.speed_controls())
-            .child(self.advanced_controls(cx))
+            .child(self.speed_controls(false))
+            .child(self.advanced_controls(false, cx))
             .child(self.line_generation_actions(cx))
             .into_any_element()
     }

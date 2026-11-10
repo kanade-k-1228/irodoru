@@ -3752,6 +3752,7 @@ dependencies = [
  "gpui-kit",
  "hound",
  "image",
+ "indexmap",
  "irodoru-engine",
  "irodoru-model-bundle",
  "objc2 0.6.5",

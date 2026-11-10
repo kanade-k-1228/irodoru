@@ -60,9 +60,8 @@ impl Studio {
                     .flex_shrink_0()
                     .disabled(
                         self.state.busy
-                            || self.state.draft.is_some()
                             || self.state.status.id.is_none()
-                            || self.state.snapshot.editor.rows.is_empty(),
+                            || self.state.snapshot.editor.lines.is_empty(),
                     )
                     .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, _| {
                         for naming in crate::project::ExportNaming::ALL {
@@ -70,7 +69,7 @@ impl Studio {
                             menu = menu.item(PopupMenuItem::new(naming.label()).on_click(
                                 move |_, window, cx| {
                                     let _ = studio.update(cx, |this, cx| {
-                                        this.export_script(naming, window, cx)
+                                        this.export_lines(naming, window, cx)
                                     });
                                 },
                             ));

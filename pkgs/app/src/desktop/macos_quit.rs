@@ -26,7 +26,7 @@ extern "C-unwind" fn should_terminate(_: &AnyObject, _: Sel, _: *mut AnyObject) 
             callback();
         }
     });
-    0 // NSTerminateCancel: retain windows on generation, character editing, or save failure.
+    0 // NSTerminateCancel: retain windows on generation, chara editing, or save failure.
 }
 
 pub fn install(cx: &App) {

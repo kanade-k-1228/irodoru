@@ -1,63 +1,62 @@
 //! Editing rules shared by the native views and tests.
 use crate::{
-    domain::{Character, new_id},
-    domain::{EditorState, GenerationSettings, ScriptRow, SynthesisInput, TakeRequest},
+    domain::{Chara, new_id},
+    domain::{EditorState, GenerationSettings, Line, SynthesisInput, TakeRequest},
 };
 use anyhow::{Result, bail};
 
-pub fn new_row(character_id: String, settings: GenerationSettings) -> ScriptRow {
-    ScriptRow {
+pub fn new_line(chara_id: String, settings: GenerationSettings) -> Line {
+    Line {
+        takes: Vec::new(),
         id: new_id(),
         text: String::new(),
-        character_id,
+        chara_id,
         prompt: None,
         settings: Some(settings),
         take_id: None,
     }
 }
 pub fn insert(editor: &mut EditorState, selected: Option<&str>, duplicate: bool) -> String {
-    let index = selected.and_then(|id| editor.rows.iter().position(|r| r.id == id));
-    let source = index.map(|i| &editor.rows[i]);
-    let mut row = new_row(
+    let index = selected.and_then(|id| editor.lines.iter().position(|r| r.id == id));
+    let source = index.map(|i| &editor.lines[i]);
+    let mut line = new_line(
         source
-            .map(|r| r.character_id.clone())
-            .unwrap_or_else(|| editor.active_character.clone()),
-        source
-            .and_then(|r| r.settings.clone())
-            .unwrap_or_else(|| editor.preferences.clone()),
+            .map(|r| r.chara_id.clone())
+            .unwrap_or_else(|| editor.active_chara.clone()),
+        source.and_then(|r| r.settings.clone()).unwrap_or_default(),
     );
     if duplicate && let Some(source) = source {
-        row.text = source.text.clone();
-        row.prompt = source.prompt.clone();
+        line.text = source.text.clone();
+        line.prompt = source.prompt.clone();
     }
-    let id = row.id.clone();
+    let id = line.id.clone();
     editor
-        .rows
-        .insert(index.map_or(editor.rows.len(), |i| i + 1), row);
+        .lines
+        .insert(index.map_or(editor.lines.len(), |i| i + 1), line);
     id
 }
-/// Move a row after another row, or to the beginning when `after` is absent.
-pub fn move_row(rows: &mut Vec<ScriptRow>, id: &str, after: Option<&str>) -> Option<usize> {
-    let index = rows.iter().position(|row| row.id == id)?;
+/// Move a line after another line, or to the beginning when `after` is absent.
+pub fn move_line(lines: &mut Vec<Line>, id: &str, after: Option<&str>) -> Option<usize> {
+    let index = lines.iter().position(|line| line.id == id)?;
     let slot = match after {
-        Some(after) => rows.iter().position(|row| row.id == after)? + 1,
+        Some(after) => lines.iter().position(|line| line.id == after)? + 1,
         None => 0,
     };
     if slot == index || slot == index + 1 {
         return None;
     }
     let target = slot - usize::from(index < slot);
-    let row = rows.remove(index);
-    rows.insert(target, row);
+    let line = lines.remove(index);
+    lines.insert(target, line);
     Some(target)
 }
 pub fn remove(editor: &mut EditorState, id: &str) -> Option<String> {
-    if editor.rows.len() <= 1 {
+    if editor.lines.len() <= 1 {
         return None;
     }
-    let index = editor.rows.iter().position(|r| r.id == id)?;
-    editor.rows.remove(index);
-    Some(editor.rows[index.min(editor.rows.len() - 1)].id.clone())
+    let index = editor.lines.iter().position(|r| r.id == id)?;
+    editor.lines.remove(index);
+    Some(editor.lines[index.min(editor.lines.len() - 1)].id.clone())
 }
 pub fn speech(text: String, settings: &GenerationSettings) -> Result<SynthesisInput> {
     let seed = if settings.seed.trim().is_empty() {
@@ -104,27 +103,25 @@ pub fn speech(text: String, settings: &GenerationSettings) -> Result<SynthesisIn
         cfg_scale_caption: settings.cfg_caption,
     })
 }
-pub fn requests(
-    rows: &[ScriptRow],
-    characters: &[Character],
-    defaults: &GenerationSettings,
-) -> Result<Vec<TakeRequest>> {
-    rows.iter()
+pub fn requests(lines: &[Line], charas: &[Chara]) -> Result<Vec<TakeRequest>> {
+    let defaults = GenerationSettings::default();
+    lines
+        .iter()
         .filter(|r| !r.text.trim().is_empty())
         .map(|r| {
-            if !characters.iter().any(|c| c.id == r.character_id) {
+            if !charas.iter().any(|c| c.id == r.chara_id) {
                 bail!("各セリフのプリセットを選択してください");
             }
             Ok(TakeRequest {
-                row_id: r.id.clone(),
-                character_id: r.character_id.clone(),
+                line_id: r.id.clone(),
+                chara_id: r.chara_id.clone(),
                 additional_prompt: r
                     .prompt
                     .as_deref()
                     .map(str::trim)
                     .filter(|p| !p.is_empty())
                     .map(str::to_owned),
-                request: speech(r.text.clone(), r.settings.as_ref().unwrap_or(defaults))?,
+                request: speech(r.text.clone(), r.settings.as_ref().unwrap_or(&defaults))?,
             })
         })
         .collect()
@@ -137,12 +134,12 @@ mod tests {
     fn duplicate_has_new_identity_and_no_audio() {
         let mut e = EditorState::default();
         let first = insert(&mut e, None, false);
-        e.rows[0].text = "こんにちは".into();
-        e.rows[0].take_id = Some("old".into());
+        e.lines[0].text = "こんにちは".into();
+        e.lines[0].take_id = Some("old".into());
         let second = insert(&mut e, Some(&first), true);
         assert_ne!(first, second);
-        assert_eq!(e.rows[1].text, "こんにちは");
-        assert!(e.rows[1].take_id.is_none());
+        assert_eq!(e.lines[1].text, "こんにちは");
+        assert!(e.lines[1].take_id.is_none());
     }
 
     #[test]
@@ -164,14 +161,14 @@ mod tests {
         }
     }
     #[test]
-    fn reorder_and_delete_keep_neighbor_and_final_row() {
+    fn reorder_and_delete_keep_neighbor_and_final_line() {
         let mut e = EditorState::default();
         let a = insert(&mut e, None, false);
         let b = insert(&mut e, None, false);
         let c = insert(&mut e, None, false);
-        assert_eq!(move_row(&mut e.rows, &a, Some(&c)), Some(2));
+        assert_eq!(move_line(&mut e.lines, &a, Some(&c)), Some(2));
         assert_eq!(
-            e.rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            e.lines.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             vec![b.as_str(), c.as_str(), a.as_str()]
         );
         assert_eq!(remove(&mut e, &c), Some(a.clone()));
@@ -180,35 +177,35 @@ mod tests {
     }
 
     #[test]
-    fn move_row_preserves_content_and_ignores_unchanged_or_invalid_positions() {
+    fn move_line_preserves_content_and_ignores_unchanged_or_invalid_positions() {
         let mut e = EditorState::default();
-        assert_eq!(move_row(&mut e.rows, "missing", None), None);
+        assert_eq!(move_line(&mut e.lines, "missing", None), None);
         let a = insert(&mut e, None, false);
-        assert_eq!(move_row(&mut e.rows, &a, None), None);
-        assert_eq!(move_row(&mut e.rows, &a, Some(&a)), None);
+        assert_eq!(move_line(&mut e.lines, &a, None), None);
+        assert_eq!(move_line(&mut e.lines, &a, Some(&a)), None);
         let b = insert(&mut e, None, false);
-        e.rows[1].text = "移動する台詞".into();
-        e.rows[1].character_id = "character".into();
-        e.rows[1].take_id = Some("generated-audio".into());
-        e.rows[1].prompt = Some("明るく".into());
+        e.lines[1].text = "移動する台詞".into();
+        e.lines[1].chara_id = "chara".into();
+        e.lines[1].take_id = Some("generated-audio".into());
+        e.lines[1].prompt = Some("明るく".into());
         let original = serde_yaml::to_string(&e).unwrap();
-        let moved_row = serde_yaml::to_string(&e.rows[1]).unwrap();
+        let moved_line = serde_yaml::to_string(&e.lines[1]).unwrap();
 
-        assert_eq!(move_row(&mut e.rows, &b, Some(&a)), None);
-        assert_eq!(move_row(&mut e.rows, &b, Some("missing")), None);
+        assert_eq!(move_line(&mut e.lines, &b, Some(&a)), None);
+        assert_eq!(move_line(&mut e.lines, &b, Some("missing")), None);
         assert_eq!(serde_yaml::to_string(&e).unwrap(), original);
-        assert_eq!(move_row(&mut e.rows, &b, None), Some(0));
-        assert_eq!(serde_yaml::to_string(&e.rows[0]).unwrap(), moved_row);
-        assert_eq!(e.rows[1].id, a);
-        assert_eq!(move_row(&mut e.rows, &b, None), None);
-        assert_eq!(move_row(&mut e.rows, &a, Some(&a)), None);
-        assert_eq!(move_row(&mut e.rows, "missing", Some(&b)), None);
+        assert_eq!(move_line(&mut e.lines, &b, None), Some(0));
+        assert_eq!(serde_yaml::to_string(&e.lines[0]).unwrap(), moved_line);
+        assert_eq!(e.lines[1].id, a);
+        assert_eq!(move_line(&mut e.lines, &b, None), None);
+        assert_eq!(move_line(&mut e.lines, &a, Some(&a)), None);
+        assert_eq!(move_line(&mut e.lines, "missing", Some(&b)), None);
 
-        assert_eq!(move_row(&mut e.rows, &b, Some(&a)), Some(1));
+        assert_eq!(move_line(&mut e.lines, &b, Some(&a)), Some(1));
         assert_eq!(serde_yaml::to_string(&e).unwrap(), original);
     }
     #[test]
-    fn validates_numbers_and_skips_blank_rows() {
+    fn validates_numbers_and_skips_blank_lines() {
         let mut s = GenerationSettings::default();
         assert_eq!(speech("文".into(), &s).unwrap().seed, None);
         for seed in ["-1", "1.5", "9007199254740992"] {
@@ -221,48 +218,45 @@ mod tests {
         s.num_steps = "201".into();
         assert!(speech("文".into(), &s).is_err());
         assert!(
-            requests(
-                &[new_row("missing".into(), s)],
-                &[],
-                &GenerationSettings::default()
-            )
-            .unwrap()
-            .is_empty()
+            requests(&[new_line("missing".into(), s)], &[],)
+                .unwrap()
+                .is_empty()
         );
     }
 }
 
 /// Copy a generated take without carrying over its generated audio or seed.
-pub fn row_from_take(take: &crate::domain::Take, characters: &[Character]) -> ScriptRow {
-    ScriptRow {
+pub fn line_from_take(take: &crate::domain::Take, charas: &[Chara]) -> Line {
+    Line {
+        takes: Vec::new(),
         id: new_id(),
         text: take.conditions.text.clone(),
         prompt: Some(take.additional_prompt.clone()),
-        character_id: take
-            .character_id
+        chara_id: take
+            .chara_id
             .as_ref()
-            .filter(|id| characters.iter().any(|c| &c.id == *id))
+            .filter(|id| charas.iter().any(|c| &c.id == *id))
             .cloned()
             .unwrap_or_default(),
         settings: None,
         take_id: None,
     }
 }
-/// Always targets the selected row, regardless of which settings panel is visible.
-pub fn randomize_row(
+/// Always targets the selected line, regardless of which settings panel is visible.
+pub fn randomize_line(
     editor: &mut EditorState,
     id: &str,
     previous: Option<u64>,
     mut candidate: u32,
 ) -> Result<()> {
-    let row = editor
-        .rows
+    let line = editor
+        .lines
         .iter_mut()
-        .find(|row| row.id == id)
+        .find(|line| line.id == id)
         .ok_or_else(|| anyhow::anyhow!("行が見つかりません"))?;
-    let settings = row
+    let settings = line
         .settings
-        .get_or_insert_with(|| editor.preferences.clone());
+        .get_or_insert_with(GenerationSettings::default);
     while Some(candidate as u64) == previous || settings.seed == candidate.to_string() {
         candidate = candidate.wrapping_add(1);
     }
@@ -273,13 +267,25 @@ pub fn randomize_row(
 mod regression_tests {
     use super::*;
     #[test]
-    fn random_seed_targets_row_and_preserves_defaults() {
+    fn random_seed_targets_line_and_preserves_defaults() {
         let mut editor = EditorState::default();
-        editor.preferences.seed = "42".into();
         let id = insert(&mut editor, None, false);
-        randomize_row(&mut editor, &id, Some(43), 42).unwrap();
-        assert_eq!(editor.preferences.seed, "42");
-        assert_eq!(editor.rows[0].settings.as_ref().unwrap().seed, "44");
+        editor.lines[0].settings.as_mut().unwrap().seed = "42".into();
+        randomize_line(&mut editor, &id, Some(43), 42).unwrap();
+        let next = insert(&mut editor, None, false);
+        assert!(
+            editor
+                .lines
+                .iter()
+                .find(|line| line.id == next)
+                .unwrap()
+                .settings
+                .as_ref()
+                .unwrap()
+                .seed
+                .is_empty()
+        );
+        assert_eq!(editor.lines[0].settings.as_ref().unwrap().seed, "44");
     }
     #[test]
     fn copied_take_retains_speech_direction_without_old_audio() {
@@ -292,21 +298,21 @@ mod regression_tests {
                 num_steps: 40,
                 ..crate::domain::Take::test_conditions()
             },
-            row_id: new_id(),
-            character_id: Some(new_id()),
-            character_name: "削除済み".into(),
+            line_id: new_id(),
+            chara_id: Some(new_id()),
+            chara_name: "削除済み".into(),
             additional_prompt: "小声で".into(),
             voice_ids: Vec::new(),
             elapsed_ms: 1,
             audio_seconds: 1.0,
             created_at: 0,
         };
-        let row = row_from_take(&take, &[]);
-        assert_eq!(row.text, take.conditions.text);
-        assert_eq!(row.prompt.as_deref(), Some("小声で"));
-        assert!(row.character_id.is_empty());
-        assert!(row.settings.is_none());
-        assert!(row.take_id.is_none());
-        assert_ne!(row.id, take.row_id);
+        let line = line_from_take(&take, &[]);
+        assert_eq!(line.text, take.conditions.text);
+        assert_eq!(line.prompt.as_deref(), Some("小声で"));
+        assert!(line.chara_id.is_empty());
+        assert!(line.settings.is_none());
+        assert!(line.take_id.is_none());
+        assert_ne!(line.id, take.line_id);
     }
 }

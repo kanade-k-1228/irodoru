@@ -8,20 +8,20 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub struct PreparedTake {
     job: TTSJob,
-    row_id: String,
-    character: crate::domain::Character,
+    line_id: String,
+    chara: crate::domain::Chara,
     additional_prompt: String,
 }
 
 impl PreparedTake {
-    pub(crate) fn row_id(&self) -> &str {
-        &self.row_id
+    pub(crate) fn line_id(&self) -> &str {
+        &self.line_id
     }
 }
 
 pub struct GenerationInput {
     pub request: TakeRequest,
-    pub character: crate::domain::Character,
+    pub chara: crate::domain::Chara,
     pub reference_audio: Vec<Vec<u8>>,
 }
 
@@ -31,7 +31,7 @@ pub fn prepare(inputs: Vec<GenerationInput>) -> Result<Vec<PreparedTake>> {
     }
     inputs
         .into_iter()
-        .map(|input| prepare_one(input.request, input.character, input.reference_audio))
+        .map(|input| prepare_one(input.request, input.chara, input.reference_audio))
         .collect()
 }
 
@@ -44,31 +44,31 @@ pub fn prepare_preview(
     if description.chars().count() > 2000 {
         bail!("プロンプトは2000文字以内です");
     }
-    let character = crate::domain::Character {
+    let chara = crate::domain::Chara {
         id: new_id(),
         name: "サンプル".into(),
         description,
         voice_ids,
-        color: crate::domain::DEFAULT_CHARACTER_COLOR.into(),
+        color: crate::domain::DEFAULT_CHARA_COLOR.into(),
         sample_text: request.text.clone(),
         icon: None,
     };
     let request = TakeRequest {
-        row_id: new_id(),
-        character_id: character.id.clone(),
+        line_id: new_id(),
+        chara_id: chara.id.clone(),
         additional_prompt: None,
         request,
     };
-    prepare_one(request, character, reference_audio)
+    prepare_one(request, chara, reference_audio)
 }
 
 fn prepare_one(
     req: TakeRequest,
-    character: crate::domain::Character,
+    chara: crate::domain::Chara,
     reference_audio: Vec<Vec<u8>>,
 ) -> Result<PreparedTake> {
-    if req.row_id.is_empty()
-        || req.row_id.len() > 64
+    if req.line_id.is_empty()
+        || req.line_id.len() > 64
         || req.request.text.trim().is_empty()
         || req.request.text.chars().count() > 1000
     {
@@ -78,7 +78,7 @@ fn prepare_one(
     if extra.chars().count() > 1000 {
         bail!("追加プロンプトは1000文字以内です");
     }
-    let description = [character.description.trim(), extra.as_str()]
+    let description = [chara.description.trim(), extra.as_str()]
         .into_iter()
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
@@ -98,8 +98,8 @@ fn prepare_one(
     .try_into()?;
     Ok(PreparedTake {
         job,
-        row_id: req.row_id,
-        character,
+        line_id: req.line_id,
+        chara,
         additional_prompt: extra,
     })
 }
@@ -113,10 +113,10 @@ pub fn synthesize(
     let wav = output.audio.to_wav()?;
     let take = Take {
         id: new_id(),
-        row_id: prepared.row_id,
-        character_id: Some(prepared.character.id),
-        character_name: prepared.character.name,
-        voice_ids: prepared.character.voice_ids,
+        line_id: prepared.line_id,
+        chara_id: Some(prepared.chara.id),
+        chara_name: prepared.chara.name,
+        voice_ids: prepared.chara.voice_ids,
         additional_prompt: prepared.additional_prompt,
         conditions,
         elapsed_ms: started.elapsed().as_millis() as u64,
@@ -131,15 +131,15 @@ mod tests {
     use super::*;
     use crate::library::Library;
     fn input(library: &Library, request: TakeRequest) -> GenerationInput {
-        let character = library.character(&request.character_id).unwrap();
-        let reference_audio = library.reference_audio(&character.voice_ids).unwrap();
+        let chara = library.chara(&request.chara_id).unwrap();
+        let reference_audio = library.reference_audio(&chara.voice_ids).unwrap();
         GenerationInput {
             request,
-            character,
+            chara,
             reference_audio,
         }
     }
-    use crate::{domain::CharacterInput, domain::SynthesisInput};
+    use crate::{domain::CharaInput, domain::SynthesisInput};
     use std::io::Cursor;
     fn wav() -> Vec<u8> {
         let mut cursor = Cursor::new(Vec::new());
@@ -163,8 +163,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let library = Library::open(dir.path()).unwrap();
         let voice = library.save_voice("reference", &wav()).unwrap();
-        let character = library
-            .create_character(CharacterInput {
+        let chara = library
+            .create_chara(CharaInput {
                 icon: None,
                 color: None,
                 sample_text: None,
@@ -174,8 +174,8 @@ mod tests {
             })
             .unwrap();
         let req = TakeRequest {
-            row_id: "row".into(),
-            character_id: character.id,
+            line_id: "line".into(),
+            chara_id: chara.id,
             additional_prompt: Some(" 小声で ".into()),
             request: SynthesisInput {
                 text: "こんにちは".into(),
@@ -208,15 +208,15 @@ mod tests {
     }
 
     #[test]
-    fn preview_uses_draft_and_keeps_history_separate() {
+    fn preview_uses_chara_inputs_and_keeps_history_separate() {
         let (dir, library, request) = fixture();
         let previews = Library::open(&dir.path().join("previews")).unwrap();
         let prepared = prepare_preview(
             request.request,
             " 明るい声 ".into(),
-            library.characters().unwrap()[0].voice_ids.clone(),
+            library.charas().unwrap()[0].voice_ids.clone(),
             library
-                .reference_audio(&library.characters().unwrap()[0].voice_ids)
+                .reference_audio(&library.charas().unwrap()[0].voice_ids)
                 .unwrap(),
         )
         .unwrap();
@@ -245,30 +245,30 @@ mod tests {
         );
         previews.delete_take(&take.id).unwrap();
         assert!(previews.takes().unwrap().is_empty());
-        assert_eq!(library.characters().unwrap().len(), 1);
+        assert_eq!(library.charas().unwrap().len(), 1);
     }
 
     #[test]
-    fn snapshot_survives_character_removal_and_saves_resolved_output() {
+    fn snapshot_survives_chara_removal_and_saves_resolved_output() {
         let (dir, library, mut request) = fixture();
         request.request.duration_scale = 1.25;
         request.request.cfg_scale_text = 2.0;
         request.request.cfg_scale_speaker = 4.0;
         request.request.cfg_scale_caption = 6.0;
-        let mut row = crate::workspace::editor::new_row(String::new(), Default::default());
-        row.id = request.row_id.clone();
+        let mut line = crate::workspace::editor::new_line(String::new(), Default::default());
+        line.id = request.line_id.clone();
         library
             .save_editor(&crate::domain::EditorState {
-                rows: vec![row],
+                lines: vec![line],
                 ..Default::default()
             })
             .unwrap();
-        let character = request.character_id.clone();
+        let chara = request.chara_id.clone();
         let reference_audio = library
-            .reference_audio(&library.character(&character).unwrap().voice_ids)
+            .reference_audio(&library.chara(&chara).unwrap().voice_ids)
             .unwrap();
         let prepared = prepare(vec![input(&library, request)]).unwrap().remove(0);
-        library.delete_character(&character).unwrap();
+        library.delete_chara(&chara).unwrap();
         let (take, bytes) = synthesize(prepared, |job| {
             assert_eq!(job.params.caption.as_deref(), Some("落ち着いた声\n小声で"));
             assert!(job.reference_audios == reference_audio);
@@ -285,7 +285,7 @@ mod tests {
             ))
         })
         .unwrap();
-        assert_eq!(take.character_name, "さくら");
+        assert_eq!(take.chara_name, "さくら");
         assert_eq!(take.conditions.model, "anime");
         assert_eq!(take.conditions.num_steps, 40);
         assert_eq!(take.audio_seconds, 1.0);
@@ -304,16 +304,16 @@ mod tests {
         assert_eq!(conditions.cfg_scale_caption, 6.0);
         assert_eq!(conditions.caption.as_deref(), Some("落ち着いた声\n小声で"));
         let mut editor = library.editor().unwrap();
-        editor.rows[0].text = "書き換えたセリフ".into();
-        editor.rows[0].settings = Some(Default::default());
-        editor.rows[0].prompt = None;
+        editor.lines[0].text = "書き換えたセリフ".into();
+        editor.lines[0].settings = Some(Default::default());
+        editor.lines[0].prompt = None;
         library.save_editor(&editor).unwrap();
-        library.select_take(&take.row_id, Some(&take.id)).unwrap();
+        library.select_take(&take.line_id, Some(&take.id)).unwrap();
         let editor = library.editor().unwrap();
-        let row = &editor.rows[0];
-        let settings = row.settings.as_ref().unwrap();
-        assert_eq!(row.text, "こんにちは");
-        assert_eq!(row.prompt.as_deref(), Some("小声で"));
+        let line = &editor.lines[0];
+        let settings = line.settings.as_ref().unwrap();
+        assert_eq!(line.text, "こんにちは");
+        assert_eq!(line.prompt.as_deref(), Some("小声で"));
         assert_eq!(settings.seed, "42");
         assert_eq!(settings.num_steps, "40");
         assert_eq!(settings.duration_scale, 1.25);

@@ -1,16 +1,14 @@
 use crate::{
-    domain::{
-        AudioSource, Character, CharacterInput, EditorState, SynthesisInput, Take, TakeRequest,
-    },
+    domain::{AudioSource, Chara, CharaInput, EditorState, SynthesisInput, Take, TakeRequest},
     project,
 };
 use std::path::PathBuf;
 
 #[derive(Clone, Default)]
 pub struct Snapshot {
-    pub character_previews: std::collections::HashSet<String>,
+    pub chara_previews: std::collections::HashSet<String>,
     pub editor: EditorState,
-    pub characters: Vec<Character>,
+    pub charas: Vec<Chara>,
     pub takes: Vec<Take>,
     pub voices: Vec<crate::domain::Voice>,
 }
@@ -19,38 +17,43 @@ pub enum Command {
         path: PathBuf,
         create: bool,
     },
-    NewFromCharacters(PathBuf),
-    ExportCharacter {
-        input: CharacterInput,
+    NewFromCharas(PathBuf),
+    ExportChara {
+        input: CharaInput,
         path: PathBuf,
     },
-    ImportCharacter(PathBuf),
+    ImportChara(PathBuf),
     SaveEditor(EditorState),
     Flush {
         close: bool,
     },
-    SaveCharacter {
+    SaveChara {
         id: Option<String>,
-        input: CharacterInput,
-        preview: Option<String>,
+        input: CharaInput,
     },
-    DeleteCharacter(String),
-    ImportVoices(Vec<PathBuf>),
-    ImportIcon(PathBuf),
+    DeleteChara(String),
+    ImportVoices {
+        chara_id: String,
+        paths: Vec<PathBuf>,
+    },
+    ImportIcon {
+        chara_id: String,
+        path: PathBuf,
+    },
     DeleteTake(String),
     SelectTake {
-        row_id: String,
+        line_id: String,
         take_id: Option<String>,
     },
     Generate(Vec<TakeRequest>),
     Preview {
+        chara_id: String,
         input: SynthesisInput,
         description: String,
         voice_ids: Vec<String>,
     },
-    RemovePreview(String),
     Audio(AudioSource),
-    ExportScript {
+    ExportLines {
         parent: PathBuf,
         naming: crate::project::ExportNaming,
     },
@@ -63,7 +66,10 @@ pub enum Command {
 impl Command {
     /// Passive writes neither block editing nor complete a foreground operation.
     pub fn is_passive(&self) -> bool {
-        matches!(self, Self::SaveEditor(_) | Self::RemovePreview(_))
+        matches!(
+            self,
+            Self::SaveEditor(_) | Self::SaveChara { id: Some(_), .. }
+        )
     }
 }
 
@@ -72,11 +78,9 @@ pub enum Event {
     Status(project::ProjectStatus),
     Error(String),
     Done,
-    RowStarted(String),
-    RowFailed(String, String),
-    Preview(String),
-    Voice(String),
-    Icon(String),
+    LineStarted(String),
+    LineFailed(String, String),
+    CharaCreated(String),
     Audio(Vec<u8>),
     Exported { directory: PathBuf, count: usize },
     Close,
