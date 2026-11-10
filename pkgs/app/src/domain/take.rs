@@ -31,15 +31,4 @@ impl Take {
         line.prompt = Some(self.additional_prompt.clone());
         line.take_id = Some(self.id.clone());
     }
-
-    #[cfg(test)]
-    pub(crate) fn test_conditions() -> irodoru_engine::GenerationConditions {
-        let job: irodoru_engine::TTSJob = irodoru_engine::SynthesisRequest {
-            text: "こんにちは".into(),
-            ..Default::default()
-        }
-        .try_into()
-        .unwrap();
-        irodoru_engine::GenerationConditions::from_params("anime".into(), &job.params, 42, 4, 48000)
-    }
 }

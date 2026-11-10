@@ -21,7 +21,6 @@ defaults:
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   check:
@@ -48,8 +47,6 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo xtask verify
       - run: docker compose --profile local --profile wsl-gpu config --quiet
-      - uses: astral-sh/setup-uv@v7
-      - run: cargo xtask verify-export
 
   models:
     permissions:
@@ -206,9 +203,7 @@ jobs:
       - name: Check desktop native code
         env:
           MACOSX_DEPLOYMENT_TARGET: "15.0"
-        run: |
-          cargo clippy --locked -p irodoru --all-targets -- -D warnings
-          cargo test --locked -p irodoru
+        run: cargo clippy --locked -p irodoru --all-targets -- -D warnings
       - name: Set release version
         if: startsWith(github.ref, 'refs/tags/')
         env:

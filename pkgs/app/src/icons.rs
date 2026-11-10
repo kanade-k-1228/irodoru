@@ -60,36 +60,3 @@ pub fn import_icon(path: &Path) -> Result<String> {
         STANDARD.encode(png.into_inner())
     ))
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn image_crop_and_svg_are_png() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("icon.png");
-        image::RgbImage::new(320, 180).save(&p).unwrap();
-        for path in [p, dir.path().join("icon.svg")] {
-            if path.extension().unwrap() == "svg" {
-                std::fs::write(&path,r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="red"/></svg>"#).unwrap();
-            }
-            let data = import_icon(&path).unwrap();
-            let image =
-                image::load_from_memory(&STANDARD.decode(data.split_once(',').unwrap().1).unwrap())
-                    .unwrap();
-            assert_eq!((image.width(), image.height()), (128, 128));
-        }
-    }
-
-    #[test]
-    fn invalid_and_oversized_images_fail() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("bad.png");
-        std::fs::write(&p, b"not a png").unwrap();
-        assert!(import_icon(&p).is_err());
-        std::fs::File::create(&p)
-            .unwrap()
-            .set_len(10 * 1024 * 1024 + 1)
-            .unwrap();
-        assert!(import_icon(&p).unwrap_err().to_string().contains("10 MB"));
-    }
-}

@@ -42,19 +42,3 @@ impl Condition {
 pub(super) fn valid_mask(len: usize) -> ArrayD<bool> {
     ArrayD::from_elem(IxDyn(&[1, len]), true)
 }
-
-#[cfg(test)]
-impl Condition {
-    pub(crate) fn test_value(value: f32) -> Self {
-        Self {
-            state: ArrayD::from_elem(IxDyn(&[1, 1, 1]), value),
-            mask: valid_mask(1),
-        }
-    }
-    pub(crate) fn test_scalar(&self) -> f32 {
-        self.state[[0, 0, 0]]
-    }
-    pub(crate) fn test_fill(&mut self, value: f32) {
-        self.state.fill(value);
-    }
-}

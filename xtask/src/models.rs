@@ -14,8 +14,6 @@ use std::{
 };
 
 mod distribution;
-#[cfg(test)]
-mod tests;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Index {

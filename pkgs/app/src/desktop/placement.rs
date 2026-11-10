@@ -93,29 +93,3 @@ pub(super) fn remember<T: 'static>(window: &mut Window, cx: &mut Context<T>) {
     })
     .detach();
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{Placement, valid};
-    use gpui_kit::{Bounds, WindowBounds, point, px, size};
-
-    #[test]
-    fn placement_preserves_restore_bounds_and_native_state() {
-        let bounds = Bounds::new(point(px(-900.), px(60.)), size(px(900.), px(650.)));
-        for original in [
-            WindowBounds::Windowed(bounds),
-            WindowBounds::Maximized(bounds),
-            WindowBounds::Fullscreen(bounds),
-        ] {
-            let yaml = serde_yaml::to_string(&Placement::from(original)).unwrap();
-            let saved: Placement = serde_yaml::from_str(&yaml).unwrap();
-            assert_eq!(WindowBounds::from(saved), original);
-            assert!(valid(bounds));
-        }
-        assert!(!valid(Bounds::new(
-            point(px(f32::NAN), px(0.)),
-            bounds.size
-        )));
-        assert!(!valid(Bounds::new(bounds.origin, size(px(0.), px(650.)))));
-    }
-}

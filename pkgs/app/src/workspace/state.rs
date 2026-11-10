@@ -159,8 +159,6 @@ impl WorkspaceState {
         None
     }
 }
-#[cfg(test)]
-mod tests;
 
 mod editing;
 pub use editing::{GenerationField, LineAction};

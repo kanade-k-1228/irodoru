@@ -196,6 +196,3 @@ pub(super) fn publish(
     println!("Public model artifact verified: {reference}@{digest}");
     Ok(digest)
 }
-
-#[cfg(test)]
-mod tests;

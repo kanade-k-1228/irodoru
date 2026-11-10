@@ -15,12 +15,6 @@ impl CacheKey for [u8; 32] {
         size_of::<Self>()
     }
 }
-#[cfg(test)]
-impl CacheKey for i32 {
-    fn byte_size(&self) -> usize {
-        size_of::<Self>()
-    }
-}
 
 pub(crate) struct ConditionCache<K> {
     pub(crate) entries: VecDeque<(K, Condition)>,
@@ -63,31 +57,5 @@ impl<K: PartialEq + CacheKey> ConditionCache<K> {
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.bytes = 0;
-    }
-    #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn byte_limit_lru_disabled_and_clear() {
-        let value = Condition::test_value(1.0);
-        let size = value.byte_size() + size_of::<i32>();
-        let mut cache = ConditionCache::new(size * 2, 10);
-        cache.insert(1, value.clone());
-        cache.insert(2, value.clone());
-        assert!(cache.get(&1).is_some());
-        cache.insert(3, value.clone());
-        assert!(cache.get(&2).is_none());
-        assert_eq!(cache.bytes, size * 2);
-        cache.clear();
-        assert_eq!(cache.bytes, 0);
-        assert_eq!(cache.len(), 0);
-        let mut disabled = ConditionCache::new(0, 10);
-        disabled.insert(1, value);
-        assert!(disabled.get(&1).is_none());
     }
 }

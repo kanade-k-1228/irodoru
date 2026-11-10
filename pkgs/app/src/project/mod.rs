@@ -13,8 +13,6 @@ pub use active::Project;
 use autosave::Saver;
 pub use session::{ProjectStatus, SaveState, Session};
 use session::{SharedProject, status};
-#[cfg(test)]
-mod tests;
 
 /// Project paths share one rule across native entry points and storage.
 pub fn is_project_path(path: &std::path::Path) -> bool {

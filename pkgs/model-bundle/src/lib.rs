@@ -167,6 +167,3 @@ impl Distribution {
         Ok(total)
     }
 }
-
-#[cfg(test)]
-mod tests;

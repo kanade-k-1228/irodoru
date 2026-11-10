@@ -17,7 +17,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = { version = "6", features = ["axum_extras"] }
 utoipa-axum = "0.3"
 clap = { version = "4", features = ["derive"] }
-
-[dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
-tokio = { version = "1", features = ["io-util", "time"] }

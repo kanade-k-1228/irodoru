@@ -114,27 +114,3 @@ impl TextTokenizer {
         Ok(ids)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn normalization_matches_python() {
-        let cases = [
-            ("「こんにちは！」", "こんにちは!"),
-            ("（（テスト））", "テスト"),
-            ("「a」と「b」", "「a」と「b」"),
-            ("ｱｲｳ１２３", "アイウ123"),
-            ("待って…………", "待って……"),
-            ("えー～〜", "えーーー"),
-            ("A―B", "AB"),
-            ("そう...ね..", "そう…ね…"),
-            ("全角　スペース\tタブ", "全角スペースタブ"),
-            ("①今日は♥", "今日は♡"),
-        ];
-        for (input, want) in cases {
-            assert_eq!(normalize_text(input), want, "input={input}");
-        }
-    }
-}

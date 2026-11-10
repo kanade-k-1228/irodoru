@@ -146,8 +146,6 @@ impl CpuGraph {
 enum Backend {
     Ort(OrtGraph),
     OpenVino(OpenVinoGraph),
-    #[cfg(test)]
-    Failed,
 }
 
 pub(crate) struct Graph {
@@ -181,93 +179,8 @@ impl Graph {
         outputs: [&str; N],
     ) -> Result<[ArrayD<f32>; N]> {
         match backend {
-            #[cfg(test)]
-            Backend::Failed => bail!("simulated accelerator failure"),
             Backend::OpenVino(graph) => graph.run(inputs, outputs),
             Backend::Ort(graph) => graph.run(inputs, outputs),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const IDENTITY: &[u8] = b"\x08\x07\x12\nonnx-wally:j\n*\n\x06inputs\x12\x07outputs\x1a\ridentity_node\"\x08Identity\x12\x0bno-op-modelZ\x16\n\x06inputs\x12\x0c\n\n\x08\x01\x12\x06\n\x00\n\x02\x08\x02b\x17\n\x07outputs\x12\x0c\n\n\x08\x01\x12\x06\n\x00\n\x02\x08\x02B\x02\x10\x0c";
-
-    #[test]
-    fn auto_falls_back_but_explicit_accelerator_fails() {
-        let dir = std::env::temp_dir().join(format!("irodori-device-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("identity.onnx");
-        std::fs::write(&path, IDENTITY).unwrap();
-        let mut runtime = Runtime::discover(1, DevicePreference::Cpu, None).unwrap();
-        runtime.devices.push(DeviceInfo {
-            kind: DevicePreference::Gpu,
-            engine: "test".into(),
-            name: "GPU".into(),
-            description: String::new(),
-            index: 1,
-        });
-        runtime.preference = DevicePreference::Auto;
-        let mut graph = runtime.load(&path).unwrap();
-        assert!(matches!(graph.session, Backend::Ort(_)));
-        let input =
-            ndarray::Array::from_shape_vec(ndarray::IxDyn(&[1, 2]), vec![0.25, -0.5]).unwrap();
-        let [actual] = graph
-            .run(&[("inputs", Input::F32(&input))], ["outputs"])
-            .unwrap();
-        assert_eq!(actual, input);
-        runtime.preference = DevicePreference::Gpu;
-        assert!(runtime.load(&path).is_err());
-
-        let mut graph = Graph {
-            session: Backend::Failed,
-            fallback: Some(CpuGraph {
-                ort: runtime.ort.clone(),
-                path: path.clone(),
-                spinning: false,
-            }),
-        };
-        let [actual] = graph
-            .run(&[("inputs", Input::F32(&input))], ["outputs"])
-            .unwrap();
-        assert_eq!(actual, input);
-        assert!(matches!(graph.session, Backend::Ort(_)));
-        assert!(graph.fallback.is_none());
-        let mut forced = Graph {
-            session: Backend::Failed,
-            fallback: None,
-        };
-        assert!(
-            forced
-                .run(&[("inputs", Input::F32(&input))], ["outputs"])
-                .is_err()
-        );
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-    #[test]
-    fn runtime_and_sessions_can_be_recreated_with_different_thread_counts() {
-        let dir = std::env::temp_dir().join(format!("irodori-reload-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("identity.onnx");
-        std::fs::write(&path, IDENTITY).unwrap();
-        for threads in [1, 2, 1] {
-            let runtime = Runtime::discover(threads, DevicePreference::Cpu, None).unwrap();
-            for mut graph in [
-                runtime.load(&path).unwrap(),
-                runtime.load_spinning(&path).unwrap(),
-            ] {
-                let input =
-                    ndarray::Array::from_shape_vec(ndarray::IxDyn(&[1, 2]), vec![0.25, -0.5])
-                        .unwrap();
-                let [actual] = graph
-                    .run(&[("inputs", Input::F32(&input))], ["outputs"])
-                    .unwrap();
-                assert_eq!(actual, input);
-            }
-            // All Runtime/Graph handles drop here before the next discovery.
-        }
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }

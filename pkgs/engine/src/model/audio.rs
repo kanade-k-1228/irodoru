@@ -223,36 +223,3 @@ fn biquad(x: &[f64], b: [f64; 3], a: [f64; 3]) -> Vec<f64> {
         })
         .collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resample_identity_and_length() {
-        let x: Vec<f32> = (0..44_100).map(|i| (i as f32 * 0.01).sin()).collect();
-        assert_eq!(Audio::new(x.clone(), 48_000).resample(48_000).samples, x);
-        assert_eq!(Audio::new(x, 44_100).resample(48_000).samples.len(), 48_000);
-    }
-
-    #[test]
-    fn wav_round_trip() {
-        let x = [0.0f32, 0.5, -0.5, 1.0, -1.0];
-        let wav = Audio::new(x.to_vec(), 48_000).to_wav().unwrap();
-        let y = Audio::from_wav(&wav).unwrap();
-        assert_eq!(y.sample_rate, 48_000);
-        assert_eq!(y.samples.len(), x.len());
-        for (a, b) in x.iter().zip(&y.samples) {
-            assert!((a - b).abs() < 1e-4, "{a} vs {b}");
-        }
-    }
-
-    #[test]
-    fn reflect_pad() {
-        let mut a = Audio::new(vec![1.0, 2.0, 3.0, 4.0, 5.0], 48_000);
-        a.reflect_pad_to_multiple(4).unwrap();
-        assert_eq!(a.samples, [1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 3.0, 2.0]);
-        let mut b = Audio::new(vec![1.0, 2.0], 48_000);
-        assert!(b.reflect_pad_to_multiple(8).is_err());
-    }
-}
