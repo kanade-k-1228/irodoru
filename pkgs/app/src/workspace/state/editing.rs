@@ -1,7 +1,7 @@
 //! Pure editing transitions; the view decides when to synchronize controls and save.
 use super::{Field, WorkspaceState};
 use crate::domain::Take;
-use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT};
+use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT, GenerationSettings};
 use crate::workspace::{editor, protocol::Command};
 use anyhow::Result;
 
@@ -277,12 +277,7 @@ impl WorkspaceState {
         let Some(settings) = self.generation_settings_mut() else {
             return false;
         };
-        match field {
-            GenerationField::Speed => settings.set_speed(value.into()),
-            GenerationField::TextGuidance => settings.cfg_text = value,
-            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
-            GenerationField::CaptionGuidance => settings.cfg_caption = value,
-        }
+        set_generation(settings, field, value);
         true
     }
 
@@ -317,9 +312,6 @@ impl WorkspaceState {
         {
             chara.color = color;
         }
-    }
-    pub fn delete_chara(&mut self, id: String) -> Command {
-        Command::DeleteChara(id)
     }
     pub fn duplicate_chara(&self) -> Option<Command> {
         if self.busy || self.status.id.is_none() {
@@ -382,12 +374,7 @@ impl WorkspaceState {
             return;
         }
         let settings = &mut self.preview_settings;
-        match field {
-            GenerationField::Speed => settings.set_speed(value.into()),
-            GenerationField::TextGuidance => settings.cfg_text = value,
-            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
-            GenerationField::CaptionGuidance => settings.cfg_caption = value,
-        }
+        set_generation(settings, field, value);
     }
     pub fn randomize_selected_line(&mut self, seed: u32) -> Result<bool> {
         if !self.can_edit_lines() {
@@ -426,5 +413,14 @@ impl WorkspaceState {
             .collect::<Vec<_>>();
         let requests = editor::requests(&lines, &self.snapshot.charas)?;
         Ok((!requests.is_empty()).then_some(Command::Generate(requests)))
+    }
+}
+
+fn set_generation(settings: &mut GenerationSettings, field: GenerationField, value: f32) {
+    match field {
+        GenerationField::Speed => settings.set_speed(value.into()),
+        GenerationField::TextGuidance => settings.cfg_text = value,
+        GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
+        GenerationField::CaptionGuidance => settings.cfg_caption = value,
     }
 }

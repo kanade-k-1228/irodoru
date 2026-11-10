@@ -8,21 +8,18 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
+    fn generation_disabled(&self, preview: bool) -> bool {
+        self.state.busy || self.state.status.id.is_none() || (preview && self.state.chara_locked)
+    }
     pub(super) fn speed_controls(&self, preview: bool) -> AnyElement {
-        let sliders = if preview {
-            &self.preview_sliders
-        } else {
-            &self.sliders
-        };
+        let form = self.form(preview);
         let settings = if preview {
             self.state.preview_settings.clone()
         } else {
             self.state.settings_value()
         };
         let p = self.palette();
-        let disabled = self.state.busy
-            || self.state.status.id.is_none()
-            || (preview && self.state.chara_locked);
+        let disabled = self.generation_disabled(preview);
         div()
             .flex()
             .flex_col()
@@ -43,7 +40,7 @@ impl Studio {
                 ),
             )
             .child(
-                Slider::new(&sliders.speed)
+                Slider::new(&form.speed)
                     .when(!disabled, |el| el.cursor_pointer())
                     .bg(self.accent())
                     .text_color(self.accent())
@@ -61,16 +58,7 @@ impl Studio {
             .into_any_element()
     }
     pub(super) fn advanced_controls(&self, preview: bool, cx: &mut Context<Self>) -> AnyElement {
-        let sliders = if preview {
-            &self.preview_sliders
-        } else {
-            &self.sliders
-        };
-        let expanded = if preview {
-            self.preview_advanced
-        } else {
-            self.advanced
-        };
+        let form = self.form(preview);
         let p = self.palette();
         div()
             .flex()
@@ -80,12 +68,12 @@ impl Studio {
             .pb_3()
             .text_xs()
             .text_color(p.muted)
-            .when(expanded, |el| {
+            .when(form.expanded, |el| {
                 el.child(self.generation_inputs(preview)).children(
                     [
-                        (&sliders.text, "CFG 文"),
-                        (&sliders.speaker, "CFG 声"),
-                        (&sliders.caption, "CFG 説明"),
+                        (&form.text, "CFG 文"),
+                        (&form.speaker, "CFG 声"),
+                        (&form.caption, "CFG 説明"),
                     ]
                     .into_iter()
                     .map(|(state, label)| self.guidance_slider(state, label, preview, cx)),
@@ -111,34 +99,25 @@ impl Studio {
 
     fn generation_inputs(&self, preview: bool) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy
-            || self.state.status.id.is_none()
-            || (preview && self.state.chara_locked);
+        let form = self.form(preview);
+        let disabled = self.generation_disabled(preview);
         div()
             .flex()
             .gap_3()
             .child(
                 div().flex_1().min_w_0().child("シード").child(
-                    Input::new(if preview {
-                        &self.fields.preview_seed
-                    } else {
-                        &self.fields.seed
-                    })
-                    .small()
-                    .bg(p.control)
-                    .disabled(disabled),
+                    Input::new(&form.seed)
+                        .small()
+                        .bg(p.control)
+                        .disabled(disabled),
                 ),
             )
             .child(
                 div().flex_1().min_w_0().child("ステップ数").child(
-                    Input::new(if preview {
-                        &self.fields.preview_steps
-                    } else {
-                        &self.fields.steps
-                    })
-                    .small()
-                    .bg(p.control)
-                    .disabled(disabled),
+                    Input::new(&form.steps)
+                        .small()
+                        .bg(p.control)
+                        .disabled(disabled),
                 ),
             )
             .into_any_element()
@@ -174,9 +153,7 @@ impl Studio {
         cx: &Context<Self>,
     ) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy
-            || self.state.status.id.is_none()
-            || (preview && self.state.chara_locked);
+        let disabled = self.generation_disabled(preview);
         div()
             .flex()
             .flex_col()

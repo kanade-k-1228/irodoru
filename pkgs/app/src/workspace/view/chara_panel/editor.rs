@@ -323,11 +323,11 @@ impl Studio {
                     .ghost()
                     .w_full()
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.preview_advanced = !this.preview_advanced;
+                        this.preview_form.expanded = !this.preview_form.expanded;
                         cx.notify();
                     })),
             )
-            .when(self.preview_advanced, |el| {
+            .when(self.preview_form.expanded, |el| {
                 el.child(self.speed_controls(true))
                     .child(self.advanced_controls(true, cx))
             })

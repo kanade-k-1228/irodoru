@@ -1,4 +1,5 @@
-use super::{Fields, GenerationSliders, Studio, appearance};
+use super::{Fields, GenerationForm, Studio, appearance};
+use crate::domain::GenerationSettings;
 use crate::preferences::Settings;
 use crate::workspace::protocol::Command;
 use crate::workspace::service::Service;
@@ -30,22 +31,18 @@ impl Studio {
             description: cx
                 .new(|cx| TextareaState::new(window, cx).placeholder("声の特徴・話し方")),
             prompt: input("追加プロンプト", window, cx),
-            seed: input("ランダム", window, cx),
-            preview_seed: input("ランダム", window, cx),
-            preview_steps: input("モデル既定（40）", window, cx),
-            steps: input("モデル既定（40）", window, cx),
             name: input("キャラクター名", window, cx),
             sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };
-        let sliders = make_sliders(cx);
-        let preview_sliders = make_sliders(cx);
+        let line_form = make_form(window, cx);
+        let preview_form = make_form(window, cx);
         let seek = cx.new(|_| SliderState::new().min(0.0).max(1.0).step(0.001));
         let mut subscriptions = Vec::new();
         for (entity, field) in [
             (&fields.prompt, Field::Prompt),
-            (&fields.seed, Field::Seed),
-            (&fields.steps, Field::Steps),
+            (&line_form.seed, Field::Seed),
+            (&line_form.steps, Field::Steps),
             (&fields.name, Field::Name),
         ] {
             subscriptions.push(cx.subscribe_in(
@@ -59,7 +56,7 @@ impl Studio {
                 },
             ));
         }
-        for (entity, seed) in [(&fields.preview_seed, true), (&fields.preview_steps, false)] {
+        for (entity, seed) in [(&preview_form.seed, true), (&preview_form.steps, false)] {
             subscriptions.push(cx.subscribe_in(
                 entity,
                 window,
@@ -128,53 +125,46 @@ impl Studio {
                 }
             },
         ));
-        subscriptions.push(cx.subscribe_in(
-            &fields.description,
-            window,
-            |this, input, event, _, cx| {
-                if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
-                    this.changed(Field::Description, input.read(cx).value().to_string());
-                    cx.notify();
-                }
-            },
-        ));
-        for (field, slider) in sliders.iter() {
-            subscriptions.push(
-                cx.subscribe_in(slider, window, move |this, _, event, _, cx| {
-                    if let SliderEvent::Change(SliderValue::Single(value)) = event
-                        && !this.sync
-                        && !this.state.busy
-                    {
-                        let value = if matches!(field, GenerationField::Speed) {
-                            value.exp2()
-                        } else {
-                            *value
-                        };
-                        if this.state.change_generation(field, value) {
-                            this.autosave();
-                        }
+        for (entity, field) in [
+            (&fields.description, Field::Description),
+            (&fields.sample, Field::Sample),
+        ] {
+            subscriptions.push(cx.subscribe_in(
+                entity,
+                window,
+                move |this, input, event, _, cx| {
+                    if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
+                        this.changed(field, input.read(cx).value().to_string());
                         cx.notify();
                     }
-                }),
-            );
+                },
+            ));
         }
-        for (field, slider) in preview_sliders.iter() {
-            subscriptions.push(
-                cx.subscribe_in(slider, window, move |this, _, event, _, cx| {
-                    if let SliderEvent::Change(SliderValue::Single(value)) = event
-                        && !this.sync
-                        && !this.state.busy
-                    {
-                        let value = if matches!(field, GenerationField::Speed) {
-                            value.exp2()
-                        } else {
-                            *value
-                        };
-                        this.state.change_preview_generation(field, value);
-                        cx.notify();
-                    }
-                }),
-            );
+        for (form, preview) in [(&line_form, false), (&preview_form, true)] {
+            for (field, slider) in form.sliders() {
+                subscriptions.push(cx.subscribe_in(
+                    slider,
+                    window,
+                    move |this, _, event, _, cx| {
+                        if let SliderEvent::Change(SliderValue::Single(value)) = event
+                            && !this.sync
+                            && !this.state.busy
+                        {
+                            let value = if matches!(field, GenerationField::Speed) {
+                                value.exp2()
+                            } else {
+                                *value
+                            };
+                            if preview {
+                                this.state.change_preview_generation(field, value);
+                            } else if this.state.change_generation(field, value) {
+                                this.autosave();
+                            }
+                            cx.notify();
+                        }
+                    },
+                ));
+            }
         }
         subscriptions.push(cx.subscribe_in(&seek, window, |this, _, event, _, cx| {
             if let SliderEvent::Change(SliderValue::Single(value)) = event
@@ -185,14 +175,6 @@ impl Studio {
             }
             cx.notify();
         }));
-        subscriptions.push(
-            cx.subscribe_in(&fields.sample, window, |this, input, event, _, cx| {
-                if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
-                    this.changed(Field::Sample, input.read(cx).value().to_string());
-                    cx.notify();
-                }
-            }),
-        );
         let settings = Settings {
             theme: crate::preferences::theme::current(cx),
         };
@@ -247,12 +229,10 @@ impl Studio {
                 ..Default::default()
             },
             fields,
-            sliders,
-            preview_sliders,
+            line_form,
+            preview_form,
             seek,
             subscriptions,
-            advanced: false,
-            preview_advanced: false,
             line_scroll: ScrollHandle::new(),
             line_drag_scroll: Default::default(),
             settings,
@@ -305,22 +285,7 @@ impl Studio {
         self.fields
             .prompt
             .update(cx, |f, cx| f.set_value(prompt, window, cx));
-        let s = self.state.settings_value();
-        let speed = s.speed().log2() as f32;
-        self.fields
-            .seed
-            .update(cx, |f, cx| f.set_value(s.seed, window, cx));
-        self.fields
-            .steps
-            .update(cx, |f, cx| f.set_value(s.num_steps, window, cx));
-        for ((_, slider), value) in
-            self.sliders
-                .iter()
-                .into_iter()
-                .zip([speed, s.cfg_text, s.cfg_speaker, s.cfg_caption])
-        {
-            slider.update(cx, |s, cx| s.set_value(value, window, cx));
-        }
+        self.line_form.set(&self.state.settings_value(), window, cx);
         if let Some(chara) = self.state.active_chara() {
             self.fields
                 .name
@@ -339,28 +304,44 @@ impl Studio {
                 )
             });
         }
-        let preview = &self.state.preview_settings;
-        self.fields
-            .preview_seed
-            .update(cx, |f, cx| f.set_value(preview.seed.clone(), window, cx));
-        self.fields.preview_steps.update(cx, |f, cx| {
-            f.set_value(preview.num_steps.clone(), window, cx)
-        });
-        for ((_, slider), value) in self.preview_sliders.iter().into_iter().zip([
-            preview.speed().log2() as f32,
-            preview.cfg_text,
-            preview.cfg_speaker,
-            preview.cfg_caption,
-        ]) {
-            slider.update(cx, |s, cx| s.set_value(value, window, cx));
-        }
+        self.preview_form
+            .set(&self.state.preview_settings, window, cx);
         self.sync = false;
     }
 }
 
-fn make_sliders(cx: &mut Context<Studio>) -> GenerationSliders {
-    let [speed, text, speaker, caption] = [
+impl GenerationForm {
+    fn set(&self, settings: &GenerationSettings, window: &mut Window, cx: &mut App) {
+        self.seed
+            .update(cx, |f, cx| f.set_value(settings.seed.clone(), window, cx));
+        self.steps.update(cx, |f, cx| {
+            f.set_value(settings.num_steps.clone(), window, cx)
+        });
+        for ((_, slider), value) in self.sliders().into_iter().zip([
+            settings.speed().log2() as f32,
+            settings.cfg_text,
+            settings.cfg_speaker,
+            settings.cfg_caption,
+        ]) {
+            slider.update(cx, |s, cx| s.set_value(value, window, cx));
+        }
+    }
+}
+
+fn make_form(window: &mut Window, cx: &mut Context<Studio>) -> GenerationForm {
+    let guidance = |default: f32, cx: &mut Context<Studio>| {
         cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(10.0)
+                .step(0.5)
+                .default_value(default)
+        })
+    };
+    GenerationForm {
+        seed: cx.new(|cx| InputState::new(window, cx).placeholder("ランダム")),
+        steps: cx.new(|cx| InputState::new(window, cx).placeholder("モデル既定（40）")),
+        speed: cx.new(|_| {
             SliderState::new()
                 // Equal distances represent reciprocal speed ratios around 1×.
                 .min(-1.0)
@@ -368,32 +349,9 @@ fn make_sliders(cx: &mut Context<Studio>) -> GenerationSliders {
                 .step(0.01)
                 .default_value(0.0)
         }),
-        cx.new(|_| {
-            SliderState::new()
-                .min(0.0)
-                .max(10.0)
-                .step(0.5)
-                .default_value(3.0)
-        }),
-        cx.new(|_| {
-            SliderState::new()
-                .min(0.0)
-                .max(10.0)
-                .step(0.5)
-                .default_value(5.0)
-        }),
-        cx.new(|_| {
-            SliderState::new()
-                .min(0.0)
-                .max(10.0)
-                .step(0.5)
-                .default_value(3.0)
-        }),
-    ];
-    GenerationSliders {
-        speed,
-        text,
-        speaker,
-        caption,
+        text: guidance(3.0, cx),
+        speaker: guidance(5.0, cx),
+        caption: guidance(3.0, cx),
+        expanded: false,
     }
 }

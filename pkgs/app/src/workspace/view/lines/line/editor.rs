@@ -64,10 +64,18 @@ impl Studio {
                     .h(px(32.))
                     .w(px(34.))
                     .border_1()
-                    .border_color(if self.advanced { self.accent() } else { p.line })
-                    .bg(if self.advanced { p.soft } else { p.control })
+                    .border_color(if self.line_form.expanded {
+                        self.accent()
+                    } else {
+                        p.line
+                    })
+                    .bg(if self.line_form.expanded {
+                        p.soft
+                    } else {
+                        p.control
+                    })
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.advanced = !this.advanced;
+                        this.line_form.expanded = !this.line_form.expanded;
                         cx.notify();
                     })),
             )
