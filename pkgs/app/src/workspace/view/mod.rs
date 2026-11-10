@@ -87,7 +87,7 @@ mod app_menu;
 mod header;
 mod model_settings;
 
-pub(crate) mod actions;
+pub mod actions;
 pub(crate) enum WindowRequest {
     New,
 }

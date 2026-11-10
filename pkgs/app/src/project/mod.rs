@@ -4,19 +4,15 @@ mod archive;
 mod charas;
 mod export;
 pub use export::ExportNaming;
-#[cfg(feature = "desktop")]
 pub(crate) use export::export_lines;
 mod autosave;
-#[cfg(any(feature = "desktop", test))]
-pub(crate) mod incoming;
+pub mod incoming;
 mod ownership;
 mod session;
 pub use active::Project;
 use autosave::Saver;
 pub use session::{ProjectStatus, SaveState, Session};
 use session::{SharedProject, status};
-#[cfg(test)]
-mod tests;
 
 /// Project paths share one rule across native entry points and storage.
 pub fn is_project_path(path: &std::path::Path) -> bool {

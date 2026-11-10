@@ -3733,7 +3733,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tower",
  "tracing",
  "tracing-subscriber",
  "utoipa",
@@ -3746,6 +3745,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "clap",
  "confy",
  "directories",
  "embed-resource",
@@ -3799,7 +3799,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
- "serde_json",
 ]
 
 [[package]]

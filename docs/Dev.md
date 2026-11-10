@@ -32,15 +32,11 @@ Use `cargo xtask models ...` locally; CI uses a release build of xtask. Model pr
 ## Verify
 
 ```bash
-cargo xtask verify          # Python tests, fmt, Clippy, Rust tests, OpenAPI diff
-cargo xtask verify-export   # Model export tests
+cargo xtask verify          # fmt, Clippy, OpenAPI diff
 cargo xtask generate        # Regenerate OpenAPI
-# Also run after GUI changes
-cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru --features desktop
 ```
 
-See CI for tests using real models and packaged apps. Check Japanese input, dragging, and audio devices manually on each OS.
+There are no automated tests. See CI for checks on packaged apps. Check Japanese input, dragging, and audio devices manually on each OS.
 
 ## Package and release
 

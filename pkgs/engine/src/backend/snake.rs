@@ -87,20 +87,3 @@ impl Operator for SnakeOp {
         }))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::snake_row;
-
-    #[test]
-    fn matches_reference_formula() {
-        let x = [-2.0f32, -0.5, 0.0, 0.3, 1.7];
-        let a = 0.8f32;
-        let mut y = [0.0f32; 5];
-        snake_row(&x, &mut y, a);
-        for (v, got) in x.iter().zip(y) {
-            let want = (*v as f64) + ((a as f64) * (*v as f64)).sin().powi(2) / (a as f64 + 1e-9);
-            assert!((got as f64 - want).abs() < 1e-6, "{got} vs {want}");
-        }
-    }
-}

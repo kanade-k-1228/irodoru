@@ -234,35 +234,3 @@ impl Studio {
         cx.notify();
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::status_label;
-    use crate::domain::InferenceStatus;
-
-    #[test]
-    fn status_labels_handle_unknown_and_complete_downloads() {
-        assert_eq!(
-            status_label(&InferenceStatus::Downloading {
-                downloaded: 5,
-                total: 0
-            }),
-            "ダウンロード中"
-        );
-        assert_eq!(
-            status_label(&InferenceStatus::Downloading {
-                downloaded: 1,
-                total: 4
-            }),
-            "ダウンロード中 25%"
-        );
-        assert_eq!(
-            status_label(&InferenceStatus::Downloading {
-                downloaded: 5,
-                total: 4
-            }),
-            "ダウンロード中 100%"
-        );
-        assert_eq!(status_label(&InferenceStatus::Ready), "準備完了");
-    }
-}

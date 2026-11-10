@@ -1,6 +1,6 @@
 # Desktop application architecture
 
-The app is one Rust crate. `main.rs` calls `desktop::run`; the `desktop` feature adds GPUI, native dialogs, and playback. Core editing, state, storage, and synthesis can be tested without a display.
+The app is one Rust crate. `main.rs` parses arguments with clap and starts GPUI; the `desktop` module owns window composition, native dialogs, and playback. Core editing, state, storage, and synthesis live in modules that do not depend on GPUI.
 
 ## Modules
 
@@ -18,7 +18,7 @@ The app is one Rust crate. `main.rs` calls `desktop::run`; the `desktop` feature
 ## Workspace and UI
 
 - `editor.rs`: Line operations and generation input validation.
-- `state.rs` and `state/`: Headless state, editing transitions, event handling, and tests.
+- `state.rs` and `state/`: Headless state, editing transitions, and event handling.
 - `protocol.rs`: Owned `Command`, `Event`, and `Snapshot` values.
 - `service.rs`: UI command handle, notification drain, and stop requests.
 - `worker.rs`: Ordered background work and project/engine coordination.
@@ -70,14 +70,10 @@ Keep assets in `icons/` in sync when changing the logo.
 
 ```bash
 cargo xtask verify
-cargo clippy --locked -p irodoru --features desktop --all-targets -- -D warnings
-cargo test --locked -p irodoru --features desktop
 cargo xtask dev
 ```
 
-- State tests cover save failures, stale notifications, selection, settings scope, direct chara updates, generation completion, and close guards.
-- Storage and worker tests cover `.iro` round trips, unsupported extension rejection, atomic saves and retries, queue cancellation, and regeneration failures.
-- Native smoke checks cover multiple windows, shortcut focus, and save-on-close. Check IME input, dragging, and audio devices manually on each platform.
+- There are no automated tests. Manually check multiple windows, shortcut focus, save-on-close, IME input, dragging, and audio devices on each platform.
 
 Follow the [GPUI Kit coding guides](https://gpui-kit.com/docs/coding-guides/) and [task model](https://gpui-kit.com/docs/task/) for module boundaries, state ownership, and background work.
 

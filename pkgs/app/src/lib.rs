@@ -1,4 +1,4 @@
-//! Desktop application capabilities; core services also compile without a GUI.
+//! Desktop application: GUI shell, project editing, storage and synthesis.
 pub mod audio;
 pub mod domain;
 mod files;
@@ -9,7 +9,5 @@ pub mod project;
 pub mod synthesis;
 pub mod workspace;
 
-#[cfg(feature = "desktop")]
 extern crate gpui_kit as gpui;
-#[cfg(feature = "desktop")]
 pub mod desktop;

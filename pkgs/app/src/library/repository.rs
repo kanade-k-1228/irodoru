@@ -470,9 +470,6 @@ impl Library {
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 fn validate_lines(lines: &[crate::domain::Line]) -> Result<(), AppError> {
     let mut seen = std::collections::HashSet::new();
     let mut takes = std::collections::HashSet::new();

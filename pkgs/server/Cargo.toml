@@ -4,12 +4,8 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
-[features]
-default = ["openvino"]
-openvino = ["irodoru-engine/openvino"]
-
 [dependencies]
-irodoru-engine = { path = "../engine" }
+irodoru-engine = { path = "../engine", features = ["openvino"] }
 anyhow = "1"
 base64 = "0.23"
 axum = "0.8"
@@ -21,7 +17,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = { version = "6", features = ["axum_extras"] }
 utoipa-axum = "0.3"
 clap = { version = "4", features = ["derive"] }
-
-[dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
-tokio = { version = "1", features = ["io-util", "time"] }

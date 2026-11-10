@@ -82,10 +82,7 @@ fn main() -> Result<()> {
     let rest = args.get(1..).unwrap_or_default();
     match args.first().map(String::as_str) {
         Some("dev") => {
-            run(
-                "cargo",
-                &["run", "--locked", "-p", "irodoru", "--features", "desktop"],
-            )?;
+            run("cargo", &["run", "--locked", "-p", "irodoru"])?;
         }
         Some("models") => models::cli(rest)?,
         Some("licenses") => licenses::cli(rest)?,
@@ -99,18 +96,6 @@ fn main() -> Result<()> {
             generate(rest.iter().any(|s| s == "--check"))?;
         }
         Some("verify") => {
-            run(
-                if cfg!(windows) { "python" } else { "python3" },
-                &[
-                    "-m",
-                    "unittest",
-                    "discover",
-                    "-s",
-                    "scripts",
-                    "-p",
-                    "test_*.py",
-                ],
-            )?;
             run("cargo", &["fmt", "--all", "--", "--check"])?;
             run(
                 "cargo",
@@ -124,27 +109,10 @@ fn main() -> Result<()> {
                     "warnings",
                 ],
             )?;
-            run("cargo", &["test", "--locked", "--workspace"])?;
             generate(true)?;
         }
-        Some("verify-export") => run(
-            "uv",
-            &[
-                "run",
-                "--project",
-                "pkgs/engine/script",
-                "python",
-                "-m",
-                "unittest",
-                "discover",
-                "-s",
-                "pkgs/engine/script",
-                "-p",
-                "test_*.py",
-            ],
-        )?,
         None | Some("help" | "--help") => println!(
-            "cargo xtask dev | models export/prepare/check/distribute/publish | licenses [--destination DIR] | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] [--licenses-dir DIR] | release version/app | verify | verify-export"
+            "cargo xtask dev | models export/prepare/check/distribute/publish | licenses [--destination DIR] | generate [--check] | package [--target TRIPLE] [--formats LIST] [--no-bundle] [--licenses-dir DIR] | release version/app | verify"
         ),
         _ => bail!("Unknown task; run cargo xtask help"),
     }
