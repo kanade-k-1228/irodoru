@@ -70,13 +70,17 @@ jobs:
         with:
           key: models
       - run: cargo build --locked --release -p xtask
+      - id: model-inputs
+        run: |
+          rust_key=$(python3 scripts/model-build-key.py Cargo.lock)
+          echo "rust=$rust_key" >> "$GITHUB_OUTPUT"
       # Cache only the prepared bundle (~3.4 GB), not unused portable exports.
       # Both the exporter inputs and the bundle preparation code affect its contents.
       - uses: actions/cache/restore@v6
         id: models
         with:
           path: pkgs/app/resources/models
-          key: anime-bundle-v1-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'xtask/src/main.rs', 'licenses/model/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/src/models/**', 'pkgs/model-bundle/**', 'xtask/Cargo.toml') }}
+          key: anime-bundle-v2-${{ steps.model-inputs.outputs.rust }}-${{ hashFiles('scripts/model-build-key.py', 'Cargo.toml', 'xtask/src/main.rs', 'licenses/model/**', 'pkgs/engine/script/*.py', 'pkgs/engine/script/pyproject.toml', 'pkgs/engine/script/uv.lock', 'pkgs/engine/script/.python-version', 'xtask/src/models.rs', 'xtask/src/models/**', 'pkgs/model-bundle/**', 'xtask/Cargo.toml') }}
       - uses: astral-sh/setup-uv@v7
         if: steps.models.outputs.cache-hit != 'true'
       - name: Export and prepare models on cache miss

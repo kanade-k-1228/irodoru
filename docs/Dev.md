@@ -162,8 +162,9 @@ expensive build; GitHub retains only the newest pending run in the group:
   sccache validates each object's inputs. Cargo registry downloads are
   cached separately; full target trees are not duplicated in that cache.
 - The prepared model bundle is saved immediately after export. Only model
-  licenses, exporter dependencies and bundle preparation code invalidate it;
-  changing a native-library notice does not export the models again.
+  licenses, exporter dependencies and bundle preparation code invalidate it.
+  The Rust dependency key follows xtask’s locked dependency graph, so unrelated
+  app dependency changes or native-library notices do not export the models again.
 - Windows' embedded CPU ONNX Runtime archive is keyed by its pinned build script
   and saved before application checks, so a later check failure does not discard
   the expensive native build. A 90-day Actions artifact is also retained: cache
