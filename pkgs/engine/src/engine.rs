@@ -20,11 +20,6 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn clear_cache(&mut self) {
-        self.voices.clear();
-        self.model.clear_cache();
-    }
-
     pub fn load(config: &EngineConfig) -> Result<Self> {
         let EngineConfig {
             model_dir,
@@ -42,16 +37,14 @@ impl Engine {
             Runtime::discover(*threads, config.device, config.openvino_library.as_deref())?;
         let codec = Codec::load(codec_dir, &runtime)?;
         let t0 = Instant::now();
-        let mut model = TTSModel::load(model_dir, &runtime)
+        let model = TTSModel::load(model_dir, &runtime)
             .with_context(|| format!("loading model from {}", model_dir.display()))?;
-        model.configure_cache(&config.cache);
         let name = &model.manifest.name;
         info!(model = %name, checkpoint = %model.manifest.checkpoint, flow = %model.manifest.flow, secs = t0.elapsed().as_secs_f32(), "model ready");
-        let voices = Voices::new(&config.cache);
         Ok(Self {
             codec,
             model,
-            voices,
+            voices: Voices::new(),
         })
     }
 

@@ -8,8 +8,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-fn set_version(root: &Path, tag: &str) -> Result<()> {
-    let version = tag;
+fn set_version(root: &Path, version: &str) -> Result<()> {
     semver::Version::parse(version).context("Release tag must be MAJOR.MINOR.PATCH")?;
     let manifest = root.join("pkgs/app/Cargo.toml");
     let lock = root.join("Cargo.lock");
@@ -144,11 +143,11 @@ fn prepare(
     Ok(assets)
 }
 pub fn cli(args: &[String]) -> Result<()> {
-    if args.first().map(String::as_str) == Some("version") {
-        anyhow::ensure!(args.len() == 2, "Usage: release version TAG");
-        return set_version(&root(), &args[1]);
-    }
     match args.first().map(String::as_str) {
+        Some("version") => {
+            anyhow::ensure!(args.len() == 2, "Usage: release version TAG");
+            set_version(&root(), &args[1])?;
+        }
         Some("app") if args.len() == 4 => {
             prepare(
                 &root(),

@@ -15,8 +15,7 @@ pub struct Chara {
     pub icon: Option<String>,
 }
 
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, PartialEq)]
 pub struct CharaInput {
     pub name: String,
     pub description: String,

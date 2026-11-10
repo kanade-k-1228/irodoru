@@ -1,5 +1,5 @@
 use crate::backend::{Graph, Input, Runtime};
-use crate::{CacheConfig, cache::ConditionCache};
+use crate::cache::ConditionCache;
 use anyhow::{Context, Result, bail, ensure};
 use ndarray::{Array, ArrayD, Axis, IxDyn, Slice};
 use serde::Deserialize;
@@ -89,13 +89,6 @@ pub struct TTSModel {
 }
 
 impl TTSModel {
-    pub(crate) fn configure_cache(&mut self, config: &CacheConfig) {
-        self.caption_cache = ConditionCache::new(config.caption_bytes_per_model, 1024);
-    }
-    pub(crate) fn clear_cache(&mut self) {
-        self.caption_cache.clear();
-    }
-
     pub fn load(dir: &Path, runtime: &Runtime) -> Result<Self> {
         let manifest: Manifest = serde_json::from_str(
             &std::fs::read_to_string(dir.join("manifest.json")).context("manifest.json")?,
@@ -112,10 +105,7 @@ impl TTSModel {
             duration: graph("duration")?,
             sampler: Sampler::load(dir, runtime, manifest.flow == "meanflow")?,
             manifest,
-            caption_cache: ConditionCache::new(
-                CacheConfig::default().caption_bytes_per_model,
-                1024,
-            ),
+            caption_cache: ConditionCache::new(32 * 1024 * 1024, 1024),
         })
     }
 

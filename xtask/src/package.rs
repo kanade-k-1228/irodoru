@@ -140,11 +140,10 @@ pub fn cli(args: &[String]) -> Result<()> {
     } else if !windows {
         run("patchelf", &["--set-rpath", "$ORIGIN", executable])?;
     }
-    let no_bundle = args.iter().any(|a| a == "--no-bundle");
-    if windows || no_bundle {
-        if no_bundle {
-            return Ok(());
-        }
+    if args.iter().any(|a| a == "--no-bundle") {
+        return Ok(());
+    }
+    if windows {
         let output = release.join("bundle/portable/irodoru_windows.zip");
         fs::create_dir_all(output.parent().unwrap())?;
         if output.exists() {

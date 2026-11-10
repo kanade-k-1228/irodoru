@@ -1,5 +1,5 @@
-use crate::{CacheConfig, cache::ConditionCache};
 use crate::{
+    cache::ConditionCache,
     error::AppError,
     model::{Audio, Codec, Condition, TTSModel},
 };
@@ -8,19 +8,11 @@ use sha2::{Digest, Sha256};
 pub struct Voices {
     cache: ConditionCache<[u8; 32]>,
 }
-impl Default for Voices {
-    fn default() -> Self {
-        Self::new(&CacheConfig::default())
-    }
-}
 impl Voices {
-    pub(crate) fn new(config: &CacheConfig) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            cache: ConditionCache::new(config.reference_bytes, config.reference_entries),
+            cache: ConditionCache::new(64 * 1024 * 1024, 16),
         }
-    }
-    pub(crate) fn clear(&mut self) {
-        self.cache.clear();
     }
 
     pub fn speaker(
