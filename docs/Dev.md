@@ -15,6 +15,8 @@ cargo xtask models prepare   # Prepare development models
 cargo xtask dev              # Start the desktop app
 ```
 
+Development builds compile dependencies with optimizations so the UI stays responsive; the first build takes longer.
+
 If you already have models, replace the first two commands with `cargo xtask models prepare --source /path/to/models`. Alternatively, set `IRODORU_MODELS` to a directory containing `anime/` and `codec/`. The checked-in distribution manifest has placeholder values, so local development requires prepared models.
 
 ## Repository layout
