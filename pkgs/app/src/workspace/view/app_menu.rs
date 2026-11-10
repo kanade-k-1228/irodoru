@@ -1,7 +1,7 @@
 //! Menu layout and navigation; header and dialog layouts live in sibling modules.
 use super::appearance::{icon, tool};
 use super::dialogs::ProjectDialog;
-use super::{Studio, WindowRequest, actions, appearance};
+use super::{Studio, WindowRequest, actions};
 use crate::workspace::protocol::Command;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -241,64 +241,6 @@ impl Studio {
             }
             Preferences => self.show_settings(window, cx),
             CloseWindow => self.close(),
-        }
-        cx.notify();
-    }
-
-    pub(super) fn theme_track(&self) -> AnyElement {
-        let p = self.palette();
-        div()
-            .relative()
-            .w(px(48.))
-            .h(px(24.))
-            .flex_shrink_0()
-            .rounded_full()
-            .border_1()
-            .border_color(p.line)
-            .bg(p.control)
-            .flex()
-            .items_center()
-            .justify_between()
-            .px_1()
-            .child(
-                div()
-                    .absolute()
-                    .top(px(2.))
-                    .left(px(if self.settings.theme.is_light() {
-                        2.
-                    } else {
-                        26.
-                    }))
-                    .size(px(18.))
-                    .rounded_full()
-                    .bg(p.ink),
-            )
-            .child(
-                icon("sun")
-                    .size(px(14.))
-                    .text_color(if self.settings.theme.is_light() {
-                        p.surface
-                    } else {
-                        p.muted
-                    }),
-            )
-            .child(
-                icon("moon")
-                    .size(px(14.))
-                    .text_color(if self.settings.theme.is_light() {
-                        p.muted
-                    } else {
-                        p.surface
-                    }),
-            )
-            .into_any_element()
-    }
-
-    pub(super) fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings.theme = crate::preferences::theme::toggle(cx);
-        appearance::apply(self.settings.theme.is_light(), window, cx);
-        if let Err(error) = crate::preferences::theme::save(self.settings.theme) {
-            self.state.error = Some(format!("{error:#}"));
         }
         cx.notify();
     }

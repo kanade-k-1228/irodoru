@@ -1,5 +1,6 @@
 use super::app_menu::MenuAction;
 use super::appearance::{button, icon};
+use crate::domain::InferenceStatus;
 use crate::workspace::view::Studio;
 use gpui_kit::component::Disableable;
 use gpui_kit::component::button::{Button, ButtonVariants};
@@ -81,6 +82,22 @@ impl Studio {
                     })),
             )
             .into_any_element()
+    }
+
+    fn model_status_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette();
+        let status = self.model_status();
+        let failed = matches!(status, InferenceStatus::Error { .. });
+        self.footer_button(
+            "model-settings",
+            "model",
+            super::modal::status_label(&status),
+        )
+        .track_focus(&self.model_trigger_focus)
+        .text_color(if failed { p.warning } else { p.muted })
+        .tooltip("モデル設定")
+        .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
+        .into_any_element()
     }
 
     /// An icon with its label, separated from the item on its left.

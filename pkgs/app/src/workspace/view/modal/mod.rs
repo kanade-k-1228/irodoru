@@ -1,9 +1,12 @@
-//! Application settings and information in one dialog.
-use super::appearance::{icon, tool};
+//! The window's modal dialogs: the shared frame here, one module per dialog.
+use super::appearance::tool;
 use super::{Studio, appearance};
 use gpui_kit::component::WindowExt;
-use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::*;
+
+mod model;
+mod settings;
+pub(super) use model::status_label;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Modal {
@@ -13,7 +16,7 @@ pub(super) enum Modal {
 
 impl Studio {
     /// Opens the one modal the window may show and returns focus to its trigger on close.
-    pub(super) fn open_modal(
+    fn open_modal(
         &mut self,
         kind: Modal,
         width: f32,
@@ -67,68 +70,5 @@ impl Studio {
                     });
                 })
         });
-    }
-
-    pub(super) fn show_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_modal(
-            Modal::Settings,
-            384.,
-            || "設定".into_any_element(),
-            |this, cx| {
-                div()
-                    .child(this.preferences_content(cx))
-                    .child(div().h(px(1.)).mt_5().bg(this.palette().line))
-                    .child(this.about_content())
-                    .into_any_element()
-            },
-            window,
-            cx,
-        );
-    }
-
-    fn preferences_content(&self, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .mt_5()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_8()
-            .child("カラーテーマ")
-            .child(
-                Button::new("preferences-theme")
-                    .cursor_pointer()
-                    .ghost()
-                    .child(self.theme_track())
-                    .on_click(cx.listener(|this, _, w, cx| this.toggle_theme(w, cx))),
-            )
-            .into_any_element()
-    }
-
-    fn about_content(&self) -> AnyElement {
-        let p = self.palette();
-        div()
-            .mt_5()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .text_sm()
-            .child(div().text_color(p.muted).child("irodoruについて"))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_lg()
-                    .font_weight(FontWeight::BOLD)
-                    .child(icon("audio").size(px(24.)).text_color(p.accent))
-                    .child("irodoru"),
-            )
-            .child(
-                div()
-                    .text_color(p.muted)
-                    .child(format!("バージョン {}", env!("CARGO_PKG_VERSION"))),
-            )
-            .child("キャラクタの声で台本を読み上げる音声合成アプリ")
-            .into_any_element()
     }
 }
