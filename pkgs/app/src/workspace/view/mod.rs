@@ -12,6 +12,8 @@ struct Fields {
     description: Entity<TextareaState>,
     prompt: Entity<InputState>,
     seed: Entity<InputState>,
+    preview_seed: Entity<InputState>,
+    preview_steps: Entity<InputState>,
     steps: Entity<InputState>,
     name: Entity<InputState>,
     sample: Entity<TextareaState>,
@@ -45,11 +47,13 @@ pub(crate) struct Studio {
     inference: Option<std::sync::Arc<crate::synthesis::Inference>>,
     fields: Fields,
     sliders: GenerationSliders,
+    preview_sliders: GenerationSliders,
     seek: Entity<SliderState>,
     subscriptions: Vec<Subscription>,
     advanced: bool,
-    script_scroll: ScrollHandle,
-    script_drag_scroll: gpui_kit::component::scroll::AutoScroll,
+    preview_advanced: bool,
+    line_scroll: ScrollHandle,
+    line_drag_scroll: gpui_kit::component::scroll::AutoScroll,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,
@@ -75,7 +79,7 @@ mod playback;
 
 mod appearance;
 
-mod character_panel;
+mod chara_panel;
 mod footer;
 
 mod app_dialog;
@@ -98,5 +102,5 @@ impl Studio {
 mod components;
 mod generation_controls;
 mod layout;
+mod lines;
 mod player;
-mod script;

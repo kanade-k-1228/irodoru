@@ -1,6 +1,6 @@
-//! Character editor composition, followed by each form section.
+//! Chara editor composition, followed by each form section.
 use crate::domain::AudioSource;
-use crate::workspace::state::Draft;
+use crate::domain::Chara;
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::{button, icon, tool};
 use gpui_kit::component::Disableable;
@@ -14,122 +14,51 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(in crate::workspace::view) fn character_editor(
-        &self,
-        narrow: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let draft = self.state.draft.as_ref().unwrap();
+    pub(in crate::workspace::view) fn chara_editor(&self, cx: &mut Context<Self>) -> AnyElement {
+        let chara = self.state.active_chara().unwrap();
         div()
             .flex_1()
             .min_w_0()
             .min_h_0()
             .flex()
             .flex_col()
-            .child(self.character_toolbar(draft, cx))
-            .child(self.character_form(draft, narrow, cx))
+            .child(self.chara_form(chara, cx))
             .into_any_element()
     }
 
-    fn character_toolbar(&self, draft: &Draft, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette();
-        let disabled = self.state.busy;
-        let delete = draft.id.clone();
-        let name = draft.input.name.clone();
+    fn chara_form(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px_3()
-            .py_1()
-            .border_b_1()
-            .border_color(p.line)
-            .text_xs()
-            .text_color(p.muted)
-            .child(div().flex_1().child(if draft.id.is_some() {
-                "キャラ編集"
-            } else {
-                "キャラ追加"
-            }))
-            .when_some(delete, |el, id| {
-                el.child(
-                    tool("delete-character", "trash", "キャラを削除")
-                        .bg(rgb(0xb52e42))
-                        .text_color(rgb(0xffffff))
-                        .disabled(disabled)
-                        .when(disabled, |el| el.cursor_default())
-                        .on_click(cx.listener(move |this, _, w, cx| {
-                            this.delete_character(id.clone(), name.clone(), w, cx)
-                        })),
-                )
-            })
-            .child(
-                tool(
-                    "export-character",
-                    "download",
-                    "キャラクターファイルを書き出す",
-                )
-                .disabled(disabled || draft.input.name.trim().is_empty())
-                .on_click(cx.listener(|this, _, w, cx| this.character_file(true, w, cx))),
-            )
-            .child(
-                tool("cancel-character", "close", "キャンセル")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, w, cx| this.cancel_character(w, cx))),
-            )
-            .child(
-                tool("save-character", "save", "キャラクターを保存")
-                    .text_color(self.accent())
-                    .disabled(disabled || draft.input.name.trim().is_empty())
-                    .when(disabled || draft.input.name.trim().is_empty(), |el| {
-                        el.cursor_default()
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(command) = this.state.save_character() {
-                            this.send(command);
-                        }
-                        cx.notify();
-                    })),
-            )
-            .into_any_element()
-    }
-
-    fn character_form(&self, draft: &Draft, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
-        div()
-            .id("character-form")
+            .id("chara-form")
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
             .p_4()
             .flex()
-            .when(narrow, |el| el.flex_col())
             .gap_4()
-            .child(self.character_details(draft, narrow, cx))
-            .child(self.character_preview(draft, narrow, cx))
+            .child(self.chara_details(chara, cx))
+            .child(self.chara_preview(chara, cx))
             .into_any_element()
     }
 
-    fn character_details(&self, draft: &Draft, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn chara_details(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy;
+        let disabled = self.state.busy || self.state.chara_locked;
         div()
             .flex_1()
-            .when(narrow, |el| el.flex_none().w_full())
             .min_w_0()
             .flex()
             .flex_col()
             .gap_2()
-            .child(self.character_identity(draft, cx))
-            .child(self.character_description())
+            .child(self.chara_identity(chara, cx))
+            .child(self.chara_description())
             .child(self.reference_voice_actions(cx))
             .child(div().text_xs().text_color(p.muted).child(format!(
                 "参照音声 {}件 — 選択したすべての音声を使用",
-                draft.input.voice_ids.len()
+                chara.voice_ids.len()
             )))
             .children(self.state.snapshot.voices.iter().enumerate().map(|(i, v)| {
                 let voice = v.id().to_owned();
-                let selected = draft.input.voice_ids.contains(&voice);
+                let selected = chara.voice_ids.contains(&voice);
                 Button::new(("voice", i))
                     .cursor_pointer()
                     .small()
@@ -142,55 +71,65 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.state.toggle_draft_voice(Some(voice.clone()));
+                        this.state.toggle_chara_voice(Some(voice.clone()));
+                        this.autosave_chara();
                         cx.notify();
                     }))
             }))
             .into_any_element()
     }
 
-    fn character_identity(&self, draft: &Draft, cx: &mut Context<Self>) -> AnyElement {
+    fn chara_identity(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy;
+        let disabled = self.state.busy || self.state.chara_locked;
         div()
             .flex()
-            .items_center()
+            .items_end()
             .gap_2()
-            .child(self.character_icon_button(draft, cx))
-            .when(
-                draft.input.icon.as_ref().is_some_and(|i| !i.is_empty()),
-                |el| {
-                    el.child(
-                        tool("clear-icon", "close", "画像を削除")
-                            .disabled(disabled)
-                            .when(disabled, |el| el.cursor_default())
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.set_draft_icon(String::new());
-                                cx.notify();
-                            })),
-                    )
-                },
-            )
+            .child(self.chara_icon_button(chara, cx))
+            .when(chara.icon.as_ref().is_some_and(|i| !i.is_empty()), |el| {
+                el.child(
+                    tool("clear-icon", "close", "画像を削除")
+                        .disabled(disabled)
+                        .when(disabled, |el| el.cursor_default())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.state.set_chara_icon(String::new());
+                            this.autosave_chara();
+                            cx.notify();
+                        })),
+                )
+            })
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_xs()
-                    .text_color(p.muted)
-                    .child("名前")
+                    .flex()
+                    .flex_col()
+                    .gap_1()
                     .child(
                         Input::new(&self.fields.name)
-                            .small()
                             .bg(p.control)
                             .disabled(disabled),
-                    ),
+                    )
+                    .child(self.chara_identity_actions(chara, cx)),
             )
+            .into_any_element()
+    }
+
+    fn chara_identity_actions(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette();
+        let disabled = self.state.busy || self.state.chara_locked;
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
             .child(
                 div()
                     .w(px(32.))
+                    .h(px(32.))
+                    .flex_shrink_0()
                     .text_xs()
                     .text_color(p.muted)
-                    .child("色")
                     .child(if disabled {
                         div()
                             .size(px(32.))
@@ -201,34 +140,80 @@ impl Studio {
                     } else {
                         ColorPicker::new(&self.fields.color)
                             .cursor_pointer()
-                            .small()
+                            .with_size(px(32.))
                             .size(px(32.))
                             .accessibility_label("テーマカラー")
                             .into_any_element()
                     }),
             )
+            .child(
+                tool(
+                    "lock-chara",
+                    if self.state.chara_locked {
+                        "lock"
+                    } else {
+                        "unlock"
+                    },
+                    if self.state.chara_locked {
+                        "ロック解除"
+                    } else {
+                        "パラメータをロック"
+                    },
+                )
+                .when(self.state.chara_locked, |el| {
+                    el.bg(p.soft).text_color(self.accent())
+                })
+                .size(px(32.))
+                .disabled(self.state.busy)
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.state.chara_locked = !this.state.chara_locked;
+                    this.sync_fields(window, cx);
+                    cx.notify();
+                })),
+            )
+            .map(|el| {
+                let id = chara.id.clone();
+                let name = chara.name.clone();
+                el.child(
+                    tool("delete-chara", "trash", "キャラを削除")
+                        .size(px(32.))
+                        .bg(rgb(0xb52e42))
+                        .text_color(rgb(0xffffff))
+                        .disabled(disabled || self.state.chara_locked)
+                        .when(disabled || self.state.chara_locked, |el| {
+                            el.cursor_default()
+                        })
+                        .on_click(cx.listener(move |this, _, w, cx| {
+                            this.delete_chara(id.clone(), name.clone(), w, cx)
+                        })),
+                )
+            })
+            .child(
+                tool("export-chara", "download", "キャラクターファイルを書き出す")
+                    .size(px(32.))
+                    .disabled(self.state.busy)
+                    .on_click(cx.listener(|this, _, w, cx| this.chara_file(true, w, cx))),
+            )
             .into_any_element()
     }
 
-    fn character_icon_button(&self, draft: &Draft, cx: &mut Context<Self>) -> AnyElement {
-        let disabled = self.state.busy;
+    fn chara_icon_button(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
+        let disabled = self.state.busy || self.state.chara_locked;
         button("import-icon", "")
-            .size(px(44.))
+            .size(px(64.))
+            .flex_shrink_0()
             .rounded_full()
             .overflow_hidden()
-            .when(
-                draft.input.icon.as_ref().is_none_or(|i| i.is_empty()),
-                |el| {
-                    el.child(
-                        div()
-                            .text_xl()
-                            .child(draft.input.name.chars().next().unwrap_or('？').to_string()),
-                    )
-                },
-            )
+            .when(chara.icon.as_ref().is_none_or(|i| i.is_empty()), |el| {
+                el.child(
+                    div()
+                        .text_2xl()
+                        .child(chara.name.chars().next().unwrap_or('？').to_string()),
+                )
+            })
             .when_some(
-                crate::workspace::view::components::character_icon(draft.input.icon.as_deref()),
-                |el, image| el.child(img(image).size(px(40.)).rounded_full()),
+                crate::workspace::view::components::chara_icon(chara.icon.as_deref()),
+                |el, image| el.child(img(image).size(px(60.)).rounded_full()),
             )
             .disabled(disabled)
             .when(disabled, |el| el.cursor_default())
@@ -237,13 +222,12 @@ impl Studio {
             .into_any_element()
     }
 
-    fn character_description(&self) -> AnyElement {
+    fn chara_description(&self) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy;
+        let disabled = self.state.busy || self.state.chara_locked;
         div()
             .text_xs()
             .text_color(p.muted)
-            .child("プロンプト")
             .child(
                 Textarea::new(&self.fields.description)
                     .h(px(112.))
@@ -255,14 +239,13 @@ impl Studio {
 
     fn reference_voice_actions(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy;
+        let disabled = self.state.busy || self.state.chara_locked;
         div()
             .flex()
             .items_center()
             .gap_2()
             .text_xs()
             .text_color(p.muted)
-            .child("参照音声")
             .child(
                 tool("import-voice", "folder", "音声を取り込む")
                     .disabled(disabled)
@@ -274,24 +257,24 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.state.toggle_draft_voice(None);
+                        this.state.toggle_chara_voice(None);
+                        this.autosave_chara();
                         cx.notify();
                     })),
             )
             .into_any_element()
     }
 
-    fn character_preview(&self, draft: &Draft, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn chara_preview(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
         let disabled = self.state.busy;
-        let preview = draft.preview.clone();
-        let saved = draft
-            .id
-            .as_ref()
-            .filter(|id| self.state.snapshot.character_previews.contains(*id))
-            .cloned();
+        let saved = self
+            .state
+            .snapshot
+            .chara_previews
+            .contains(&chara.id)
+            .then(|| chara.id.clone());
         div()
             .flex_1()
-            .when(narrow, |el| el.flex_none().w_full())
             .min_w_0()
             .flex()
             .flex_col()
@@ -310,25 +293,10 @@ impl Studio {
                         cx.notify();
                     })),
             )
-            .when_some(preview.clone(), |el, id| {
-                el.child(
-                    self.audio_player(
-                        ("preview-audio", 0),
-                        AudioSource::Preview(id),
-                        self.playback
-                            .as_ref()
-                            .map(|p| p.duration as f64)
-                            .unwrap_or(0.),
-                        cx,
-                    ),
-                )
-            })
-            .when(preview.is_none(), |el| {
-                el.when_some(saved, |el, id| el.child(self.saved_preview_actions(id, cx)))
-            })
+            .when_some(saved, |el, id| el.child(self.saved_preview_actions(id, cx)))
             .when(
                 self.playback.is_some()
-                    && matches!(self.audio_id, Some(AudioSource::CharacterPreview(_))),
+                    && matches!(self.audio_id, Some(AudioSource::CharaPreview(_))),
                 |el| el.child(self.saved_preview_player(cx)),
             )
             .into_any_element()
@@ -336,11 +304,10 @@ impl Studio {
 
     fn sample_text_field(&self) -> AnyElement {
         let p = self.palette();
-        let disabled = self.state.busy;
+        let disabled = self.state.busy || self.state.chara_locked;
         div()
             .text_xs()
             .text_color(p.muted)
-            .child("サンプル文")
             .child(
                 Textarea::new(&self.fields.sample)
                     .h(px(70.))
@@ -361,13 +328,13 @@ impl Studio {
                     .ghost()
                     .w_full()
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.advanced = !this.advanced;
+                        this.preview_advanced = !this.preview_advanced;
                         cx.notify();
                     })),
             )
-            .when(self.advanced, |el| {
-                el.child(self.speed_controls())
-                    .child(self.advanced_controls(cx))
+            .when(self.preview_advanced, |el| {
+                el.child(self.speed_controls(true))
+                    .child(self.advanced_controls(true, cx))
             })
             .into_any_element()
     }
@@ -383,7 +350,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.start_audio(AudioSource::CharacterPreview(id.clone()));
+                        this.start_audio(AudioSource::CharaPreview(id.clone()));
                         cx.notify();
                     })),
             )
@@ -392,7 +359,7 @@ impl Studio {
                     .disabled(disabled)
                     .when(disabled, |el| el.cursor_default())
                     .on_click(cx.listener(move |this, _, w, cx| {
-                        this.export(AudioSource::CharacterPreview(export.clone()), w, cx)
+                        this.export(AudioSource::CharaPreview(export.clone()), w, cx)
                     })),
             )
             .into_any_element()

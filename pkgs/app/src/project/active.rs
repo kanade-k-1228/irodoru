@@ -38,7 +38,7 @@ impl Project {
         Ok(())
     }
 
-    pub fn create_from_characters(&mut self, path: &Path) -> Result<()> {
+    pub fn create_from_charas(&mut self, path: &Path) -> Result<()> {
         super::validate_path(path)?;
         self.flush()?;
         // Reserve separately: the current project remains open if copying or saving fails.
@@ -47,17 +47,12 @@ impl Project {
         self.read(|source| {
             let ids = source
                 .library
-                .characters()?
+                .charas()?
                 .into_iter()
                 .map(|c| c.id)
                 .collect::<Vec<_>>();
-            source.library.copy_characters_to(&session.library, &ids)?;
-            let editor = crate::domain::EditorState {
-                preferences: source.library.editor()?.preferences,
-                active_character: ids.first().cloned().unwrap_or_default(),
-                ..Default::default()
-            };
-            Ok(session.library.save_editor(&editor)?)
+            source.library.copy_charas_to(&session.library, &ids)?;
+            Ok(session.library.save_editor(&Default::default())?)
         })?;
         super::archive::write_archive(&super::archive::snapshot(&session)?)?;
         session.saved = session.revision;

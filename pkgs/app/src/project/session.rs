@@ -74,10 +74,10 @@ impl Session {
         match source {
             AudioSource::Take(id) => Ok(self.library.audio(id)?),
             AudioSource::Preview(id) => Ok(self.previews.audio(id)?),
-            AudioSource::CharacterPreview(id) => {
+            AudioSource::CharaPreview(id) => {
                 let path = self
                     .library
-                    .character_preview_path(id)?
+                    .chara_preview_path(id)?
                     .ok_or_else(|| anyhow::anyhow!("サンプル音声がありません"))?;
                 Ok(std::fs::read(path)?)
             }
@@ -85,19 +85,17 @@ impl Session {
     }
     pub(super) fn validate(&self) -> Result<()> {
         let editor = self.library.editor()?;
-        let characters = self.library.characters()?;
+        let charas = self.library.charas()?;
         let voices = self.library.voices()?;
-        let mut rows = std::collections::HashSet::new();
-        for row in &editor.rows {
-            if row.id.is_empty() || row.id.len() > 64 || !rows.insert(&row.id) {
-                bail!("台本の行 ID が不正です");
-            }
-            if !row.character_id.is_empty() && !characters.iter().any(|c| c.id == row.character_id)
-            {
+        let takes = self.library.takes()?;
+        for line in &editor.lines {
+            if !line.chara_id.is_empty() && !charas.iter().any(|c| c.id == line.chara_id) {
                 bail!("キャラクタが見つかりません");
             }
-            if let Some(id) = &row.take_id
-                && !voices.iter().any(|voice| matches!(voice, crate::domain::Voice::Generated(take) if &take.id == id && take.row_id == row.id))
+            if let Some(id) = &line.take_id
+                && !takes
+                    .iter()
+                    .any(|take| &take.id == id && line.takes.contains(&take.id))
             {
                 bail!("生成音声が見つかりません");
             }
@@ -105,11 +103,9 @@ impl Session {
         for voice in &voices {
             crate::audio::validate_wav(&self.library.audio(voice.id())?)?;
         }
-        for character in characters {
-            for id in character.voice_ids {
-                if !voices.iter().any(|v| v.id() == id) {
-                    bail!("キャラクターの参照音声が見つかりません");
-                }
+        for chara in charas {
+            for wav in self.library.chara_reference_audio(&chara)? {
+                crate::audio::validate_wav(&wav)?;
             }
         }
         Ok(())

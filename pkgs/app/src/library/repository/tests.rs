@@ -1,7 +1,7 @@
 use super::*;
 
-fn character_input(name: &str) -> CharacterInput {
-    CharacterInput {
+fn chara_input(name: &str) -> CharaInput {
+    CharaInput {
         name: name.into(),
         description: "落ち着いた声".into(),
         voice_ids: Vec::new(),
@@ -12,20 +12,20 @@ fn character_input(name: &str) -> CharacterInput {
 }
 
 #[test]
-fn character_edits_preserve_existing_settings() {
+fn chara_edits_preserve_existing_settings() {
     let dir = tempfile::tempdir().unwrap();
     let library = Library::open(dir.path()).unwrap();
-    let mut input = character_input("さくら");
+    let mut input = chara_input("さくら");
     input.color = Some("#ABCDEF".into());
     input.sample_text = Some("サンプル文".into());
     input.icon = Some("data:image/png;base64,iVBORw0KGgo=".into());
-    let original = library.create_character(input).unwrap();
+    let original = library.create_chara(input).unwrap();
     library
-        .update_character(original.id.clone(), character_input("更新後"))
+        .update_chara(original.id.clone(), chara_input("更新後"))
         .unwrap();
 
     let reopened = Library::open(dir.path()).unwrap();
-    let edited = reopened.character(&original.id).unwrap();
+    let edited = reopened.chara(&original.id).unwrap();
     assert_eq!(edited.name, "更新後");
     assert_eq!(edited.color, "#abcdef");
     assert_eq!(edited.sample_text, "サンプル文");
@@ -33,82 +33,80 @@ fn character_edits_preserve_existing_settings() {
 }
 
 #[test]
-fn regeneration_retains_takes_and_character_deletion_keeps_them() {
-    let dir = tempfile::tempdir().unwrap();
-    let library = Library::open(dir.path()).unwrap();
-    let character = library.create_character(character_input("さくら")).unwrap();
-    let first = Take {
-        conditions: irodoru_engine::GenerationConditions {
-            text: "こんにちは".into(),
-            model: "anime".into(),
-            seed: 42,
-            num_steps: 4,
-            ..crate::domain::Take::test_conditions()
-        },
-        id: new_id(),
-        row_id: "row".into(),
-        character_id: Some(character.id.clone()),
-        character_name: character.name,
-        additional_prompt: String::new(),
-        voice_ids: Vec::new(),
-        elapsed_ms: 100,
-        audio_seconds: 1.0,
-        created_at: 1,
-    };
-    let first_wav = irodoru_engine::Audio::new(vec![0.1; 10], 48000)
-        .to_wav()
-        .unwrap();
-    library.save_take(&first, &first_wav).unwrap();
-    let first_wav = library.audio(&first.id).unwrap();
-    let second = Take {
-        id: new_id(),
-        created_at: 2,
-        ..first.clone()
-    };
-    let second_wav = irodoru_engine::Audio::new(vec![0.2; 10], 48000)
-        .to_wav()
-        .unwrap();
-    library.save_take(&second, &second_wav).unwrap();
-    let second_wav = library.audio(&second.id).unwrap();
-    library.delete_character(&character.id).unwrap();
-
-    assert_eq!(library.takes().unwrap().len(), 2);
-    assert_eq!(library.audio(&first.id).unwrap(), first_wav);
-    assert_eq!(library.audio(&second.id).unwrap(), second_wav);
-    library.delete_take(&second.id).unwrap();
-    assert_eq!(library.takes().unwrap().len(), 1);
-}
-
-#[test]
 fn invalid_names_and_paths_are_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let library = Library::open(dir.path()).unwrap();
-    assert!(library.create_character(character_input(" ")).is_err());
-    assert!(library.character("../outside").is_err());
+    assert!(library.create_chara(chara_input(" ")).is_err());
+    assert!(library.chara("../outside").is_err());
     assert!(library.audio("../outside").is_err());
 }
 
 #[test]
-fn failed_document_save_restores_script_files_and_keeps_the_previous_order() {
+fn chara_references_are_owned_copies_and_failed_updates_preserve_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = Library::open(dir.path()).unwrap();
+    let wav = irodoru_engine::Audio::new(vec![0.1; 24], 24000)
+        .to_wav()
+        .unwrap();
+    let voice = library.save_voice("reference", &wav).unwrap();
+    let mut input = chara_input("さくら");
+    input.voice_ids = vec![voice.clone()];
+    let first = library.create_chara(input.clone()).unwrap();
+    let second = library.create_chara(input.clone()).unwrap();
+    let first_path = library.chara_voice_path(&first.id, &voice).unwrap();
+    let second_path = library.chara_voice_path(&second.id, &voice).unwrap();
+    let original = std::fs::read(&first_path).unwrap();
+    assert_eq!(std::fs::read(&second_path).unwrap(), original);
+    std::fs::remove_file(library.voice_path(&voice).unwrap()).unwrap();
+    assert_eq!(
+        library.chara_reference_audio(&first).unwrap(),
+        vec![original.clone()]
+    );
+
+    input.voice_ids.push(new_id());
+    assert!(
+        library
+            .update_chara(first.id.clone(), input.clone())
+            .is_err()
+    );
+    assert_eq!(
+        library.chara(&first.id).unwrap().voice_ids,
+        vec![voice.clone()]
+    );
+    assert_eq!(std::fs::read(&first_path).unwrap(), original);
+    input.voice_ids.clear();
+    library.update_chara(first.id.clone(), input).unwrap();
+    assert!(!first_path.exists());
+    assert_eq!(
+        library.chara_reference_audio(&second).unwrap(),
+        vec![original.clone()]
+    );
+    library.delete_chara(&first.id).unwrap();
+    assert_eq!(std::fs::read(second_path).unwrap(), original);
+    assert!(library.takes().unwrap().is_empty());
+}
+
+#[test]
+fn ordered_line_map_preserves_reordering() {
     let dir = tempfile::tempdir().unwrap();
     let library = Library::open(dir.path()).unwrap();
     let mut editor = crate::domain::EditorState::default();
-    let mut row = crate::workspace::editor::new_row(String::new(), Default::default());
-    row.text = "before".into();
-    editor.rows.push(row);
+    for id in ["z", "a"] {
+        let mut line = crate::workspace::editor::new_line(String::new(), Default::default());
+        line.id = id.into();
+        editor.lines.push(line);
+    }
     library.save_editor(&editor).unwrap();
-    let project_path = dir.path().join("project.yaml");
-    let document = std::fs::read(&project_path).unwrap();
-    // Inject the failure after staging new scripts, when publishing project.yaml.
-    std::fs::remove_file(&project_path).unwrap();
-    std::fs::create_dir(&project_path).unwrap();
-    editor.rows[0].text = "after".into();
-    assert!(library.write_editor(&editor).is_err());
-    std::fs::remove_dir(&project_path).unwrap();
-    std::fs::write(&project_path, document).unwrap();
-    assert_eq!(library.editor().unwrap().rows[0].text, "before");
-    assert!(library.script_path("../escape").is_err());
-    editor.rows.push(editor.rows[0].clone());
-    assert!(library.save_editor(&editor).is_err());
-    assert_eq!(library.editor().unwrap().rows.len(), 1);
+    let mut restored = library.editor().unwrap();
+    assert_eq!(
+        restored
+            .lines
+            .iter()
+            .map(|line| line.id.as_str())
+            .collect::<Vec<_>>(),
+        ["z", "a"]
+    );
+    restored.lines.swap(0, 1);
+    library.save_editor(&restored).unwrap();
+    assert_eq!(library.editor().unwrap().lines[0].id, "a");
 }

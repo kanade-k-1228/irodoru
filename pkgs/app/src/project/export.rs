@@ -6,34 +6,34 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Copy)]
 pub enum ExportNaming {
     Number,
-    Character,
+    Chara,
     Dialogue,
-    CharacterDialogue,
+    CharaDialogue,
 }
 
 impl ExportNaming {
     pub const ALL: [Self; 4] = [
         Self::Number,
-        Self::Character,
+        Self::Chara,
         Self::Dialogue,
-        Self::CharacterDialogue,
+        Self::CharaDialogue,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Number => "連番 — 001.wav",
-            Self::Character => "連番＋キャラクター名 — 001_さくら.wav",
+            Self::Chara => "連番＋キャラクター名 — 001_さくら.wav",
             Self::Dialogue => "連番＋セリフ — 001_こんにちは.wav",
-            Self::CharacterDialogue => "連番＋キャラクター名＋セリフ — 001_さくら_こんにちは.wav",
+            Self::CharaDialogue => "連番＋キャラクター名＋セリフ — 001_さくら_こんにちは.wav",
         }
     }
 
     fn filename(self, index: usize, take: &Take) -> String {
         let mut parts = vec![format!("{:03}", index + 1)];
-        if matches!(self, Self::Character | Self::CharacterDialogue) {
-            parts.push(filename_part(&take.character_name, "キャラクター"));
+        if matches!(self, Self::Chara | Self::CharaDialogue) {
+            parts.push(filename_part(&take.chara_name, "キャラクター"));
         }
-        if matches!(self, Self::Dialogue | Self::CharacterDialogue) {
+        if matches!(self, Self::Dialogue | Self::CharaDialogue) {
             parts.push(filename_part(&take.conditions.text, "セリフ"));
         }
         format!("{}.wav", parts.join("_"))
@@ -61,16 +61,16 @@ fn filename_part(value: &str, fallback: &str) -> String {
     }
 }
 
-pub(crate) fn export_rows<'a>(editor: &EditorState, takes: &'a [Take]) -> Result<Vec<&'a Take>> {
-    if editor.rows.is_empty() {
+pub(crate) fn export_lines<'a>(editor: &EditorState, takes: &'a [Take]) -> Result<Vec<&'a Take>> {
+    if editor.lines.is_empty() {
         bail!("書き出すセリフがありません");
     }
     let mut selected = Vec::new();
     let mut missing = Vec::new();
-    for (index, row) in editor.rows.iter().enumerate() {
+    for (index, line) in editor.lines.iter().enumerate() {
         match takes
             .iter()
-            .find(|take| row.take_id.as_ref() == Some(&take.id) && take.row_id == row.id)
+            .find(|take| line.take_id.as_ref() == Some(&take.id) && line.takes.contains(&take.id))
         {
             Some(take) => selected.push(take),
             None => missing.push((index + 1).to_string()),
@@ -86,13 +86,13 @@ pub(crate) fn export_rows<'a>(editor: &EditorState, takes: &'a [Take]) -> Result
 }
 
 impl Session {
-    pub(crate) fn export_script(
+    pub(crate) fn export_lines(
         &self,
         parent: &Path,
         naming: ExportNaming,
     ) -> Result<(PathBuf, usize)> {
         let takes = self.library.takes()?;
-        let selected = export_rows(&self.library.editor()?, &takes)?;
+        let selected = export_lines(&self.library.editor()?, &takes)?;
         let directory = (1..)
             .find_map(|index| {
                 let name = if index == 1 {

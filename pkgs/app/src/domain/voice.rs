@@ -21,7 +21,7 @@ impl Voice {
     pub fn label(&self) -> String {
         match self {
             Self::Imported { name, .. } => name.clone(),
-            Self::Generated(take) => format!("{}: {}", take.character_name, take.conditions.text),
+            Self::Generated(take) => format!("{}: {}", take.chara_name, take.conditions.text),
         }
     }
 }

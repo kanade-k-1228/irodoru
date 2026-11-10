@@ -1,7 +1,7 @@
-use crate::domain::ScriptRow;
+use crate::domain::Line;
 use crate::workspace::view::Studio;
-use crate::workspace::view::appearance::character_color;
-use crate::workspace::view::script::DraggedRow;
+use crate::workspace::view::appearance::chara_color;
+use crate::workspace::view::lines::DraggedLine;
 use gpui_kit::component::Icon;
 use gpui_kit::component::input::Textarea;
 use gpui_kit::prelude::FluentBuilder;
@@ -11,43 +11,43 @@ mod editor;
 mod takes;
 
 impl Studio {
-    pub(in crate::workspace::view) fn script_row(
+    pub(in crate::workspace::view) fn line(
         &self,
         i: usize,
-        row: &ScriptRow,
+        line: &Line,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette();
-        let id = row.id.clone();
+        let id = line.id.clone();
         let selected = self.state.selected.as_ref() == Some(&id);
         let running = self.state.running.as_ref() == Some(&id);
-        let character = self
+        let chara = self
             .state
             .snapshot
-            .characters
+            .charas
             .iter()
-            .find(|c| c.id == row.character_id);
-        let color = character_color(character.map(|c| c.color.as_str()), p.accent);
-        let disabled = self.state.busy || self.state.draft.is_some();
-        let drag = DraggedRow {
+            .find(|c| c.id == line.chara_id);
+        let color = chara_color(chara.map(|c| c.color.as_str()), p.accent);
+        let disabled = self.state.busy;
+        let drag = DraggedLine {
             studio: cx.entity_id(),
-            id: row.id.clone(),
-            text: if row.text.is_empty() {
+            id: line.id.clone(),
+            text: if line.text.is_empty() {
                 "セリフを移動".into()
             } else {
-                row.text.clone()
+                line.text.clone()
             },
         };
-        let last = i + 1 == self.state.snapshot.editor.rows.len();
+        let last = i + 1 == self.state.snapshot.editor.lines.len();
         div()
-            .id(("row", i))
+            .id(("line", i))
             .relative()
             .rounded(px(8.))
             .px_1()
             .py_1()
             .when(running, |el| el.border_1().border_color(p.accent))
-            // Continue the rail through tall rows, behind the opaque avatars.
-            .when(self.state.snapshot.editor.rows.len() > 1, |el| {
+            // Continue the rail through tall lines, behind the opaque avatars.
+            .when(self.state.snapshot.editor.lines.len() > 1, |el| {
                 el.child(
                     div()
                         .absolute()
@@ -66,8 +66,8 @@ impl Studio {
                     .items_start()
                     .gap_2()
                     .child(
-                        self.avatar(character, 28.)
-                            .id(("row-avatar", i))
+                        self.avatar(chara, 28.)
+                            .id(("line-avatar", i))
                             .when(!disabled, |el| {
                                 el.cursor_move()
                                     .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
@@ -76,24 +76,24 @@ impl Studio {
                             .mt(px(6.))
                             .when(selected, |el| el.border_2().border_color(color)),
                     )
-                    .child(self.script_speech(i, row, selected, color, cx)),
+                    .child(self.line_speech(i, line, selected, color, cx)),
             )
-            .when_some(self.state.row_errors.get(&id).cloned(), |el, error| {
+            .when_some(self.state.line_errors.get(&id).cloned(), |el, error| {
                 el.child(div().text_xs().text_color(p.warning).child(error))
             })
             .into_any_element()
     }
 
-    fn script_speech(
+    fn line_speech(
         &self,
         i: usize,
-        row: &ScriptRow,
+        line: &Line,
         selected: bool,
         color: Hsla,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette();
-        let select = row.id.clone();
+        let select = line.id.clone();
         let speech = div()
             .id(("speech", i))
             .relative()
@@ -117,7 +117,7 @@ impl Studio {
                         div()
                             .w(px(40.))
                             .flex_shrink_0()
-                            .child(self.script_play_button(i, row, cx)),
+                            .child(self.line_play_button(i, line, cx)),
                     )
                     .child(
                         div()
@@ -133,11 +133,7 @@ impl Studio {
                                     .w_full()
                                     .text_sm()
                                     .line_height(px(24.))
-                                    .disabled(
-                                        self.state.busy
-                                            || self.state.draft.is_some()
-                                            || self.state.status.id.is_none(),
-                                    )
+                                    .disabled(self.state.busy || self.state.status.id.is_none())
                                     .into_any_element()
                             } else {
                                 div()
@@ -145,11 +141,11 @@ impl Studio {
                                     .min_w_0()
                                     .px_2()
                                     .py_1()
-                                    .text_color(if row.text.is_empty() { p.muted } else { p.ink })
-                                    .child(if row.text.is_empty() {
+                                    .text_color(if line.text.is_empty() { p.muted } else { p.ink })
+                                    .child(if line.text.is_empty() {
                                         "セリフを入力".to_owned()
                                     } else {
-                                        row.text.clone()
+                                        line.text.clone()
                                     })
                                     .into_any_element()
                             })
@@ -157,7 +153,7 @@ impl Studio {
                                 el.cursor_text()
                                     .hover(|s| s.bg(p.hover))
                                     .on_click(cx.listener(move |this, _, w, cx| {
-                                        if this.state.busy || this.state.draft.is_some() {
+                                        if this.state.busy {
                                             return;
                                         }
                                         this.select(select.clone(), w, cx);
@@ -171,10 +167,10 @@ impl Studio {
                             .flex_shrink_0()
                             .border_l_1()
                             .border_color(p.line)
-                            .child(self.script_row_actions(i, row, cx)),
+                            .child(self.line_actions(i, line, cx)),
                     ),
             )
-            .when(selected && self.state.draft.is_none(), |el| {
+            .when(selected, |el| {
                 el.child(
                     div()
                         .border_t_1()
@@ -188,8 +184,13 @@ impl Studio {
             .flex_1()
             .min_w_0()
             .child(speech)
-            .child(
-                div()
+            .child(self.speech_tail(if selected { color } else { p.line }))
+            .into_any_element()
+    }
+
+    pub(in crate::workspace::view) fn speech_tail(&self, border: Hsla) -> AnyElement {
+        let p = self.palette();
+        div()
                     .absolute()
                     .left(px(-8.))
                     .top(px(10.))
@@ -207,9 +208,8 @@ impl Studio {
                             .top_0()
                             .left_0()
                             .size(px(16.))
-                            .text_color(if selected { color } else { p.line }),
-                    ),
-            )
+                            .text_color(border),
+                    )
             .into_any_element()
     }
 }

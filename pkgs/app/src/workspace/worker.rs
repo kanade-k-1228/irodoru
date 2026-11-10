@@ -14,6 +14,7 @@ pub(super) struct Worker {
     stop: Arc<AtomicBool>,
     events: mpsc::Sender<Event>,
     editor_error: Option<String>,
+    chara_errors: std::collections::HashMap<String, String>,
 }
 impl Worker {
     pub(super) fn run(
@@ -37,6 +38,7 @@ impl Worker {
             inference,
             stop,
             editor_error: None,
+            chara_errors: Default::default(),
             events,
         };
         while let Ok(command) = receiver.recv() {
@@ -52,11 +54,11 @@ impl Worker {
 
     fn snapshot(&self) -> Result<()> {
         let snapshot = self.project.read(|s| {
-            let characters = s.library.characters()?;
+            let charas = s.library.charas()?;
             Ok(Snapshot {
-                character_previews: characters
+                chara_previews: charas
                     .iter()
-                    .filter_map(|c| match s.library.character_preview_path(&c.id) {
+                    .filter_map(|c| match s.library.chara_preview_path(&c.id) {
                         Ok(Some(_)) => Some(Ok(c.id.clone())),
                         Ok(None) => None,
                         Err(e) => Some(Err(e)),
@@ -65,7 +67,7 @@ impl Worker {
                 editor: s.library.editor()?,
                 takes: s.library.takes()?,
                 voices: s.library.voices()?,
-                characters,
+                charas,
             })
         })?;
         self.events.send(Event::Status(self.project.status()?))?;
@@ -86,11 +88,11 @@ impl Worker {
             let inputs = requests
                 .into_iter()
                 .map(|request| {
-                    let character = s.library.character(&request.character_id)?;
-                    let reference_audio = s.library.reference_audio(&character.voice_ids)?;
+                    let chara = s.library.chara(&request.chara_id)?;
+                    let reference_audio = s.library.chara_reference_audio(&chara)?;
                     Ok(generation::GenerationInput {
                         request,
-                        character,
+                        chara,
                         reference_audio,
                     })
                 })
@@ -101,21 +103,26 @@ impl Worker {
             if self.stop.load(Ordering::SeqCst) {
                 break;
             }
-            let row_id = prepared.row_id().to_owned();
-            self.events.send(Event::RowStarted(row_id.clone()))?;
+            let line_id = prepared.line_id().to_owned();
+            self.events.send(Event::LineStarted(line_id.clone()))?;
             let result = generation::synthesize(prepared, &mut infer).and_then(|(take, wav)| {
                 self.project
                     .change(|s| Ok(s.library.save_take(&take, &wav)?))
             });
             if let Err(e) = result {
                 self.events
-                    .send(Event::RowFailed(row_id, format!("{e:#}")))?;
+                    .send(Event::LineFailed(line_id, format!("{e:#}")))?;
             }
         }
         self.snapshot()?;
         Ok(())
     }
     fn execute(&mut self, command: Command) -> Result<()> {
+        if !matches!(command, Command::SaveEditor(_) | Command::SaveChara { .. })
+            && let Some(error) = self.chara_errors.values().next()
+        {
+            anyhow::bail!("キャラクターを保存できませんでした: {error}");
+        }
         if !matches!(command, Command::SaveEditor(_))
             && let Some(error) = &self.editor_error
         {
@@ -126,15 +133,15 @@ impl Worker {
                 self.project.open(&path, create)?;
                 self.snapshot()?;
             }
-            Command::NewFromCharacters(path) => {
-                self.project.create_from_characters(&path)?;
+            Command::NewFromCharas(path) => {
+                self.project.create_from_charas(&path)?;
                 self.snapshot()?;
             }
-            Command::ExportCharacter { input, path } => {
-                self.project.read(|s| s.export_character(input, &path))?;
+            Command::ExportChara { input, path } => {
+                self.project.read(|s| s.export_chara(input, &path))?;
             }
-            Command::ImportCharacter(path) => {
-                self.project.change(|s| s.import_character(&path))?;
+            Command::ImportChara(path) => {
+                self.project.change(|s| s.import_chara(&path))?;
                 self.snapshot()?;
             }
             Command::SaveEditor(editor) => {
@@ -148,35 +155,42 @@ impl Worker {
                     self.events.send(Event::Close)?;
                 }
             }
-            Command::SaveCharacter { id, input, preview } => {
-                self.project.change(|s| {
-                    let c = match id {
-                        Some(id) => s.library.update_character(id, input)?,
-                        None => s.library.create_character(input)?,
-                    };
-                    if let Some(preview) = preview {
-                        s.library
-                            .save_character_preview(&c.id, &s.previews, &preview)?;
+            Command::SaveChara { id, input } => {
+                if let Some(id) = id {
+                    let result = self
+                        .project
+                        .change(|s| Ok(s.library.update_chara(id.clone(), input)?));
+                    match result {
+                        Ok(_) => {
+                            self.chara_errors.remove(&id);
+                        }
+                        Err(error) => {
+                            self.chara_errors.insert(id, format!("{error:#}"));
+                            return Err(error);
+                        }
                     }
-                    Ok(())
-                })?;
+                } else {
+                    let chara = self
+                        .project
+                        .change(|s| Ok(s.library.create_chara(input)?))?;
+                    self.events.send(Event::CharaCreated(chara.id))?;
+                    self.snapshot()?;
+                }
+            }
+            Command::DeleteChara(id) => {
+                self.project.change(|s| Ok(s.library.delete_chara(&id)?))?;
                 self.snapshot()?;
             }
-            Command::DeleteCharacter(id) => {
+            Command::SelectTake { line_id, take_id } => {
                 self.project
-                    .change(|s| Ok(s.library.delete_character(&id)?))?;
-                self.snapshot()?;
-            }
-            Command::SelectTake { row_id, take_id } => {
-                self.project
-                    .change(|s| Ok(s.library.select_take(&row_id, take_id.as_deref())?))?;
+                    .change(|s| Ok(s.library.select_take(&line_id, take_id.as_deref())?))?;
                 self.snapshot()?;
             }
             Command::DeleteTake(id) => {
                 self.project.change(|s| Ok(s.library.delete_take(&id)?))?;
                 self.snapshot()?;
             }
-            Command::ImportVoices(paths) => {
+            Command::ImportVoices { chara_id, paths } => {
                 // Decode every file before changing the project.
                 let audio = paths
                     .iter()
@@ -190,23 +204,32 @@ impl Worker {
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
+                let mut chara = self.project.read(|s| Ok(s.library.chara(&chara_id)?))?;
                 for (name, wav) in audio {
                     let id = self
                         .project
                         .change(|s| Ok(s.library.save_voice(&name, &wav)?))?;
-                    self.events.send(Event::Voice(id))?;
+                    chara.voice_ids.push(id);
                 }
+                self.project
+                    .change(|s| Ok(s.library.update_chara(chara_id, chara.into())?))?;
                 self.snapshot()?;
             }
-            Command::ImportIcon(path) => {
-                self.events
-                    .send(Event::Icon(crate::icons::import_icon(&path)?))?;
+            Command::ImportIcon { chara_id, path } => {
+                let icon = crate::icons::import_icon(&path)?;
+                self.project.change(|s| {
+                    let mut chara = s.library.chara(&chara_id)?;
+                    chara.icon = Some(icon);
+                    Ok(s.library.update_chara(chara_id, chara.into())?)
+                })?;
+                self.snapshot()?;
             }
             Command::Generate(requests) => {
                 let inference = self.inference.clone();
                 self.generate_with(requests, |job| inference.synthesize(job))?;
             }
             Command::Preview {
+                chara_id,
                 input,
                 description,
                 voice_ids,
@@ -217,22 +240,24 @@ impl Worker {
                 })?;
                 let (take, wav) =
                     generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
-                self.project
-                    .read(|s| Ok(s.previews.save_take(&take, &wav)?))?;
-                self.events.send(Event::Preview(take.id))?;
-            }
-            Command::RemovePreview(id) => {
-                self.project.read(|s| Ok(s.previews.delete_take(&id)?))?;
+                self.project.change(|s| {
+                    s.previews.save_take(&take, &wav)?;
+                    s.library
+                        .save_chara_preview(&chara_id, &s.previews, &take.id)?;
+                    s.previews.delete_take(&take.id)?;
+                    Ok(())
+                })?;
+                self.snapshot()?;
             }
             Command::Audio(source) => {
                 let wav = self.project.read(|s| s.audio(&source))?;
                 self.events.send(Event::Audio(wav))?;
             }
-            Command::ExportScript { parent, naming } => {
+            Command::ExportLines { parent, naming } => {
                 if let Some(error) = &self.editor_error {
                     anyhow::bail!("台本を保存できないため書き出せません: {error}");
                 }
-                let (directory, count) = self.project.read(|s| s.export_script(&parent, naming))?;
+                let (directory, count) = self.project.read(|s| s.export_lines(&parent, naming))?;
                 self.events.send(Event::Exported { directory, count })?;
             }
             Command::Export { source, path } => {
@@ -247,7 +272,7 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{CharacterInput, EditorState};
+    use crate::domain::{CharaInput, EditorState};
     use irodoru_engine::{Audio, GenerationConditions, SynthOutput};
 
     fn worker() -> (Worker, mpsc::Receiver<Event>) {
@@ -262,12 +287,13 @@ mod tests {
                 ),
                 stop: Arc::new(AtomicBool::new(false)),
                 editor_error: None,
+                chara_errors: Default::default(),
             },
             rx,
         )
     }
     #[test]
-    fn failed_editor_write_blocks_close_and_switch_until_retry() {
+    fn failed_autosave_blocks_close_and_switch_until_retry() {
         let dir = tempfile::tempdir().unwrap();
         let (mut w, rx) = worker();
         w.execute(Command::Open {
@@ -301,6 +327,49 @@ mod tests {
         std::fs::write(&yaml, original).unwrap();
         w.execute(Command::SaveEditor(EditorState::default()))
             .unwrap();
+        w.execute(Command::Flush { close: true }).unwrap();
+        assert!(rx.try_iter().any(|event| matches!(event, Event::Close)));
+
+        let chara = w
+            .project
+            .change(|s| {
+                Ok(s.library.create_chara(crate::domain::CharaInput {
+                    name: "声".into(),
+                    description: String::new(),
+                    voice_ids: vec![],
+                    color: None,
+                    sample_text: None,
+                    icon: None,
+                })?)
+            })
+            .unwrap();
+        let mut input: crate::domain::CharaInput = chara.clone().into();
+        input.name.clear();
+        assert!(
+            w.execute(Command::SaveChara {
+                id: Some(chara.id.clone()),
+                input
+            })
+            .is_err()
+        );
+        assert!(w.execute(Command::Flush { close: true }).is_err());
+        assert!(
+            w.execute(Command::Open {
+                path: dir.path().join("blocked.iro"),
+                create: true
+            })
+            .is_err()
+        );
+        assert!(!rx.try_iter().any(|event| matches!(event, Event::Close)));
+        w.execute(Command::SaveChara {
+            id: Some(chara.id.clone()),
+            input: chara.into(),
+        })
+        .unwrap();
+        assert!(
+            !rx.try_iter()
+                .any(|event| matches!(event, Event::Snapshot(_)))
+        );
         w.execute(Command::Flush { close: true }).unwrap();
         assert!(rx.try_iter().any(|event| matches!(event, Event::Close)));
     }
@@ -339,7 +408,7 @@ mod tests {
         }
     }
     #[test]
-    fn stop_finishes_current_row_and_failed_regeneration_keeps_audio() {
+    fn stop_finishes_current_line_and_failed_regeneration_keeps_audio() {
         let dir = tempfile::tempdir().unwrap();
         let (mut w, _rx) = worker();
         w.execute(Command::Open {
@@ -347,10 +416,10 @@ mod tests {
             create: true,
         })
         .unwrap();
-        let character = w
+        let chara = w
             .project
             .change(|s| {
-                Ok(s.library.create_character(CharacterInput {
+                Ok(s.library.create_chara(CharaInput {
                     name: "声".into(),
                     description: "明るい声".into(),
                     voice_ids: Vec::new(),
@@ -360,10 +429,10 @@ mod tests {
                 })?)
             })
             .unwrap();
-        let rows = (0..2)
+        let lines = (0..2)
             .map(|_| {
                 let mut r =
-                    crate::workspace::editor::new_row(character.id.clone(), Default::default());
+                    crate::workspace::editor::new_line(chara.id.clone(), Default::default());
                 r.text = "こんにちは".into();
                 r
             })
@@ -371,15 +440,14 @@ mod tests {
         w.project
             .change(|s| {
                 Ok(s.library.save_editor(&EditorState {
-                    rows: rows.clone(),
+                    lines: lines.clone(),
                     ..Default::default()
                 })?)
             })
             .unwrap();
-        let requests =
-            crate::workspace::editor::requests(&rows, &[character], &Default::default()).unwrap();
+        let requests = crate::workspace::editor::requests(&lines, &[chara]).unwrap();
         let mut invalid = requests.clone();
-        invalid[1].character_id = "missing".into();
+        invalid[1].chara_id = "missing".into();
         assert!(
             w.generate_with(invalid, |_| panic!("validate the entire queue first"))
                 .is_err()

@@ -1,4 +1,4 @@
-//! Script list composition; rows and insertion gaps are sibling elements.
+//! Line list composition; lines and insertion gaps are sibling elements.
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::{button, tool};
 use gpui_kit::component::Disableable;
@@ -7,13 +7,13 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 #[derive(Clone)]
-pub(super) struct DraggedRow {
+pub(super) struct DraggedLine {
     studio: EntityId,
     id: String,
     text: String,
 }
 
-impl Render for DraggedRow {
+impl Render for DraggedLine {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
             .px_3()
@@ -30,10 +30,10 @@ impl Render for DraggedRow {
     }
 }
 
-mod row;
+mod line;
 
 impl Studio {
-    pub(in crate::workspace::view) fn script(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::workspace::view) fn lines(&self, cx: &mut Context<Self>) -> AnyElement {
         div()
             .flex_1()
             .min_h_0()
@@ -45,8 +45,8 @@ impl Studio {
                     .flex()
                     .flex_1()
                     .min_h_0()
-                    .child(self.script_rows(cx))
-                    .child(self.script_scrollbar()),
+                    .child(self.line_list(cx))
+                    .child(self.line_scrollbar()),
             )
             .when(self.state.running.is_some(), |el| {
                 el.child(self.generation_stop(cx))
@@ -54,32 +54,32 @@ impl Studio {
             .into_any_element()
     }
 
-    fn script_rows(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn line_list(&self, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .id("script")
+            .id("lines")
             .flex_1()
             .min_w_0()
             .overflow_y_scroll()
-            .track_scroll(&self.script_scroll)
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DraggedRow>, _, cx| {
-                let delta = if event.drag(cx).studio == cx.entity_id() && !this.state.busy && this.state.draft.is_none() {
+            .track_scroll(&self.line_scroll)
+            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DraggedLine>, _, cx| {
+                let delta = if event.drag(cx).studio == cx.entity_id() && !this.state.busy {
                     AutoScroll::compute_delta(event.event.position.y, event.bounds)
                 } else { None };
-                this.script_drag_scroll.set(delta, cx, |delta, this, cx| {
-                    if !cx.has_active_drag() || this.state.busy || this.state.draft.is_some() {
-                        this.script_drag_scroll.stop();
+                this.line_drag_scroll.set(delta, cx, |delta, this, cx| {
+                    if !cx.has_active_drag() || this.state.busy {
+                        this.line_drag_scroll.stop();
                         return;
                     }
-                    let offset = this.script_scroll.offset();
-                    this.script_scroll.set_offset(point(offset.x, (offset.y - delta).clamp(-this.script_scroll.max_offset().y, px(0.))));
+                    let offset = this.line_scroll.offset();
+                    this.line_scroll.set_offset(point(offset.x, (offset.y - delta).clamp(-this.line_scroll.max_offset().y, px(0.))));
                     cx.notify();
                 });
             }))
             .p_1()
-            .when(self.state.snapshot.editor.rows.is_empty(), |el| {
+            .when(self.state.snapshot.editor.lines.is_empty(), |el| {
                 let message = if self.state.status.id.is_none() {
                     "左下のファイルからプロジェクトを作成するか、開いて台本を書き始めましょう。"
-                } else if self.state.snapshot.characters.is_empty() {
+                } else if self.state.snapshot.charas.is_empty() {
                     "まずは左下の＋からキャラを追加してください。追加後、台本の＋からセリフを書き始められます。"
                 } else {
                     "台本がまだありません。下の＋からセリフを追加してください。"
@@ -87,74 +87,85 @@ impl Studio {
                 el.child(div().ml(px(40.)).mr(px(4.)).py_4().text_sm().line_height(px(24.))
                     .text_color(self.palette().muted).child(message))
             })
-            .when(!self.state.snapshot.editor.rows.is_empty(), |el| {
-                el.child(self.script_insert(0, cx))
+            .when(!self.state.snapshot.editor.lines.is_empty(), |el| {
+                el.child(self.line_insert(0, cx))
             })
             .children(
                 self.state
                     .snapshot
                     .editor
-                    .rows
+                    .lines
                     .iter()
                     .enumerate()
-                    .flat_map(|(i, row)| {
-                        [self.script_row(i, row, cx), self.script_insert(i + 1, cx)]
+                    .flat_map(|(i, line)| {
+                        [self.line(i, line, cx), self.line_insert(i + 1, cx)]
                     }),
             )
-            .child(self.script_append(cx))
+            .child(self.line_append(cx))
             .into_any_element()
     }
 
-    fn script_append(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn line_append(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let disabled = self.state.busy
-            || self.state.draft.is_some()
             || self.state.status.id.is_none()
-            || self.state.snapshot.characters.is_empty();
+            || self.state.snapshot.charas.is_empty();
+        let chara = self.state.active_chara();
         div()
-            .ml(px(40.))
-            .mr(px(4.))
-            .mb_2()
+            .flex()
+            .items_start()
+            .gap_2()
+            .px_1()
+            .mt(px(32.))
+            .mb_4()
+            .child(self.avatar(chara, 28.).mt(px(6.)))
             .child(
-                tool("append-script-row", "plus", "末尾にセリフを追加")
-                    .w_full()
-                    .h(px(32.))
-                    .rounded(px(8.))
-                    .bg(p.control)
-                    .border_1()
-                    .border_color(p.line)
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, w, cx| {
-                        let character = this.state.snapshot.editor.active_character.clone();
-                        let inserted = if character.is_empty() {
-                            this.state.add_row(false)
-                        } else {
-                            this.state.append_character_row(character)
-                        };
-                        if inserted {
-                            this.edited(w, cx);
-                            this.script_scroll.scroll_to_bottom();
-                            this.fields.text.update(cx, |state, cx| state.focus(w, cx));
-                        }
-                    })),
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        tool("append-line", "plus", "末尾にセリフを追加")
+                            .w_full()
+                            .h(px(40.))
+                            .rounded(px(8.))
+                            .bg(p.control)
+                            .border_2()
+                            .border_color(p.line)
+                            .disabled(disabled)
+                            .when(disabled, |el| el.cursor_default())
+                            .on_click(cx.listener(|this, _, w, cx| {
+                                let chara = this.state.snapshot.editor.active_chara.clone();
+                                let inserted = if chara.is_empty() {
+                                    this.state.add_line(false)
+                                } else {
+                                    this.state.append_chara_line(chara)
+                                };
+                                if inserted {
+                                    this.edited(w, cx);
+                                    this.line_scroll.scroll_to_bottom();
+                                    this.fields.text.update(cx, |state, cx| state.focus(w, cx));
+                                }
+                            })),
+                    )
+                    .child(self.speech_tail(p.line)),
             )
             .into_any_element()
     }
 
-    fn script_insert(&self, slot: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn line_insert(&self, slot: usize, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
-        let rows = &self.state.snapshot.editor.rows;
-        let after = slot.checked_sub(1).map(|i| rows[i].id.clone());
+        let lines = &self.state.snapshot.editor.lines;
+        let after = slot.checked_sub(1).map(|i| lines[i].id.clone());
         let drop_after = after.clone();
-        let disabled = self.state.busy || self.state.draft.is_some();
+        let disabled = self.state.busy;
         let studio = cx.entity_id();
         div()
-            .id(("script-insert", slot))
-            .group("script-insert")
+            .id(("lines-insert", slot))
+            .group("lines-insert")
             .relative()
             .h(px(8.))
-            .when(slot > 0 && slot < rows.len(), |el| {
+            .when(slot > 0 && slot < lines.len(), |el| {
                 el.child(
                     div()
                         .absolute()
@@ -177,7 +188,7 @@ impl Studio {
                     .items_center()
                     .justify_center()
                     .when(!disabled, |el| {
-                        el.drag_over::<DraggedRow>(move |style, drag, _, _| {
+                        el.drag_over::<DraggedLine>(move |style, drag, _, _| {
                             if drag.studio == studio {
                                 style
                                     .bg(p.accent.opacity(0.25))
@@ -188,25 +199,22 @@ impl Studio {
                             }
                         })
                         .on_drop(cx.listener(
-                            move |this, drag: &DraggedRow, window, cx| {
-                                if drag.studio != cx.entity_id()
-                                    || this.state.busy
-                                    || this.state.draft.is_some()
-                                {
+                            move |this, drag: &DraggedLine, window, cx| {
+                                if drag.studio != cx.entity_id() || this.state.busy {
                                     return;
                                 }
                                 if !this
                                     .state
                                     .snapshot
                                     .editor
-                                    .rows
+                                    .lines
                                     .iter()
-                                    .any(|row| row.id == drag.id)
+                                    .any(|line| line.id == drag.id)
                                 {
                                     return;
                                 }
                                 this.select(drag.id.clone(), window, cx);
-                                this.move_row(drop_after.as_deref(), cx);
+                                this.move_line(drop_after.as_deref(), cx);
                             },
                         ))
                     })
@@ -217,7 +225,7 @@ impl Studio {
                             .bg(p.control)
                             .disabled(disabled)
                             .invisible()
-                            .group_hover("script-insert", |style| style.visible())
+                            .group_hover("lines-insert", |style| style.visible())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 if this.state.insert_at(after.as_deref(), false) {
                                     this.edited(window, cx);
@@ -231,13 +239,13 @@ impl Studio {
             .into_any_element()
     }
 
-    fn script_scrollbar(&self) -> AnyElement {
+    fn line_scrollbar(&self) -> AnyElement {
         div()
             .relative()
             .w(px(24.))
             .flex_shrink_0()
             .child(
-                Scrollbar::vertical(&self.script_scroll)
+                Scrollbar::vertical(&self.line_scroll)
                     .viewport_from_layout()
                     .mode(ScrollbarMode::Always)
                     .styles(|s| {

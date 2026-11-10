@@ -4,7 +4,21 @@ fn set_seed(project: &Project, seed: &str) {
     project
         .change(|session| {
             let mut editor = session.library.editor()?;
-            editor.preferences.seed = seed.into();
+            if editor.lines.is_empty() {
+                editor.lines.push(irodoru::domain::Line {
+                    takes: Vec::new(),
+                    id: "line".into(),
+                    text: String::new(),
+                    chara_id: String::new(),
+                    take_id: None,
+                    prompt: None,
+                    settings: None,
+                });
+            }
+            editor.lines[0]
+                .settings
+                .get_or_insert_with(Default::default)
+                .seed = seed.into();
             Ok(session.library.save_editor(&editor)?)
         })
         .unwrap();
@@ -16,8 +30,12 @@ fn saved_seed(path: &std::path::Path) -> String {
         .library
         .editor()
         .unwrap()
-        .preferences
+        .lines[0]
+        .settings
+        .as_ref()
+        .unwrap()
         .seed
+        .clone()
 }
 
 #[test]

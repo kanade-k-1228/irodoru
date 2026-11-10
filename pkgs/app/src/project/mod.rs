@@ -1,11 +1,11 @@
 //! Project lifetime, portable ZIP archives and single-writer autosave.
 mod active;
 mod archive;
-mod characters;
+mod charas;
 mod export;
 pub use export::ExportNaming;
 #[cfg(feature = "desktop")]
-pub(crate) use export::export_rows;
+pub(crate) use export::export_lines;
 mod autosave;
 #[cfg(any(feature = "desktop", test))]
 pub(crate) mod incoming;

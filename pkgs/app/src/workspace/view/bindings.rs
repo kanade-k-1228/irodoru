@@ -31,48 +31,15 @@ impl Studio {
                 .new(|cx| TextareaState::new(window, cx).placeholder("声の特徴・話し方")),
             prompt: input("追加プロンプト", window, cx),
             seed: input("ランダム", window, cx),
+            preview_seed: input("ランダム", window, cx),
+            preview_steps: input("モデル既定（40）", window, cx),
             steps: input("モデル既定（40）", window, cx),
             name: input("キャラクター名", window, cx),
             sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };
-        let [speed, text, speaker, caption] = [
-            cx.new(|_| {
-                SliderState::new()
-                    // Equal distances represent reciprocal speed ratios around 1×.
-                    .min(-1.0)
-                    .max(1.0)
-                    .step(0.01)
-                    .default_value(0.0)
-            }),
-            cx.new(|_| {
-                SliderState::new()
-                    .min(0.0)
-                    .max(10.0)
-                    .step(0.5)
-                    .default_value(3.0)
-            }),
-            cx.new(|_| {
-                SliderState::new()
-                    .min(0.0)
-                    .max(10.0)
-                    .step(0.5)
-                    .default_value(5.0)
-            }),
-            cx.new(|_| {
-                SliderState::new()
-                    .min(0.0)
-                    .max(10.0)
-                    .step(0.5)
-                    .default_value(3.0)
-            }),
-        ];
-        let sliders = GenerationSliders {
-            speed,
-            text,
-            speaker,
-            caption,
-        };
+        let sliders = make_sliders(cx);
+        let preview_sliders = make_sliders(cx);
         let seek = cx.new(|_| SliderState::new().min(0.0).max(1.0).step(0.001));
         let mut subscriptions = Vec::new();
         for (entity, field) in [
@@ -92,6 +59,27 @@ impl Studio {
                 },
             ));
         }
+        for (entity, seed) in [(&fields.preview_seed, true), (&fields.preview_steps, false)] {
+            subscriptions.push(cx.subscribe_in(
+                entity,
+                window,
+                move |this, input, event, _, cx| {
+                    if matches!(event, InputEvent::Change)
+                        && !this.sync
+                        && !this.state.busy
+                        && !this.state.chara_locked
+                    {
+                        let value = input.read(cx).value().to_string();
+                        if seed {
+                            this.state.preview_settings.seed = value;
+                        } else {
+                            this.state.preview_settings.num_steps = value;
+                        }
+                        cx.notify();
+                    }
+                },
+            ));
+        }
         subscriptions.push(
             cx.subscribe_in(&fields.color, window, |this, _, event, _, cx| {
                 if let ColorPickerEvent::Change(Some(color)) = event
@@ -99,12 +87,13 @@ impl Studio {
                     && !this.state.busy
                 {
                     let c: Rgba = (*color).into();
-                    this.state.set_draft_color(format!(
+                    this.state.set_chara_color(format!(
                         "#{:02x}{:02x}{:02x}",
                         (c.r * 255.).round() as u8,
                         (c.g * 255.).round() as u8,
                         (c.b * 255.).round() as u8
                     ));
+                    this.autosave_chara();
                     cx.notify();
                 }
             }),
@@ -124,7 +113,6 @@ impl Studio {
                 } = event
                     && !this.sync
                     && !this.state.busy
-                    && this.state.draft.is_none()
                     && input.update(cx, |state, cx| {
                         state.marked_text_range(window, cx).is_none()
                     })
@@ -165,6 +153,24 @@ impl Studio {
                         if this.state.change_generation(field, value) {
                             this.autosave();
                         }
+                        cx.notify();
+                    }
+                }),
+            );
+        }
+        for (field, slider) in preview_sliders.iter() {
+            subscriptions.push(
+                cx.subscribe_in(slider, window, move |this, _, event, _, cx| {
+                    if let SliderEvent::Change(SliderValue::Single(value)) = event
+                        && !this.sync
+                        && !this.state.busy
+                    {
+                        let value = if matches!(field, GenerationField::Speed) {
+                            value.exp2()
+                        } else {
+                            *value
+                        };
+                        this.state.change_preview_generation(field, value);
                         cx.notify();
                     }
                 }),
@@ -242,11 +248,13 @@ impl Studio {
             },
             fields,
             sliders,
+            preview_sliders,
             seek,
             subscriptions,
             advanced: false,
-            script_scroll: ScrollHandle::new(),
-            script_drag_scroll: Default::default(),
+            preview_advanced: false,
+            line_scroll: ScrollHandle::new(),
+            line_drag_scroll: Default::default(),
             settings,
             playback: None,
             audio_id: None,
@@ -273,21 +281,24 @@ impl Studio {
         studio
     }
     pub(super) fn changed(&mut self, field: Field, value: String) {
-        if self.state.change(field, value) {
+        let save_line = self.state.change(field, value);
+        if matches!(field, Field::Name | Field::Description | Field::Sample) {
+            self.autosave_chara();
+        } else if save_line {
             self.autosave();
         }
     }
     pub(super) fn sync_fields(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync = true;
-        let row = self
+        let line = self
             .state
             .snapshot
             .editor
-            .rows
+            .lines
             .iter()
             .find(|r| Some(&r.id) == self.state.selected.as_ref());
-        let text = row.map(|r| r.text.clone()).unwrap_or_default();
-        let prompt = row.and_then(|r| r.prompt.clone()).unwrap_or_default();
+        let text = line.map(|r| r.text.clone()).unwrap_or_default();
+        let prompt = line.and_then(|r| r.prompt.clone()).unwrap_or_default();
         self.fields
             .text
             .update(cx, |f, cx| f.set_value(text, window, cx));
@@ -310,24 +321,79 @@ impl Studio {
         {
             slider.update(cx, |s, cx| s.set_value(value, window, cx));
         }
-        if let Some(d) = &self.state.draft {
+        if let Some(chara) = self.state.active_chara() {
             self.fields
                 .name
-                .update(cx, |f, cx| f.set_value(d.input.name.clone(), window, cx));
+                .update(cx, |f, cx| f.set_value(chara.name.clone(), window, cx));
             self.fields.description.update(cx, |f, cx| {
-                f.set_value(d.input.description.clone(), window, cx)
+                f.set_value(chara.description.clone(), window, cx)
             });
             self.fields.sample.update(cx, |f, cx| {
-                f.set_value(d.input.sample_text.clone().unwrap_or_default(), window, cx)
+                f.set_value(chara.sample_text.clone(), window, cx)
             });
             self.fields.color.update(cx, |f, cx| {
                 f.set_value(
-                    appearance::character_color(d.input.color.as_deref(), rgb(0x41a2ec).into()),
+                    appearance::chara_color(Some(chara.color.as_str()), rgb(0x41a2ec).into()),
                     window,
                     cx,
                 )
             });
         }
+        let preview = &self.state.preview_settings;
+        self.fields
+            .preview_seed
+            .update(cx, |f, cx| f.set_value(preview.seed.clone(), window, cx));
+        self.fields.preview_steps.update(cx, |f, cx| {
+            f.set_value(preview.num_steps.clone(), window, cx)
+        });
+        for ((_, slider), value) in self.preview_sliders.iter().into_iter().zip([
+            preview.speed().log2() as f32,
+            preview.cfg_text,
+            preview.cfg_speaker,
+            preview.cfg_caption,
+        ]) {
+            slider.update(cx, |s, cx| s.set_value(value, window, cx));
+        }
         self.sync = false;
+    }
+}
+
+fn make_sliders(cx: &mut Context<Studio>) -> GenerationSliders {
+    let [speed, text, speaker, caption] = [
+        cx.new(|_| {
+            SliderState::new()
+                // Equal distances represent reciprocal speed ratios around 1×.
+                .min(-1.0)
+                .max(1.0)
+                .step(0.01)
+                .default_value(0.0)
+        }),
+        cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(10.0)
+                .step(0.5)
+                .default_value(3.0)
+        }),
+        cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(10.0)
+                .step(0.5)
+                .default_value(5.0)
+        }),
+        cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(10.0)
+                .step(0.5)
+                .default_value(3.0)
+        }),
+    ];
+    GenerationSliders {
+        speed,
+        text,
+        speaker,
+        caption,
     }
 }

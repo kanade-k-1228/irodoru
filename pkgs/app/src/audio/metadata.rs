@@ -64,9 +64,9 @@ mod tests {
             GenerationConditions::from_params("anime".into(), &job.params, 42, 8, 48000);
         let voice = Voice::Generated(Box::new(crate::domain::Take {
             id: crate::domain::new_id(),
-            row_id: crate::domain::new_id(),
-            character_id: None,
-            character_name: "生成音声".into(),
+            line_id: crate::domain::new_id(),
+            chara_id: None,
+            chara_name: "生成音声".into(),
             additional_prompt: String::new(),
             voice_ids: Vec::new(),
             conditions: conditions.clone(),

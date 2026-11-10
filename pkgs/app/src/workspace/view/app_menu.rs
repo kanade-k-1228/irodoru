@@ -11,8 +11,8 @@ use gpui_kit::*;
 pub(super) enum MenuAction {
     NewWindow,
     NewProject,
-    NewFromCharacters,
-    ImportCharacter,
+    NewFromCharas,
+    ImportChara,
     OpenProject,
     SaveProject,
     Preferences,
@@ -23,12 +23,8 @@ use MenuAction::*;
 const MENU_ITEMS: [(MenuAction, &str, &str); 7] = [
     (NewWindow, "新規ウィンドウ", "app-window"),
     (NewProject, "新規プロジェクト…", "new"),
-    (
-        NewFromCharacters,
-        "キャラクターを引き継いで新規作成…",
-        "copy",
-    ),
-    (ImportCharacter, "キャラクターファイルを読み込む…", "folder"),
+    (NewFromCharas, "キャラクターを引き継いで新規作成…", "copy"),
+    (ImportChara, "キャラクターファイルを読み込む…", "folder"),
     (OpenProject, "プロジェクトを開く…", "folder"),
     (SaveProject, "プロジェクトを保存", "save"),
     (CloseWindow, "ウィンドウを閉じる", "close"),
@@ -211,10 +207,8 @@ impl Studio {
     }
     fn action_disabled(&self, action: MenuAction) -> bool {
         match action {
-            NewProject | OpenProject => self.state.busy || self.state.draft.is_some(),
-            NewFromCharacters | ImportCharacter => {
-                self.state.busy || self.state.draft.is_some() || self.state.status.id.is_none()
-            }
+            NewProject | OpenProject => self.state.busy,
+            NewFromCharas | ImportChara => self.state.busy || self.state.status.id.is_none(),
             SaveProject => self.state.busy || self.state.status.id.is_none(),
             CloseWindow => self.state.busy,
             _ => false,
@@ -239,8 +233,8 @@ impl Studio {
                 cx.emit(WindowRequest::New);
             }
             NewProject => self.choose_project(ProjectDialog::New, window, cx),
-            NewFromCharacters => self.choose_project(ProjectDialog::FromCharacters, window, cx),
-            ImportCharacter => self.character_file(false, window, cx),
+            NewFromCharas => self.choose_project(ProjectDialog::FromCharas, window, cx),
+            ImportChara => self.chara_file(false, window, cx),
             OpenProject => self.choose_project(ProjectDialog::Open, window, cx),
             SaveProject => {
                 self.autosave();

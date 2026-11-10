@@ -32,13 +32,14 @@ impl Default for GenerationSettings {
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ScriptRow {
+pub struct Line {
+    pub takes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "voice_id")]
     pub take_id: Option<String>,
     pub id: String,
     pub text: String,
-    pub character_id: String,
+    pub chara_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,7 +47,7 @@ pub struct ScriptRow {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct EditorState {
-    pub rows: Vec<ScriptRow>,
-    pub preferences: GenerationSettings,
-    pub active_character: String,
+    pub lines: Vec<Line>,
+    #[serde(skip)]
+    pub active_chara: String,
 }

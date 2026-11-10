@@ -7,16 +7,6 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
-    pub(super) fn audio_player(
-        &self,
-        key: (&'static str, usize),
-        source: AudioSource,
-        duration: f64,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        self.audio_player_controls(key, source, duration, true, cx)
-    }
-
     pub(super) fn audio_player_controls(
         &self,
         key: (&'static str, usize),

@@ -45,8 +45,8 @@ impl Render for Studio {
             .when_some(self.state.error.clone(), |el, error| {
                 el.child(self.error_banner(error, cx))
             })
-            .child(self.script(cx))
-            .child(self.character_panel(window, cx))
+            .child(self.lines(cx))
+            .child(self.chara_panel(window, cx))
             .child(self.footer(cx))
             .when(self.menu_open, |el| el.child(self.app_menu(cx)))
     }

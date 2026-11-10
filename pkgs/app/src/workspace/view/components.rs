@@ -1,6 +1,6 @@
 use super::Studio;
-use super::appearance::{Palette, blend, character_color};
-use crate::domain::{Character, InferenceStatus};
+use super::appearance::{Palette, blend, chara_color};
+use crate::domain::{Chara, InferenceStatus};
 use base64::Engine as _;
 use gpui_kit::*;
 
@@ -9,20 +9,8 @@ impl Studio {
         Palette::new(self.settings.theme.is_light())
     }
     pub(super) fn accent(&self) -> Hsla {
-        let color = self
-            .state
-            .draft
-            .as_ref()
-            .and_then(|d| d.input.color.as_deref())
-            .or_else(|| {
-                self.state
-                    .snapshot
-                    .characters
-                    .iter()
-                    .find(|c| c.id == self.state.snapshot.editor.active_character)
-                    .map(|c| c.color.as_str())
-            });
-        character_color(color, self.palette().accent)
+        let color = self.state.active_chara().map(|chara| chara.color.as_str());
+        chara_color(color, self.palette().accent)
     }
     pub(super) fn can_generate(&self) -> bool {
         self.inference
@@ -30,9 +18,9 @@ impl Studio {
             .is_some_and(|s| matches!(s.status(), InferenceStatus::Ready))
             && self.state.status.id.is_some()
     }
-    pub(super) fn avatar(&self, character: Option<&Character>, size: f32) -> Div {
+    pub(super) fn avatar(&self, chara: Option<&Chara>, size: f32) -> Div {
         let p = self.palette();
-        let color = character_color(character.map(|c| c.color.as_str()), p.accent);
+        let color = chara_color(chara.map(|c| c.color.as_str()), p.accent);
         div()
             .size(px(size))
             .flex_shrink_0()
@@ -46,12 +34,12 @@ impl Studio {
             .overflow_hidden()
             .text_sm()
             .child(
-                if let Some(image) = character_icon(character.and_then(|c| c.icon.as_deref())) {
+                if let Some(image) = chara_icon(chara.and_then(|c| c.icon.as_deref())) {
                     img(image).size_full().rounded_full().into_any_element()
                 } else {
                     div()
                         .child(
-                            character
+                            chara
                                 .and_then(|c| c.name.chars().next())
                                 .map(|c| c.to_string())
                                 .unwrap_or_else(|| "?".into()),
@@ -61,7 +49,7 @@ impl Studio {
             )
     }
 }
-pub(super) fn character_icon(data: Option<&str>) -> Option<std::sync::Arc<Image>> {
+pub(super) fn chara_icon(data: Option<&str>) -> Option<std::sync::Arc<Image>> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data?.strip_prefix("data:image/png;base64,")?)
         .ok()?;
