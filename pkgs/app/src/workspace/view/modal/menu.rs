@@ -21,15 +21,43 @@ pub(in crate::workspace::view) enum MenuAction {
 }
 use MenuAction::*;
 
-const MENU_ITEMS: [(MenuAction, &str, &str); 7] = [
-    (NewWindow, "新規ウィンドウ", "app-window"),
-    (NewProject, "新規プロジェクト…", "new"),
-    (NewFromCharas, "キャラクターを引き継いで新規作成…", "copy"),
-    (ImportChara, "キャラクターファイルを読み込む…", "folder"),
-    (OpenProject, "プロジェクトを開く…", "folder"),
-    (SaveProject, "プロジェクトを保存", "save"),
-    (CloseWindow, "ウィンドウを閉じる", "close"),
-];
+impl MenuAction {
+    /// The menu's items, in display order. Preferences opens from the footer instead.
+    const MENU: [Self; 7] = [
+        NewWindow,
+        NewProject,
+        NewFromCharas,
+        ImportChara,
+        OpenProject,
+        SaveProject,
+        CloseWindow,
+    ];
+
+    pub(in crate::workspace::view) fn label(self) -> &'static str {
+        match self {
+            NewWindow => "新規ウィンドウ",
+            NewProject => "新規プロジェクト…",
+            NewFromCharas => "キャラクターを引き継いで新規作成…",
+            ImportChara => "キャラクターファイルを読み込む…",
+            OpenProject => "プロジェクトを開く…",
+            SaveProject => "プロジェクトを保存",
+            Preferences => "設定",
+            CloseWindow => "ウィンドウを閉じる",
+        }
+    }
+
+    pub(in crate::workspace::view) fn icon(self) -> &'static str {
+        match self {
+            NewWindow => "app-window",
+            NewProject => "new",
+            NewFromCharas => "copy",
+            ImportChara | OpenProject => "folder",
+            SaveProject => "save",
+            Preferences => "gear",
+            CloseWindow => "close",
+        }
+    }
+}
 
 impl Studio {
     pub(in crate::workspace::view) fn open_project_menu(
@@ -40,7 +68,7 @@ impl Studio {
         if self.modal.is_some() {
             return;
         }
-        self.menu_index = (0..MENU_ITEMS.len())
+        self.menu_index = (0..MenuAction::MENU.len())
             .find(|i| !self.menu_disabled(*i))
             .unwrap_or(0);
         self.open_modal(
@@ -70,27 +98,19 @@ impl Studio {
             }))
             // The dialog binds Enter to its own confirmation, which only closes it.
             .on_action(cx.listener(|this, _: &Confirm, window, cx| {
-                this.menu_select(MENU_ITEMS[this.menu_index].0, window, cx);
+                this.menu_select(MenuAction::MENU[this.menu_index], window, cx);
             }))
             .capture_key_down(cx.listener(Self::menu_key_down))
             .children(
-                MENU_ITEMS
+                MenuAction::MENU
                     .iter()
                     .enumerate()
-                    .map(|(index, (_, label, icon_name))| {
-                        self.menu_item(index, label, icon_name, cx)
-                    }),
+                    .map(|(index, action)| self.menu_item(index, *action, cx)),
             )
             .into_any_element()
     }
 
-    fn menu_item(
-        &self,
-        index: usize,
-        label: &'static str,
-        icon_name: &'static str,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn menu_item(&self, index: usize, action: MenuAction, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let disabled = self.menu_disabled(index);
         div()
@@ -116,12 +136,10 @@ impl Studio {
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(icon(icon_name).flex_shrink_0())
-                            .child(label),
+                            .child(icon(action.icon()).flex_shrink_0())
+                            .child(action.label()),
                     )
-                    .on_click(cx.listener(move |this, _, w, cx| {
-                        this.menu_select(MENU_ITEMS[index].0, w, cx)
-                    })),
+                    .on_click(cx.listener(move |this, _, w, cx| this.menu_select(action, w, cx))),
             )
             .into_any_element()
     }
@@ -129,14 +147,14 @@ impl Studio {
     fn menu_key_down(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
         match key {
-            "enter" | "space" => self.menu_select(MENU_ITEMS[self.menu_index].0, w, cx),
+            "enter" | "space" => self.menu_select(MenuAction::MENU[self.menu_index], w, cx),
             "home" => {
-                self.menu_index = (0..MENU_ITEMS.len())
+                self.menu_index = (0..MenuAction::MENU.len())
                     .find(|i| !self.menu_disabled(*i))
                     .unwrap_or(0);
             }
             "end" => {
-                self.menu_index = (0..MENU_ITEMS.len())
+                self.menu_index = (0..MenuAction::MENU.len())
                     .rev()
                     .find(|i| !self.menu_disabled(*i))
                     .unwrap_or(0)
@@ -149,9 +167,13 @@ impl Studio {
     }
 
     fn move_menu_selection(&mut self, backwards: bool) {
-        let delta = if backwards { MENU_ITEMS.len() - 1 } else { 1 };
-        for _ in 0..MENU_ITEMS.len() {
-            self.menu_index = (self.menu_index + delta) % MENU_ITEMS.len();
+        let delta = if backwards {
+            MenuAction::MENU.len() - 1
+        } else {
+            1
+        };
+        for _ in 0..MenuAction::MENU.len() {
+            self.menu_index = (self.menu_index + delta) % MenuAction::MENU.len();
             if !self.menu_disabled(self.menu_index) {
                 break;
             }
@@ -159,7 +181,7 @@ impl Studio {
     }
 
     fn menu_disabled(&self, index: usize) -> bool {
-        self.action_disabled(MENU_ITEMS[index].0)
+        self.action_disabled(MenuAction::MENU[index])
     }
     fn action_disabled(&self, action: MenuAction) -> bool {
         match action {

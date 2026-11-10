@@ -75,11 +75,15 @@ impl Studio {
                     }),
             )
             .child(
-                self.footer_button("footer-settings", "gear", "設定")
-                    .track_focus(&self.menu_trigger_focus)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.menu_select(MenuAction::Preferences, window, cx);
-                    })),
+                self.footer_button(
+                    "footer-settings",
+                    MenuAction::Preferences.icon(),
+                    MenuAction::Preferences.label(),
+                )
+                .track_focus(&self.menu_trigger_focus)
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.menu_select(MenuAction::Preferences, window, cx);
+                })),
             )
             .into_any_element()
     }
