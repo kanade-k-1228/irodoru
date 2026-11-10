@@ -1,6 +1,6 @@
 use super::Studio;
 use super::appearance::{button, tool};
-use gpui_kit::component::Disableable;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::slider::{Slider, SliderState};
@@ -151,8 +151,7 @@ impl Studio {
             .gap_2()
             .child(
                 button("reset-settings", "既定設定に戻す")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, w, cx| {
                         if this.state.reset_line_settings() {
                             this.edited(w, cx);
@@ -161,8 +160,7 @@ impl Studio {
             )
             .child(
                 tool("duplicate-line", "copy", "行を複製")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, w, cx| this.add(true, w, cx))),
             )
             .into_any_element()

@@ -119,7 +119,7 @@ impl Studio {
                 {
                     if *secondary {
                         if this.can_generate() && !input.read(cx).value().trim().is_empty() {
-                            this.generate(false, false, window, cx);
+                            this.generate(false, window, cx);
                         }
                     } else {
                         this.add(false, window, cx);

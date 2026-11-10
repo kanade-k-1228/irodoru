@@ -155,7 +155,7 @@ impl WorkspaceState {
                 let after = index
                     .checked_sub(1)
                     .map(|i| self.snapshot.editor.lines[i].id.clone());
-                self.insert_at(after.as_deref(), false)
+                self.insert_at(after.as_deref())
             }
             LineAction::Duplicate => self.add_line(true),
             LineAction::Delete => self.remove_line(),
@@ -182,32 +182,22 @@ impl WorkspaceState {
         self.select(id)
     }
 
-    pub fn insert_at(&mut self, after: Option<&str>, duplicate: bool) -> bool {
+    pub fn insert_at(&mut self, after: Option<&str>) -> bool {
         if !self.can_edit_lines()
             || after.is_some_and(|id| !self.snapshot.editor.lines.iter().any(|line| line.id == id))
         {
             return false;
         }
-        let source = if duplicate {
-            let Some(id) = self
-                .selected
-                .as_deref()
-                .filter(|id| self.snapshot.editor.lines.iter().any(|line| line.id == *id))
-            else {
-                return false;
-            };
-            Some(id)
-        } else {
-            after.or_else(|| {
+        let source = after
+            .or_else(|| {
                 self.snapshot
                     .editor
                     .lines
                     .first()
                     .map(|line| line.id.as_str())
             })
-        }
-        .map(str::to_owned);
-        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), duplicate);
+            .map(str::to_owned);
+        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), false);
         editor::move_line(&mut self.snapshot.editor.lines, &id, after);
         self.select(id)
     }
@@ -422,7 +412,7 @@ impl WorkspaceState {
         editor::randomize_line(&mut self.snapshot.editor, id, previous, seed)?;
         Ok(true)
     }
-    pub fn generate(&self, all: bool) -> Result<Option<Command>> {
+    pub fn generate(&self) -> Result<Option<Command>> {
         if !self.can_edit_lines() {
             return Ok(None);
         }
@@ -431,7 +421,7 @@ impl WorkspaceState {
             .editor
             .lines
             .iter()
-            .filter(|line| all || Some(&line.id) == self.selected.as_ref())
+            .filter(|line| Some(&line.id) == self.selected.as_ref())
             .cloned()
             .collect::<Vec<_>>();
         let requests = editor::requests(&lines, &self.snapshot.charas)?;

@@ -1,9 +1,8 @@
 use crate::domain::{AudioSource, Line};
 use crate::workspace::state::LineAction;
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::tool;
-use gpui_kit::component::Disableable;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
@@ -31,8 +30,7 @@ impl Studio {
                     tool(("line-action", i * 4 + key), icon, label)
                         .size(px(40.))
                         .rounded_none()
-                        .disabled(disabled)
-                        .when(disabled, |el| el.cursor_default())
+                        .disabled_with_cursor(disabled)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if this.state.edit_line(&id, action) {
                                 this.edited(window, cx);
@@ -81,8 +79,7 @@ impl Studio {
         )
         .size(px(40.))
         .rounded_none()
-        .disabled(disabled)
-        .when(disabled, |el| el.cursor_default())
+        .disabled_with_cursor(disabled)
         .on_click(cx.listener(move |this, _, _, cx| {
             if let Some(source) = &source {
                 this.play(source.clone());

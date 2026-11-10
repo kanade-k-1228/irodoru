@@ -10,8 +10,7 @@ const MAX_ENTRIES: usize = 256;
 const MAX_METADATA: u64 = 1024 * 1024;
 
 pub(super) fn import(path: &Path, progress: &dyn Fn(InferenceStatus)) -> Result<TempDir> {
-    let dirs = directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
-        .context("モデルの保存フォルダが見つかりません")?;
+    let dirs = crate::files::project_dirs().context("モデルの保存フォルダが見つかりません")?;
     extract(
         path,
         &dirs.data_local_dir().join("imported-models"),

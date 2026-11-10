@@ -1,9 +1,9 @@
 use crate::domain::{AudioSource, Take};
 use crate::workspace::protocol::Command;
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::{blend, tool};
 use gpui_kit::base::Radio;
-use gpui_kit::component::Disableable;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -122,7 +122,6 @@ impl Studio {
                         ("take", i),
                         AudioSource::Take(id),
                         take.audio_seconds,
-                        false,
                         cx,
                     ))
                     .child(self.take_actions(i, take, cx)),
@@ -141,16 +140,14 @@ impl Studio {
             .gap_1()
             .child(
                 tool(("export", i), "download", "WAVを保存")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.export(AudioSource::Take(export.clone()), w, cx)
                     })),
             )
             .child(
                 tool(("copy-take", i), "plus", "台本に追加")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, w, cx| {
                         if this.state.copy_take(&copy) {
                             this.edited(w, cx);
@@ -159,8 +156,7 @@ impl Studio {
             )
             .child(
                 tool(("delete-take", i), "trash", "音声を削除")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.playback = None;
                         this.audio_id = None;

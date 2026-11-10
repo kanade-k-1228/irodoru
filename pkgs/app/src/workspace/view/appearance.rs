@@ -110,13 +110,8 @@ pub(super) fn icon(name: &str) -> Icon {
     let data: &[u8] = match name {
         "lock" => include_bytes!("../../../icons/ui/lock.svg"),
         "unlock" => include_bytes!("../../../icons/ui/unlock.svg"),
-        "menu" => include_bytes!("../../../icons/ui/menu.svg"),
         "model" => include_bytes!("../../../icons/ui/box.svg"),
         "app-window" => include_bytes!("../../../icons/ui/app-window.svg"),
-        "palette" => include_bytes!("../../../icons/ui/palette.svg"),
-        "info" => include_bytes!("../../../icons/ui/info.svg"),
-        "chevron-down" => include_bytes!("../../../icons/ui/chevron-down.svg"),
-        "chevrons-right" => include_bytes!("../../../icons/ui/chevrons-right.svg"),
         "minus" => include_bytes!("../../../icons/ui/minus.svg"),
         "square" => include_bytes!("../../../icons/ui/square.svg"),
         "audio" => include_bytes!("../../../icons/ui/audio.svg"),
@@ -126,11 +121,8 @@ pub(super) fn icon(name: &str) -> Icon {
         "sun" => include_bytes!("../../../icons/ui/sun.svg"),
         "moon" => include_bytes!("../../../icons/ui/moon.svg"),
         "plus" => include_bytes!("../../../icons/ui/plus.svg"),
-        "edit" => include_bytes!("../../../icons/ui/edit.svg"),
         "trash" => include_bytes!("../../../icons/ui/trash.svg"),
         "close" => include_bytes!("../../../icons/ui/close.svg"),
-        "up" => include_bytes!("../../../icons/ui/up.svg"),
-        "down" => include_bytes!("../../../icons/ui/down.svg"),
         "play" => include_bytes!("../../../icons/ui/play.svg"),
         "pause" => include_bytes!("../../../icons/ui/pause.svg"),
         "download" => include_bytes!("../../../icons/ui/download.svg"),
@@ -139,7 +131,6 @@ pub(super) fn icon(name: &str) -> Icon {
         "dice" => include_bytes!("../../../icons/ui/dice.svg"),
         "wand" => include_bytes!("../../../icons/ui/wand.svg"),
         "copy" => include_bytes!("../../../icons/ui/copy.svg"),
-        "alert" => include_bytes!("../../../icons/ui/alert.svg"),
         _ => include_bytes!("../../../icons/ui/alert.svg"),
     };
     Icon::default().data(data).size(px(16.))
@@ -180,3 +171,18 @@ pub(super) fn chara_color(color: Option<&str>, fallback: Hsla) -> Hsla {
         .map(|v| rgb(v).into())
         .unwrap_or(fallback)
 }
+
+/// Disables a control and drops the pointer cursor that `tool` and `button` set.
+pub(super) trait DisabledWithCursor:
+    gpui_kit::component::Disableable + Styled + Sized
+{
+    fn disabled_with_cursor(self, disabled: bool) -> Self {
+        let this = self.disabled(disabled);
+        if disabled {
+            this.cursor_default()
+        } else {
+            this
+        }
+    }
+}
+impl<T: gpui_kit::component::Disableable + Styled> DisabledWithCursor for T {}

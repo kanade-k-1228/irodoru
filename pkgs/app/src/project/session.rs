@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use std::{
     fs::File,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 #[derive(Clone, Debug, Default)]
@@ -107,10 +107,13 @@ impl Session {
 }
 
 pub type SharedProject = Arc<Mutex<Option<Session>>>;
-pub fn status(project: &SharedProject) -> Result<ProjectStatus> {
-    Ok(project
+pub(super) fn lock(project: &SharedProject) -> Result<MutexGuard<'_, Option<Session>>> {
+    project
         .lock()
-        .map_err(|_| anyhow::anyhow!("project lock poisoned"))?
+        .map_err(|_| anyhow::anyhow!("project lock poisoned"))
+}
+pub fn status(project: &SharedProject) -> Result<ProjectStatus> {
+    Ok(lock(project)?
         .as_ref()
         .map(Session::status)
         .unwrap_or_default())

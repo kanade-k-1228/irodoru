@@ -2,8 +2,9 @@
 use super::appearance::{button, icon, tool};
 use super::{Studio, appearance};
 use crate::domain::InferenceStatus;
+use crate::workspace::view::appearance::DisabledWithCursor;
+use gpui_kit::component::WindowExt;
 use gpui_kit::component::button::ButtonVariants;
-use gpui_kit::component::{Disableable, WindowExt};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -169,17 +170,14 @@ impl Studio {
                 .child("モデルZIPを取り込むと、すべてのウィンドウと次回起動時に使用します。取り込み後は元のZIPを移動・削除しても使えます。"))
             .child(div().flex().flex_wrap().gap_2()
                 .child(button("import-model-archive", "ZIPファイルを選択して取り込む…")
-                    .icon(icon("folder")).disabled(!editable)
-                    .when(!editable, |el| el.cursor_default())
+                    .icon(icon("folder")).disabled_with_cursor(!editable)
                     .on_click(cx.listener(|this, _, window, cx| this.choose_model_archive(window, cx))))
                 .child(button("reset-model-archive", "既定に戻す")
-                    .disabled(!editable || model_name.is_none())
-                    .when(!editable || model_name.is_none(), |el| el.cursor_default())
+                    .disabled_with_cursor(!editable || model_name.is_none())
                     .on_click(cx.listener(|this, _, _, cx| this.configure_model_archive(None, cx))))
                 .when(failed, |el| el.child(
                     button("retry-models", "再試行")
-                        .disabled(!editable)
-                        .when(!editable, |el| el.cursor_default())
+                        .disabled_with_cursor(!editable)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.model_error = this.inference.as_ref()
                                 .and_then(|service| service.retry().err())

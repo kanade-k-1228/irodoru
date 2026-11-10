@@ -1,8 +1,7 @@
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::{button, icon, tool};
-use gpui_kit::component::Disableable;
 use gpui_kit::component::button::ButtonVariants;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
@@ -57,9 +56,8 @@ impl Studio {
                 .bg(self.accent())
                 .icon(icon("wand"))
                 .flex_1()
-                .disabled(generation_disabled)
-                .when(generation_disabled, |el| el.cursor_default())
-                .on_click(cx.listener(|this, _, w, cx| this.generate(false, false, w, cx))),
+                .disabled_with_cursor(generation_disabled)
+                .on_click(cx.listener(|this, _, w, cx| this.generate(false, w, cx))),
             )
             .child(
                 tool("advanced", "settings", "詳細設定")
@@ -80,9 +78,8 @@ impl Studio {
                     .border_1()
                     .border_color(p.line)
                     .bg(p.control)
-                    .disabled(disabled || !self.can_generate())
-                    .when(disabled || !self.can_generate(), |el| el.cursor_default())
-                    .on_click(cx.listener(|this, _, w, cx| this.generate(false, true, w, cx))),
+                    .disabled_with_cursor(disabled || !self.can_generate())
+                    .on_click(cx.listener(|this, _, w, cx| this.generate(true, w, cx))),
             )
             .into_any_element()
     }

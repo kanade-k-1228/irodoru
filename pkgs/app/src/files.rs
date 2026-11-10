@@ -1,4 +1,4 @@
-//! Atomic asset replacement for project persistence.
+//! Per-user directories and atomic file replacement.
 use anyhow::Result;
 use std::path::Path as FsPath;
 pub(crate) fn atomic_bytes(path: &FsPath, bytes: &[u8]) -> Result<()> {
@@ -8,4 +8,8 @@ pub(crate) fn atomic_bytes(path: &FsPath, bytes: &[u8]) -> Result<()> {
     temp.as_file().sync_all()?;
     temp.persist(path)?;
     Ok(())
+}
+/// The per-user configuration and data directories of this application.
+pub(crate) fn project_dirs() -> Option<directories::ProjectDirs> {
+    directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
 }

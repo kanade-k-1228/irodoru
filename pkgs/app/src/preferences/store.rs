@@ -21,12 +21,10 @@ pub struct Settings {
 
 impl Settings {
     fn path() -> Result<std::path::PathBuf> {
-        Ok(
-            directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
-                .context("設定フォルダが見つかりません")?
-                .config_dir()
-                .join("config.yaml"),
-        )
+        Ok(crate::files::project_dirs()
+            .context("設定フォルダが見つかりません")?
+            .config_dir()
+            .join("config.yaml"))
     }
     pub fn load() -> Self {
         Self::path()
