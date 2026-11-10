@@ -16,10 +16,6 @@ runs:
         echo "hash=$(rustc -Vv | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
         echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
         echo 'SCCACHE_CACHE_SIZE=2G' >> "$GITHUB_ENV"
-        # Read existing individual objects during migration; batch all new writes.
-        echo 'SCCACHE_GHA_ENABLED=true' >> "$GITHUB_ENV"
-        echo 'SCCACHE_GHA_RW_MODE=READ_ONLY' >> "$GITHUB_ENV"
-        echo 'SCCACHE_MULTILEVEL_CHAIN=disk,gha' >> "$GITHUB_ENV"
         echo 'RUSTC_WRAPPER=sccache' >> "$GITHUB_ENV"
     - uses: actions/cache/restore@v6
       id: compiler-cache
