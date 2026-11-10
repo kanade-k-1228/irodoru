@@ -1,7 +1,8 @@
 use super::app_menu::MenuAction;
-use super::appearance::tool;
+use super::appearance::{button, icon};
 use crate::workspace::view::Studio;
 use gpui_kit::component::Disableable;
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -30,8 +31,8 @@ impl Studio {
                     .cursor_pointer()
                     .h_full()
                     .px_2()
-                    .flex()
-                    .items_center()
+                    // Center the single line without a nested flex container.
+                    .line_height(px(32.))
                     .hover(|style| style.bg(p.hover))
                     .overflow_hidden()
                     .text_ellipsis()
@@ -51,13 +52,8 @@ impl Studio {
             )
             .child(self.model_status_button(cx))
             .child(
-                tool("footer-export", "download", "セリフごとにWAVを書き出す")
-                    .w(px(32.))
-                    .h_full()
-                    .rounded_none()
-                    .border_l_1()
-                    .border_color(p.line)
-                    .flex_shrink_0()
+                self.footer_button("footer-export", "download", "出力")
+                    .tooltip("セリフごとにWAVを書き出す")
                     .disabled(
                         self.state.busy
                             || self.state.status.id.is_none()
@@ -78,18 +74,30 @@ impl Studio {
                     }),
             )
             .child(
-                tool("footer-settings", "gear", "設定")
+                self.footer_button("footer-settings", "gear", "設定")
                     .track_focus(&self.menu_trigger_focus)
-                    .w(px(32.))
-                    .h_full()
-                    .rounded_none()
-                    .border_l_1()
-                    .border_color(p.line)
-                    .flex_shrink_0()
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.menu_select(MenuAction::Preferences, window, cx);
                     })),
             )
             .into_any_element()
+    }
+
+    /// An icon with its label, separated from the item on its left.
+    pub(super) fn footer_button(
+        &self,
+        id: &'static str,
+        icon_name: &str,
+        label: impl Into<SharedString>,
+    ) -> Button {
+        button(id, "")
+            .ghost()
+            .flex_shrink_0()
+            .h(px(32.))
+            .rounded_none()
+            .border_l_1()
+            .border_color(self.palette().line)
+            .icon(icon(icon_name))
+            .label(label)
     }
 }
