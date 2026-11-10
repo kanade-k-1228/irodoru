@@ -1,13 +1,15 @@
-//! Menu layout and navigation; header and dialog layouts live in sibling modules.
-use super::appearance::{icon, tool};
-use super::dialogs::ProjectDialog;
-use super::{Studio, WindowRequest, actions};
+//! The project menu modal: its items, keyboard navigation and the actions it runs.
+use super::Modal;
 use crate::workspace::protocol::Command;
+use crate::workspace::view::appearance::icon;
+use crate::workspace::view::dialogs::ProjectDialog;
+use crate::workspace::view::{Studio, WindowRequest, actions};
+use gpui_kit::base::actions::Confirm;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum MenuAction {
+pub(in crate::workspace::view) enum MenuAction {
     NewWindow,
     NewProject,
     NewFromCharas,
@@ -30,88 +32,56 @@ const MENU_ITEMS: [(MenuAction, &str, &str); 7] = [
 ];
 
 impl Studio {
-    pub(super) fn app_menu(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette();
-        deferred(
-            div()
-                .id("app-menu-modal")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .cursor_default()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(if self.settings.theme.is_light() {
-                    rgba(0x192c443d)
-                } else {
-                    rgba(0x0000008c)
-                })
-                .track_focus(&self.menu_focus)
-                .key_context("AppMenu")
-                .on_action(cx.listener(|this, _: &actions::MenuNext, _, cx| {
-                    this.move_menu_selection(false);
-                    cx.stop_propagation();
-                    cx.notify();
-                }))
-                .on_action(cx.listener(|this, _: &actions::MenuPrevious, _, cx| {
-                    this.move_menu_selection(true);
-                    cx.stop_propagation();
-                    cx.notify();
-                }))
-                .capture_key_down(cx.listener(Self::menu_key_down))
-                .child(
-                    div()
-                        .id("app-menu-backdrop")
-                        .absolute()
-                        .inset_0()
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, window, cx| this.close_menu(window, cx)),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("app-menu")
-                        .relative()
-                        .occlude()
-                        .cursor_default()
-                        .w(px(384.))
-                        .max_w_full()
-                        .mx_4()
-                        .rounded(px(12.))
-                        .border_1()
-                        .border_color(p.line)
-                        .bg(p.panel)
-                        .p_3()
-                        .shadow_xl()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .px_3()
-                                .pb_2()
-                                .child("ファイル")
-                                .child(tool("menu-close", "close", "ファイルを閉じる").on_click(
-                                    cx.listener(|this, _, window, cx| this.close_menu(window, cx)),
-                                )),
-                        )
-                        .children(MENU_ITEMS.iter().enumerate().map(
-                            |(index, (_, label, icon_name))| {
-                                self.menu_item(index, label, icon_name, cx)
-                            },
-                        )),
-                ),
-        )
-        .with_priority(10)
-        .into_any_element()
+    pub(in crate::workspace::view) fn open_project_menu(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.modal.is_some() {
+            return;
+        }
+        self.menu_index = (0..MENU_ITEMS.len())
+            .find(|i| !self.menu_disabled(*i))
+            .unwrap_or(0);
+        self.open_modal(
+            Modal::Menu,
+            384.,
+            || "ファイル".into_any_element(),
+            |this, cx| this.menu_content(cx),
+            window,
+            cx,
+        );
+        self.menu_focus.focus(window, cx);
     }
 
-    fn close_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.menu_open = false;
-        self.file_trigger_focus.focus(window, cx);
-        cx.notify();
+    fn menu_content(&self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id("app-menu")
+            .mt_3()
+            .track_focus(&self.menu_focus)
+            .key_context("AppMenu")
+            .on_action(cx.listener(|this, _: &actions::MenuNext, window, _| {
+                this.move_menu_selection(false);
+                window.refresh();
+            }))
+            .on_action(cx.listener(|this, _: &actions::MenuPrevious, window, _| {
+                this.move_menu_selection(true);
+                window.refresh();
+            }))
+            // The dialog binds Enter to its own confirmation, which only closes it.
+            .on_action(cx.listener(|this, _: &Confirm, window, cx| {
+                this.menu_select(MENU_ITEMS[this.menu_index].0, window, cx);
+            }))
+            .capture_key_down(cx.listener(Self::menu_key_down))
+            .children(
+                MENU_ITEMS
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (_, label, icon_name))| {
+                        self.menu_item(index, label, icon_name, cx)
+                    }),
+            )
+            .into_any_element()
     }
 
     fn menu_item(
@@ -156,22 +126,9 @@ impl Studio {
             .into_any_element()
     }
 
-    pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.modal.is_some() {
-            return;
-        }
-        self.menu_open = true;
-        self.menu_index = (0..MENU_ITEMS.len())
-            .find(|i| !self.menu_disabled(*i))
-            .unwrap_or(0);
-        self.menu_focus.focus(window, cx);
-        cx.notify();
-    }
-
     fn menu_key_down(&mut self, event: &KeyDownEvent, w: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
         match key {
-            "escape" => self.close_menu(w, cx),
             "enter" | "space" => self.menu_select(MENU_ITEMS[self.menu_index].0, w, cx),
             "home" => {
                 self.menu_index = (0..MENU_ITEMS.len())
@@ -188,7 +145,7 @@ impl Studio {
             _ => return,
         };
         cx.stop_propagation();
-        cx.notify();
+        w.refresh();
     }
 
     fn move_menu_selection(&mut self, backwards: bool) {
@@ -214,18 +171,19 @@ impl Studio {
         }
     }
 
-    pub(super) fn menu_select(
+    pub(in crate::workspace::view) fn menu_select(
         &mut self,
         action: MenuAction,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.modal.is_some() || self.action_disabled(action) {
+        if self.action_disabled(action) {
             return;
         }
-        if self.menu_open {
-            self.menu_open = false;
-            self.file_trigger_focus.focus(window, cx);
+        match self.modal {
+            Some(Modal::Menu) => self.close_modal(window, cx),
+            Some(_) => return,
+            None => {}
         }
         match action {
             NewWindow => {

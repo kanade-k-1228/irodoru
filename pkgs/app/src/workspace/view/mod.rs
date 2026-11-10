@@ -64,7 +64,6 @@ pub(crate) struct Studio {
     focus: FocusHandle,
     menu_focus: FocusHandle,
     menu_trigger_focus: FocusHandle,
-    menu_open: bool,
     file_trigger_focus: FocusHandle,
     menu_index: usize,
     modal: Option<modal::Modal>,
@@ -83,7 +82,6 @@ mod appearance;
 mod chara_panel;
 mod footer;
 
-mod app_menu;
 mod header;
 mod modal;
 

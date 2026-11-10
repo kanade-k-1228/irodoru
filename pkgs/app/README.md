@@ -33,7 +33,7 @@ GPUI listener → state/editor → Command → Service → Worker → project/li
 ```
 
 - Build named, stateless view sections in the existing `Studio` context. Keep list iteration separate from item rendering, with lines and insertion gaps as siblings.
-- View modules follow the screen: `layout` composes `lines`, `chara_panel`, and `footer`; `lines/line` owns line actions, the inline editor, and takes; `chara_panel` owns the list and editor. `modal` owns the shared dialog frame, with one module per dialog (`settings`, `model`). Shared controls remain at the view root.
+- View modules follow the screen: `layout` composes `lines`, `chara_panel`, and `footer`; `lines/line` owns line actions, the inline editor, and takes; `chara_panel` owns the list and editor. `modal` owns the shared dialog frame, with one module per modal (`menu`, `settings`, `model`). Shared controls remain at the view root.
 - Keep containers needed for layout, scrolling, or hit testing. Put editing adapters in `editing.rs` and preserve input entities, element IDs, and focus handles.
 - Run storage and inference on workers with owned command data. Only the UI thread drains notifications and updates GPUI entities; its weak-entity timer stops when the window closes.
 - Selected chara settings are always editable and autosaved without a separate edit mode. Preview generation settings are independent of line settings. Passive chara saves do not refresh input snapshots; failed writes retain local values and block project switching until retried.

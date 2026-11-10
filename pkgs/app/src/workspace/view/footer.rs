@@ -1,5 +1,5 @@
-use super::app_menu::MenuAction;
 use super::appearance::{button, icon};
+use super::modal::MenuAction;
 use crate::domain::InferenceStatus;
 use crate::workspace::view::Studio;
 use gpui_kit::component::Disableable;
