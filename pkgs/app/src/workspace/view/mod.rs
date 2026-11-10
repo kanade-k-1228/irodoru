@@ -52,6 +52,11 @@ pub(crate) struct Studio {
     subscriptions: Vec<Subscription>,
     line_scroll: ScrollHandle,
     line_drag_scroll: gpui_kit::component::scroll::AutoScroll,
+    line_wheel: SmoothScroll,
+    chara_list_wheel: SmoothScroll,
+    chara_form_wheel: SmoothScroll,
+    icons: std::cell::RefCell<std::collections::HashMap<String, CachedIcon>>,
+    model_seen: Option<(crate::domain::InferenceStatus, Option<String>)>,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,
@@ -107,3 +112,6 @@ mod generation_controls;
 mod layout;
 mod lines;
 mod player;
+mod smooth_scroll;
+use components::CachedIcon;
+use smooth_scroll::SmoothScroll;

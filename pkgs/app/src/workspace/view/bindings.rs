@@ -211,6 +211,7 @@ impl Studio {
             }
         })
         .detach();
+        let line_scroll = ScrollHandle::new();
         let mut studio = Self {
             service,
             inference,
@@ -223,8 +224,13 @@ impl Studio {
             preview_form,
             seek,
             subscriptions,
-            line_scroll: ScrollHandle::new(),
+            line_wheel: super::SmoothScroll::new(line_scroll.clone()),
+            line_scroll,
             line_drag_scroll: Default::default(),
+            chara_list_wheel: Default::default(),
+            chara_form_wheel: Default::default(),
+            icons: Default::default(),
+            model_seen: None,
             settings,
             playback: None,
             audio_id: None,

@@ -45,12 +45,21 @@ impl Studio {
         if self.modal == Some(super::app_dialog::Modal::Model) {
             window.refresh();
         }
-        self.settings.theme = crate::preferences::theme::current(cx);
+        // Render only when something it reads has changed.
+        let theme = crate::preferences::theme::current(cx);
+        let model = self
+            .inference
+            .as_ref()
+            .map(|service| (service.status(), service.model_name()));
+        let mut changed = self.settings.theme != theme || self.model_seen != model;
+        self.settings.theme = theme;
+        self.model_seen = model;
         let events = self
             .service
             .as_ref()
             .map(|s| s.drain_events().collect::<Vec<_>>())
             .unwrap_or_default();
+        changed |= !events.is_empty();
         for event in events {
             match self.state.apply(event) {
                 Some(Effect::SyncInputs) => self.sync_fields(window, cx),
@@ -82,6 +91,7 @@ impl Studio {
             }
         }
         if let Some(p) = &self.playback {
+            changed = true;
             if let Some(error) = p.take_error() {
                 self.state.error = Some(error);
                 self.audio_id = None;
@@ -94,7 +104,9 @@ impl Studio {
             self.seek
                 .update(cx, |s, cx| s.set_value(fraction, window, cx));
         }
-        cx.notify();
+        if changed {
+            cx.notify();
+        }
     }
     pub(super) fn close(&mut self) {
         if let Some(error) = self.state.close_error() {

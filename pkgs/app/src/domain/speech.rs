@@ -17,7 +17,7 @@ pub struct TakeRequest {
     pub request: SynthesisInput,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InferenceStatus {
     Checking { checked: u64, total: u64 },
     Downloading { downloaded: u64, total: u64 },
