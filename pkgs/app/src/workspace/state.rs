@@ -14,7 +14,6 @@ pub enum Field {
     Seed,
     Steps,
     Name,
-    Sample,
 }
 
 #[derive(Default)]
@@ -22,7 +21,7 @@ pub struct WorkspaceState {
     pub snapshot: Snapshot,
     pub status: ProjectStatus,
     pub selected: Option<String>,
-    pub preview_settings: GenerationSettings,
+    pub expanded_line: Option<String>,
     pub chara_locked: bool,
     pub busy: bool,
     pub error: Option<String>,
@@ -42,6 +41,13 @@ pub enum Effect {
 }
 
 impl WorkspaceState {
+    pub fn chara_in_use(&self, id: &str) -> bool {
+        self.snapshot
+            .editor
+            .lines
+            .iter()
+            .any(|line| line.chara_id == id)
+    }
     pub fn active_chara(&self) -> Option<&crate::domain::Chara> {
         self.snapshot
             .charas
@@ -107,6 +113,9 @@ impl WorkspaceState {
                 {
                     self.selected = self.snapshot.editor.lines.first().map(|r| r.id.clone());
                 }
+                if self.expanded_line != self.selected {
+                    self.expanded_line = None;
+                }
                 if self.active_chara().is_none() {
                     self.snapshot.editor.active_chara = self
                         .snapshot
@@ -130,6 +139,7 @@ impl WorkspaceState {
                     }
                     if status.id != self.status.id {
                         self.snapshot.editor.active_chara.clear();
+                        self.expanded_line = None;
                     }
                     self.status = status;
                 }
@@ -162,3 +172,6 @@ impl WorkspaceState {
 
 mod editing;
 pub use editing::{GenerationField, LineAction};
+
+#[cfg(test)]
+mod tests;

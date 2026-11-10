@@ -31,11 +31,9 @@ impl Studio {
                 .new(|cx| TextareaState::new(window, cx).placeholder("声の特徴・話し方")),
             prompt: input("追加プロンプト", window, cx),
             name: input("キャラクター名", window, cx),
-            sample: cx.new(|cx| TextareaState::new(window, cx).placeholder("試聴する文章")),
             color: cx.new(|cx| ColorPickerState::new(window, cx).default_value(rgb(0x41a2ec))),
         };
         let line_form = make_form(window, cx);
-        let preview_form = make_form(window, cx);
         let seek = cx.new(|_| SliderState::new().min(0.0).max(1.0).step(0.001));
         let mut subscriptions = Vec::new();
         for (entity, field) in [
@@ -50,27 +48,6 @@ impl Studio {
                 move |this, input, event, _, cx| {
                     if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
                         this.changed(field, input.read(cx).value().to_string());
-                        cx.notify();
-                    }
-                },
-            ));
-        }
-        for (entity, seed) in [(&preview_form.seed, true), (&preview_form.steps, false)] {
-            subscriptions.push(cx.subscribe_in(
-                entity,
-                window,
-                move |this, input, event, _, cx| {
-                    if matches!(event, InputEvent::Change)
-                        && !this.sync
-                        && !this.state.busy
-                        && !this.state.chara_locked
-                    {
-                        let value = input.read(cx).value().to_string();
-                        if seed {
-                            this.state.preview_settings.seed = value;
-                        } else {
-                            this.state.preview_settings.num_steps = value;
-                        }
                         cx.notify();
                     }
                 },
@@ -119,46 +96,35 @@ impl Studio {
                 }
             },
         ));
-        for (entity, field) in [
-            (&fields.description, Field::Description),
-            (&fields.sample, Field::Sample),
-        ] {
-            subscriptions.push(cx.subscribe_in(
-                entity,
-                window,
-                move |this, input, event, _, cx| {
-                    if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
-                        this.changed(field, input.read(cx).value().to_string());
+        subscriptions.push(cx.subscribe_in(
+            &fields.description,
+            window,
+            |this, input, event, _, cx| {
+                if matches!(event, InputEvent::Change) && !this.sync && !this.state.busy {
+                    this.changed(Field::Description, input.read(cx).value().to_string());
+                    cx.notify();
+                }
+            },
+        ));
+        for (field, slider) in line_form.sliders() {
+            subscriptions.push(
+                cx.subscribe_in(slider, window, move |this, _, event, _, cx| {
+                    if let SliderEvent::Change(SliderValue::Single(value)) = event
+                        && !this.sync
+                        && !this.state.busy
+                    {
+                        let value = if matches!(field, GenerationField::Speed) {
+                            value.exp2()
+                        } else {
+                            *value
+                        };
+                        if this.state.change_generation(field, value) {
+                            this.autosave();
+                        }
                         cx.notify();
                     }
-                },
-            ));
-        }
-        for (form, preview) in [(&line_form, false), (&preview_form, true)] {
-            for (field, slider) in form.sliders() {
-                subscriptions.push(cx.subscribe_in(
-                    slider,
-                    window,
-                    move |this, _, event, _, cx| {
-                        if let SliderEvent::Change(SliderValue::Single(value)) = event
-                            && !this.sync
-                            && !this.state.busy
-                        {
-                            let value = if matches!(field, GenerationField::Speed) {
-                                value.exp2()
-                            } else {
-                                *value
-                            };
-                            if preview {
-                                this.state.change_preview_generation(field, value);
-                            } else if this.state.change_generation(field, value) {
-                                this.autosave();
-                            }
-                            cx.notify();
-                        }
-                    },
-                ));
-            }
+                }),
+            );
         }
         subscriptions.push(cx.subscribe_in(&seek, window, |this, _, event, _, cx| {
             if let SliderEvent::Change(SliderValue::Single(value)) = event
@@ -216,7 +182,6 @@ impl Studio {
             },
             fields,
             line_form,
-            preview_form,
             seek,
             subscriptions,
             line_wheel: super::SmoothScroll::new(line_scroll.clone()),
@@ -253,7 +218,7 @@ impl Studio {
     }
     pub(super) fn changed(&mut self, field: Field, value: String) {
         let save_line = self.state.change(field, value);
-        if matches!(field, Field::Name | Field::Description | Field::Sample) {
+        if matches!(field, Field::Name | Field::Description) {
             self.autosave_chara();
         } else if save_line {
             self.autosave();
@@ -284,9 +249,6 @@ impl Studio {
             self.fields.description.update(cx, |f, cx| {
                 f.set_value(chara.description.clone(), window, cx)
             });
-            self.fields.sample.update(cx, |f, cx| {
-                f.set_value(chara.sample_text.clone(), window, cx)
-            });
             self.fields.color.update(cx, |f, cx| {
                 f.set_value(
                     appearance::chara_color(Some(chara.color.as_str()), rgb(0x41a2ec).into()),
@@ -295,8 +257,6 @@ impl Studio {
                 )
             });
         }
-        self.preview_form
-            .set(&self.state.preview_settings, window, cx);
         self.sync = false;
     }
 }

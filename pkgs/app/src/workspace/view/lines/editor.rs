@@ -2,6 +2,7 @@ use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::{button, icon, tool};
 use gpui_kit::component::button::ButtonVariants;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
@@ -27,8 +28,10 @@ impl Studio {
             .flex()
             .flex_col()
             .child(self.line_prompt())
-            .child(self.speed_controls(false))
-            .child(self.advanced_controls(false, cx))
+            .child(self.speed_controls())
+            .when(self.line_form.expanded, |el| {
+                el.child(self.advanced_controls(cx))
+            })
             .child(self.line_generation_actions(cx))
             .into_any_element()
     }
@@ -60,9 +63,16 @@ impl Studio {
                 .on_click(cx.listener(|this, _, w, cx| this.generate(false, w, cx))),
             )
             .child(
+                tool("reset-settings", "reset", "既定値に戻す")
+                    .disabled_with_cursor(disabled)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        if this.state.reset_line_settings() {
+                            this.edited(window, cx);
+                        }
+                    })),
+            )
+            .child(
                 tool("advanced", "settings", "詳細設定")
-                    .h(px(32.))
-                    .w(px(34.))
                     .border_1()
                     .border_color(if self.line_form.expanded {
                         self.accent()
@@ -81,8 +91,6 @@ impl Studio {
             )
             .child(
                 tool("random-line", "dice", "シードを変えて再生成")
-                    .h(px(32.))
-                    .w(px(34.))
                     .border_1()
                     .border_color(p.line)
                     .bg(p.control)

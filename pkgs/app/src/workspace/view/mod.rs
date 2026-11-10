@@ -12,10 +12,9 @@ struct Fields {
     description: Entity<TextareaState>,
     prompt: Entity<InputState>,
     name: Entity<InputState>,
-    sample: Entity<TextareaState>,
     color: Entity<ColorPickerState>,
 }
-/// Inputs for one set of generation settings: the selected line's or the chara preview's.
+/// Inputs for the selected line's generation settings.
 struct GenerationForm {
     seed: Entity<InputState>,
     steps: Entity<InputState>,
@@ -47,7 +46,6 @@ pub(crate) struct Studio {
     inference: Option<std::sync::Arc<crate::synthesis::Inference>>,
     fields: Fields,
     line_form: GenerationForm,
-    preview_form: GenerationForm,
     seek: Entity<SliderState>,
     subscriptions: Vec<Subscription>,
     line_scroll: ScrollHandle,
@@ -97,19 +95,13 @@ pub(crate) enum WindowRequest {
 }
 impl EventEmitter<WindowRequest> for Studio {}
 impl Studio {
-    fn form(&self, preview: bool) -> &GenerationForm {
-        if preview {
-            &self.preview_form
-        } else {
-            &self.line_form
-        }
-    }
     pub(crate) fn report_error(&mut self, error: String, cx: &mut Context<Self>) {
         self.state.error = Some(error);
         cx.notify();
     }
 }
 
+mod audio_item;
 mod components;
 mod generation_controls;
 mod layout;

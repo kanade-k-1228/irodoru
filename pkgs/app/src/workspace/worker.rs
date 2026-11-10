@@ -7,7 +7,7 @@ use std::sync::{
     mpsc,
 };
 
-use super::protocol::{Command, Event, Snapshot};
+use super::protocol::{Command, Event, ReferenceVoice, Snapshot};
 pub(super) struct Worker {
     project: Project,
     inference: Arc<Inference>,
@@ -56,17 +56,19 @@ impl Worker {
         let snapshot = self.project.read(|s| {
             let charas = s.library.charas()?;
             Ok(Snapshot {
-                chara_previews: charas
-                    .iter()
-                    .filter_map(|c| match s.library.chara_preview_path(&c.id) {
-                        Ok(Some(_)) => Some(Ok(c.id.clone())),
-                        Ok(None) => None,
-                        Err(e) => Some(Err(e)),
-                    })
-                    .collect::<Result<_, _>>()?,
                 editor: s.library.editor()?,
                 takes: s.library.takes()?,
-                voices: s.library.voices()?,
+                voices: s
+                    .library
+                    .voices()?
+                    .into_iter()
+                    .map(|voice| {
+                        Ok(ReferenceVoice {
+                            audio_seconds: s.library.audio_seconds(voice.id())?,
+                            voice,
+                        })
+                    })
+                    .collect::<Result<_>>()?,
                 charas,
             })
         })?;
@@ -221,22 +223,6 @@ impl Worker {
             Command::Generate(requests) => {
                 let inference = self.inference.clone();
                 self.generate_with(requests, |job| inference.synthesize(job))?;
-            }
-            Command::Preview {
-                chara_id,
-                input,
-                description,
-                voice_ids,
-            } => {
-                let prepared = self.project.read(|s| {
-                    let reference_audio = s.library.reference_audio(&voice_ids)?;
-                    generation::prepare_preview(input, description, voice_ids, reference_audio)
-                })?;
-                let (take, wav) =
-                    generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
-                self.project
-                    .change(|s| s.library.save_chara_preview(&chara_id, take, &wav))?;
-                self.snapshot()?;
             }
             Command::Audio(source) => {
                 let wav = self.project.read(|s| s.audio(&source))?;

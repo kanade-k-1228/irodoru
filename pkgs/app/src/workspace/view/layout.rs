@@ -46,7 +46,7 @@ impl Render for Studio {
                 el.child(self.error_banner(error, cx))
             })
             .child(self.lines(cx))
-            .child(self.chara_panel(window, cx))
+            .child(self.chara_panel(cx))
             .child(self.footer(cx))
     }
 }

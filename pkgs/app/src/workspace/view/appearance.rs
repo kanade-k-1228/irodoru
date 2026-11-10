@@ -21,6 +21,8 @@ pub(super) struct Palette {
     pub toolbar: Hsla,
     pub warning: Hsla,
     pub warning_soft: Hsla,
+    pub success: Hsla,
+    pub pending: Hsla,
 }
 impl Palette {
     pub fn new(light: bool) -> Self {
@@ -66,6 +68,8 @@ impl Palette {
             toolbar,
             warning,
             warning_soft,
+            success: rgb(if light { 0x21824b } else { 0x63c38c }).into(),
+            pending: rgb(if light { 0x986500 } else { 0xe8b65c }).into(),
         }
     }
 }
@@ -90,6 +94,11 @@ pub(super) fn apply(light: bool, window: &mut Window, cx: &mut App) {
             rgba(0x0000008c).into()
         };
         t.foreground = p.ink;
+        t.popover = p.panel;
+        t.popover_foreground = p.ink;
+        t.tab_bar_segmented = p.control;
+        t.tab_foreground = p.muted;
+        t.tab_active_foreground = p.ink;
         t.border = p.line;
         t.input = p.line;
         t.muted = p.control;
@@ -115,6 +124,11 @@ pub(super) fn apply(light: bool, window: &mut Window, cx: &mut App) {
 }
 pub(super) fn icon(name: &str) -> Icon {
     let data: &[u8] = match name {
+        "chevron-down" => include_bytes!("../../../icons/ui/chevron-down.svg"),
+        "chevron-up" => include_bytes!("../../../icons/ui/chevron-up.svg"),
+        "check" => include_bytes!("../../../icons/ui/check.svg"),
+        "reset" => include_bytes!("../../../icons/ui/reset.svg"),
+        "color" => include_bytes!("../../../icons/ui/color.svg"),
         "lock" => include_bytes!("../../../icons/ui/lock.svg"),
         "unlock" => include_bytes!("../../../icons/ui/unlock.svg"),
         "model" => include_bytes!("../../../icons/ui/box.svg"),
@@ -143,26 +157,17 @@ pub(super) fn icon(name: &str) -> Icon {
     Icon::default().data(data).size(px(16.))
 }
 
+fn base_button(id: impl Into<ElementId>) -> Button {
+    Button::new(id).cursor_pointer().h(px(32.)).rounded(px(8.))
+}
 pub(super) fn tool(id: impl Into<ElementId>, name: &str, label: &'static str) -> Button {
     icon_button(id, name).tooltip(label)
 }
-
 pub(super) fn icon_button(id: impl Into<ElementId>, name: &str) -> Button {
-    Button::new(id)
-        .cursor_pointer()
-        .ghost()
-        .icon(icon(name))
-        .w(px(28.))
-        .h(px(28.))
-        .rounded(px(8.))
+    base_button(id).ghost().icon(icon(name)).w(px(32.))
 }
 pub(super) fn button(id: impl Into<ElementId>, label: &'static str) -> Button {
-    Button::new(id)
-        .cursor_pointer()
-        .small()
-        .label(label)
-        .h(px(32.))
-        .rounded(px(8.))
+    base_button(id).small().label(label)
 }
 pub(super) fn blend(a: Hsla, b: Hsla, f: f32) -> Hsla {
     let a: Rgba = a.into();

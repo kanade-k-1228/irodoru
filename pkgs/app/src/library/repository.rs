@@ -215,9 +215,6 @@ impl Library {
             })
             .collect()
     }
-    pub fn reference_audio(&self, ids: &[String]) -> Result<Vec<Vec<u8>>> {
-        ids.iter().map(|id| self.audio(id)).collect()
-    }
     pub fn save_voice(&self, name: &str, wav: &[u8]) -> Result<String> {
         let duration = crate::audio::validate_wav(wav).map_err(|e| anyhow!("{e:#}"))?;
         let id = new_id();
@@ -289,9 +286,6 @@ impl Library {
         if input.color.is_none() {
             input.color = Some(existing.color);
         }
-        if input.sample_text.is_none() {
-            input.sample_text = Some(existing.sample_text);
-        }
         if input.icon.is_none() {
             input.icon = existing.icon;
         }
@@ -300,14 +294,11 @@ impl Library {
 
     pub fn delete_chara(&self, id: &str) -> Result<()> {
         self.chara(id)?;
-        std::fs::remove_dir_all(self.root.join("charas").join(id))?;
-        let mut editor = self.editor()?;
-        for line in &mut editor.lines {
-            if line.chara_id == id {
-                line.chara_id.clear();
-            }
+        if self.editor()?.lines.iter().any(|line| line.chara_id == id) {
+            return Err(anyhow!("セリフで使用中のキャラクターは削除できません"));
         }
-        self.write_editor(&editor)
+        std::fs::remove_dir_all(self.root.join("charas").join(id))?;
+        Ok(())
     }
 
     fn save_chara(&self, id: String, input: CharaInput) -> Result<Chara> {
@@ -364,18 +355,6 @@ impl Library {
             return Err(error.into());
         }
         self.chara(&chara.id)
-    }
-    pub fn save_chara_preview(&self, id: &str, take: Take, wav: &[u8]) -> Result<()> {
-        self.chara(id)?;
-        atomic_bytes(
-            &self.root.join("charas").join(id).join("preview.wav"),
-            &crate::audio::with_voice(wav, &Voice::Generated(Box::new(take)))?,
-        )
-    }
-    pub fn chara_preview_path(&self, id: &str) -> Result<Option<PathBuf>> {
-        check_id(id)?;
-        let path = self.root.join("charas").join(id).join("preview.wav");
-        Ok(path.is_file().then_some(path))
     }
     pub fn takes(&self) -> Result<Vec<Take>> {
         self.editor()?
@@ -434,6 +413,15 @@ impl Library {
         self.write_editor(&editor)
     }
 
+    /// Read the WAV header without decoding or loading the PCM into memory.
+    pub fn audio_seconds(&self, id: &str) -> Result<f64> {
+        let reader = hound::WavReader::open(self.available_voice_path(id)?)?;
+        anyhow::ensure!(
+            reader.spec().sample_rate > 0,
+            "音声のサンプルレートが不正です"
+        );
+        Ok(reader.duration() as f64 / reader.spec().sample_rate as f64)
+    }
     pub fn audio(&self, id: &str) -> Result<Vec<u8>> {
         Ok(std::fs::read(self.available_voice_path(id)?)?)
     }
@@ -479,3 +467,6 @@ fn validate_lines(lines: &[crate::domain::Line]) -> Result<()> {
 }
 
 mod transfer;
+
+#[cfg(test)]
+mod tests;

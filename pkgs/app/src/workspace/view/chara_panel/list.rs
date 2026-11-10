@@ -90,50 +90,16 @@ impl Studio {
             .border_color(p.line)
             .child(
                 icon_button("add-chara", "plus")
-                    .size(px(32.))
                     .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, _, cx| this.create_chara(cx))),
             )
             .child(
                 icon_button("duplicate-chara", "copy")
-                    .size(px(32.))
                     .disabled_with_cursor(disabled || no_active)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(command) = this.state.duplicate_chara() {
                             this.send(command);
                             cx.notify();
-                        }
-                    })),
-            )
-            .child(
-                icon_button(
-                    "lock-chara",
-                    if self.state.chara_locked {
-                        "lock"
-                    } else {
-                        "unlock"
-                    },
-                )
-                .size(px(32.))
-                .when(self.state.chara_locked, |el| {
-                    el.bg(p.soft).text_color(self.accent())
-                })
-                .disabled_with_cursor(disabled || no_active)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.state.chara_locked = !this.state.chara_locked;
-                    this.sync_fields(window, cx);
-                    cx.notify();
-                })),
-            )
-            .child(
-                icon_button("delete-chara", "trash")
-                    .size(px(32.))
-                    .bg(rgb(0xb52e42))
-                    .text_color(rgb(0xffffff))
-                    .disabled_with_cursor(disabled || no_active || self.state.chara_locked)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        if let Some(chara) = &active {
-                            this.delete_chara(chara.id.clone(), chara.name.clone(), window, cx);
                         }
                     })),
             )

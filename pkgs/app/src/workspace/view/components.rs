@@ -2,9 +2,59 @@ use super::Studio;
 use super::appearance::{Palette, blend, chara_color};
 use crate::domain::{Chara, InferenceStatus};
 use base64::Engine as _;
+use gpui_kit::component::Icon;
 use gpui_kit::*;
 
+/// Aligns both dialogue and append rows without wrapping their interactive avatars.
+pub(super) fn speech_row(avatar: impl Styled + IntoElement, content: impl IntoElement) -> Div {
+    div()
+        .relative()
+        .flex()
+        .items_start()
+        .gap_2()
+        .child(avatar.mt(px(6.)))
+        .child(content)
+}
+
 impl Studio {
+    /// The same frame accepts an editable dialogue or an add-line button.
+    pub(super) fn speech_bubble(&self, border: Hsla, content: impl Styled + IntoElement) -> Div {
+        div()
+            .relative()
+            .flex_1()
+            .min_w_0()
+            .child(
+                content
+                    .min_h(px(44.))
+                    .rounded(px(8.))
+                    .border_2()
+                    .border_color(border)
+                    .bg(self.palette().control),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left(px(-8.))
+                    .top(px(12.))
+                    .size(px(16.))
+                    .child(
+                        Icon::default()
+                            .data(b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='currentColor' d='M16 1H10L2 8L10 15H16Z'/></svg>" as &'static [u8])
+                            .size(px(16.))
+                            .text_color(self.palette().control),
+                    )
+                    .child(
+                        Icon::default()
+                            .data(b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='none' stroke='currentColor' stroke-width='2' stroke-linejoin='round' d='M10 1L2 8L10 15'/></svg>" as &'static [u8])
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .size(px(16.))
+                            .text_color(border),
+                    ),
+            )
+    }
+
     pub(super) fn palette(&self) -> Palette {
         Palette::new(self.settings.theme.is_light())
     }

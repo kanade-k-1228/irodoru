@@ -131,23 +131,6 @@ pub fn requests(lines: &[Line], charas: &[Chara]) -> Result<Vec<TakeRequest>> {
         .collect()
 }
 
-/// Copy a generated take without carrying over its generated audio or seed.
-pub fn line_from_take(take: &crate::domain::Take, charas: &[Chara]) -> Line {
-    Line {
-        takes: Vec::new(),
-        id: new_id(),
-        text: take.conditions.text.clone(),
-        prompt: Some(take.additional_prompt.clone()),
-        chara_id: take
-            .chara_id
-            .as_ref()
-            .filter(|id| charas.iter().any(|c| &c.id == *id))
-            .cloned()
-            .unwrap_or_default(),
-        settings: None,
-        take_id: None,
-    }
-}
 /// Always targets the selected line, regardless of which settings panel is visible.
 pub fn randomize_line(
     editor: &mut EditorState,

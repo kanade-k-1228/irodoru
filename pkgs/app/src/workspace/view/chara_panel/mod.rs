@@ -5,21 +5,14 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 mod editor;
 mod list;
+mod references;
 
 impl Studio {
-    pub(in crate::workspace::view) fn chara_panel(
-        &self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub(in crate::workspace::view) fn chara_panel(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         div()
             .flex()
-            .h(px(if self.state.active_chara().is_some() {
-                (f32::from(window.viewport_size().height) * 0.5).min(360.)
-            } else {
-                136.
-            }))
+            .h(px(208.))
             .flex_shrink_0()
             .min_h_0()
             .border_t_1()
