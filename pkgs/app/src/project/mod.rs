@@ -11,7 +11,7 @@ mod ownership;
 mod session;
 pub use active::Project;
 use autosave::Saver;
-pub use session::{ProjectStatus, SaveState, Session};
+pub use session::{ProjectStatus, Session};
 use session::{SharedProject, status};
 
 /// Project paths share one rule across native entry points and storage.

@@ -1,13 +1,26 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+//! Desktop application: process startup, GUI shell, project editing, storage and synthesis.
+extern crate gpui_kit as gpui;
+
+mod audio;
+mod desktop;
+mod domain;
+mod files;
+mod icons;
+mod library;
+mod preferences;
+mod project;
+mod synthesis;
+mod workspace;
 
 use clap::Parser;
-use gpui_kit::*;
 #[cfg(target_os = "macos")]
-use irodoru::desktop::macos;
-use irodoru::desktop::{SharedInference, open_projects, open_studio, show_error, start_inference};
-use irodoru::project::incoming::{self, Inbox};
-use irodoru::workspace::view::actions::*;
+use desktop::macos;
+use desktop::{SharedInference, open_projects, open_studio, show_error, start_inference};
+use gpui_kit::*;
+use project::incoming::{self, Inbox};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, time::Duration};
+use workspace::view::actions::*;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -28,7 +41,7 @@ fn main() {
             return;
         }
     };
-    let _instance = match irodoru::preferences::lock_instance() {
+    let _instance = match preferences::lock_instance() {
         Ok(lock) => lock,
         Err(error) => {
             if !paths.is_empty()
@@ -55,7 +68,7 @@ fn main() {
         cx.set_global(SharedInference(
             start_inference().map_err(|error| format!("{error:#}")),
         ));
-        if let Err(error) = irodoru::preferences::theme::initialize(cx) {
+        if let Err(error) = preferences::theme::initialize(cx) {
             eprintln!("{error:#}");
             cx.quit();
             return;

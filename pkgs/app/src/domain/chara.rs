@@ -1,3 +1,4 @@
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_CHARA_COLOR: &str = "#41a2ec";
@@ -26,11 +27,10 @@ pub struct CharaInput {
 }
 
 impl CharaInput {
-    pub(crate) fn normalize(self, id: String) -> Result<Chara, super::AppError> {
-        use super::AppError;
+    pub(crate) fn normalize(self, id: String) -> Result<Chara> {
         let name = self.name.trim().to_owned();
         if name.is_empty() || name.chars().count() > 64 || self.description.chars().count() > 2000 {
-            return Err(AppError::invalid(
+            return Err(anyhow!(
                 "name must be 1–64 characters; description at most 2000",
             ));
         }
@@ -39,13 +39,13 @@ impl CharaInput {
             || !color.starts_with('#')
             || !color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
         {
-            return Err(AppError::invalid("color must be #RRGGBB"));
+            return Err(anyhow!("color must be #RRGGBB"));
         }
         let sample_text = self
             .sample_text
             .unwrap_or_else(|| DEFAULT_SAMPLE_TEXT.into());
         if sample_text.chars().count() > 1000 {
-            return Err(AppError::invalid("sample_text must be at most 1000 charas"));
+            return Err(anyhow!("sample_text must be at most 1000 charas"));
         }
         let mut seen = std::collections::HashSet::new();
         let voice_ids: Vec<_> = self
@@ -54,7 +54,7 @@ impl CharaInput {
             .filter(|id| !id.is_empty() && seen.insert(id.clone()))
             .collect();
         if voice_ids.iter().any(|id| !super::valid_id(id)) {
-            return Err(AppError::invalid("参照音声 ID が不正です"));
+            return Err(anyhow!("参照音声 ID が不正です"));
         }
         Ok(Chara {
             id,

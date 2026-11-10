@@ -24,13 +24,13 @@ COPY licenses ./licenses
 COPY pkgs/engine ./pkgs/engine
 COPY pkgs/model-bundle ./pkgs/model-bundle
 COPY pkgs/server ./pkgs/server
-# The UI needs a manifest and placeholder targets for license resolution.
+# The UI needs a manifest and a placeholder target for license resolution.
 # xtask generates notices and corresponding MPL sources for the runtime image.
 COPY pkgs/app/Cargo.toml ./pkgs/app/Cargo.toml
 COPY xtask ./xtask
 COPY pkgs/app/icons/ui/LICENSE ./pkgs/app/icons/ui/LICENSE
 RUN mkdir -p pkgs/app/src \
-    && touch pkgs/app/src/lib.rs pkgs/app/src/main.rs
+    && touch pkgs/app/src/main.rs
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --locked --release -p irodori-server \

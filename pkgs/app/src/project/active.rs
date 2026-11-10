@@ -52,7 +52,7 @@ impl Project {
                 .map(|c| c.id)
                 .collect::<Vec<_>>();
             source.library.copy_charas_to(&session.library, &ids)?;
-            Ok(session.library.save_editor(&Default::default())?)
+            session.library.save_editor(&Default::default())
         })?;
         super::archive::write_archive(&super::archive::snapshot(&session)?)?;
         session.saved = session.revision;

@@ -32,14 +32,12 @@ impl Studio {
     }
     pub(super) fn autosave_chara(&mut self) {
         if let Some(command) = self.state.save_chara() {
-            self.state.status.state = crate::project::SaveState::Saving;
             self.state.error = None;
             self.send(command);
         }
     }
     pub(super) fn autosave(&mut self) {
         if self.state.status.id.is_some() {
-            self.state.status.state = crate::project::SaveState::Saving;
             self.send(Command::SaveEditor(self.state.snapshot.editor.clone()));
         }
     }
