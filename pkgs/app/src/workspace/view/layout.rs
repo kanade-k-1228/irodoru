@@ -1,6 +1,6 @@
 use super::Studio;
-use super::app_menu::MenuAction;
 use super::appearance::{icon, tool};
+use super::modal::MenuAction;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -48,7 +48,6 @@ impl Render for Studio {
             .child(self.lines(cx))
             .child(self.chara_panel(window, cx))
             .child(self.footer(cx))
-            .when(self.menu_open, |el| el.child(self.app_menu(cx)))
     }
 }
 

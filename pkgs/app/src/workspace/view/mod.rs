@@ -52,6 +52,15 @@ pub(crate) struct Studio {
     subscriptions: Vec<Subscription>,
     line_scroll: ScrollHandle,
     line_drag_scroll: gpui_kit::component::scroll::AutoScroll,
+    line_wheel: SmoothScroll,
+    chara_list_wheel: SmoothScroll,
+    chara_form_wheel: SmoothScroll,
+    icons: std::cell::RefCell<std::collections::HashMap<String, CachedIcon>>,
+    model_seen: Option<(
+        crate::domain::InferenceStatus,
+        Option<String>,
+        Vec<irodoru_engine::ProviderStatus>,
+    )>,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,
@@ -59,10 +68,9 @@ pub(crate) struct Studio {
     focus: FocusHandle,
     menu_focus: FocusHandle,
     menu_trigger_focus: FocusHandle,
-    menu_open: bool,
     file_trigger_focus: FocusHandle,
     menu_index: usize,
-    modal: Option<app_dialog::Modal>,
+    modal: Option<modal::Modal>,
     model_picker_open: bool,
     model_error: Option<String>,
     model_trigger_focus: FocusHandle,
@@ -78,10 +86,8 @@ mod appearance;
 mod chara_panel;
 mod footer;
 
-mod app_dialog;
-mod app_menu;
 mod header;
-mod model_settings;
+mod modal;
 
 pub mod actions;
 pub(crate) enum WindowRequest {
@@ -107,3 +113,6 @@ mod generation_controls;
 mod layout;
 mod lines;
 mod player;
+mod smooth_scroll;
+use components::CachedIcon;
+use smooth_scroll::SmoothScroll;

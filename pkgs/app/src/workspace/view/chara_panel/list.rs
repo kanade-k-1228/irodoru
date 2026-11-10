@@ -17,12 +17,15 @@ impl Studio {
             .bg(p.surface)
             .flex()
             .flex_col()
+            .child(self.chara_list_wheel.probe())
             .child(
                 div()
                     .id("charas")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(self.chara_list_wheel.handle())
+                    .on_scroll(self.chara_list_wheel.listener(cx.entity_id()))
                     .p_1()
                     .when(self.state.snapshot.charas.is_empty(), |el| {
                         let message = if self.state.status.id.is_none() {

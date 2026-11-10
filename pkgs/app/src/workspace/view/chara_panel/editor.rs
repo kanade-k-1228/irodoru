@@ -23,6 +23,7 @@ impl Studio {
             .min_h_0()
             .flex()
             .flex_col()
+            .child(self.chara_form_wheel.probe())
             .child(self.chara_form(chara, cx))
             .into_any_element()
     }
@@ -33,6 +34,8 @@ impl Studio {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
+            .track_scroll(self.chara_form_wheel.handle())
+            .on_scroll(self.chara_form_wheel.listener(cx.entity_id()))
             .p_4()
             .flex()
             .gap_4()
@@ -210,10 +213,9 @@ impl Studio {
                         .child(chara.name.chars().next().unwrap_or('？').to_string()),
                 )
             })
-            .when_some(
-                crate::workspace::view::components::chara_icon(chara.icon.as_deref()),
-                |el, image| el.child(img(image).size(px(60.)).rounded_full()),
-            )
+            .when_some(self.chara_icon(Some(chara)), |el, image| {
+                el.child(img(image).size(px(60.)).rounded_full())
+            })
             .disabled_with_cursor(disabled)
             .tooltip("画像を選択")
             .on_click(cx.listener(|this, _, w, cx| this.import(true, w, cx)))

@@ -1,7 +1,9 @@
-use super::app_menu::MenuAction;
-use super::appearance::tool;
+use super::appearance::{button, icon};
+use super::modal::MenuAction;
+use crate::domain::InferenceStatus;
 use crate::workspace::view::Studio;
 use gpui_kit::component::Disableable;
+use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -30,8 +32,8 @@ impl Studio {
                     .cursor_pointer()
                     .h_full()
                     .px_2()
-                    .flex()
-                    .items_center()
+                    // Center the single line without a nested flex container.
+                    .line_height(px(32.))
                     .hover(|style| style.bg(p.hover))
                     .overflow_hidden()
                     .text_ellipsis()
@@ -51,13 +53,8 @@ impl Studio {
             )
             .child(self.model_status_button(cx))
             .child(
-                tool("footer-export", "download", "セリフごとにWAVを書き出す")
-                    .w(px(32.))
-                    .h_full()
-                    .rounded_none()
-                    .border_l_1()
-                    .border_color(p.line)
-                    .flex_shrink_0()
+                self.footer_button("footer-export", "download", "出力")
+                    .tooltip("セリフごとにWAVを書き出す")
                     .disabled(
                         self.state.busy
                             || self.state.status.id.is_none()
@@ -78,18 +75,60 @@ impl Studio {
                     }),
             )
             .child(
-                tool("footer-settings", "gear", "設定")
-                    .track_focus(&self.menu_trigger_focus)
-                    .w(px(32.))
-                    .h_full()
-                    .rounded_none()
-                    .border_l_1()
-                    .border_color(p.line)
-                    .flex_shrink_0()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.menu_select(MenuAction::Preferences, window, cx);
-                    })),
+                self.footer_button(
+                    "footer-settings",
+                    MenuAction::Preferences.icon(),
+                    MenuAction::Preferences.label(),
+                )
+                .track_focus(&self.menu_trigger_focus)
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.menu_select(MenuAction::Preferences, window, cx);
+                })),
             )
             .into_any_element()
+    }
+
+    fn model_status_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette();
+        let status = self.model_status();
+        let failed = matches!(status, InferenceStatus::Error { .. });
+        let providers = self
+            .inference
+            .as_ref()
+            .map(|service| service.providers())
+            .unwrap_or_default();
+        let mut names: Vec<_> = providers.iter().map(|p| p.provider.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        let status_label = super::modal::status_label(&status);
+        let label = if names.is_empty() {
+            status_label
+        } else {
+            format!("{status_label} · {}", names.join(" + "))
+        };
+        self.footer_button("model-settings", "model", label)
+            .track_focus(&self.model_trigger_focus)
+            .text_color(if failed { p.warning } else { p.muted })
+            .tooltip("モデル設定")
+            .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
+            .into_any_element()
+    }
+
+    /// An icon with its label, separated from the item on its left.
+    pub(super) fn footer_button(
+        &self,
+        id: &'static str,
+        icon_name: &str,
+        label: impl Into<SharedString>,
+    ) -> Button {
+        button(id, "")
+            .ghost()
+            .flex_shrink_0()
+            .h(px(32.))
+            .rounded_none()
+            .border_l_1()
+            .border_color(self.palette().line)
+            .icon(icon(icon_name))
+            .label(label)
     }
 }

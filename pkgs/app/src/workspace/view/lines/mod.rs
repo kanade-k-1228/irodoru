@@ -49,6 +49,7 @@ impl Studio {
                     .flex()
                     .flex_1()
                     .min_h_0()
+                    .child(self.line_wheel.probe())
                     .child(self.line_list(cx))
                     .child(self.line_scrollbar()),
             )
@@ -65,6 +66,7 @@ impl Studio {
             .min_w_0()
             .overflow_y_scroll()
             .track_scroll(&self.line_scroll)
+            .on_scroll(self.line_wheel.listener(cx.entity_id()))
             .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DraggedLine>, _, cx| {
                 let delta = if event.drag(cx).studio == cx.entity_id() && !this.state.busy {
                     AutoScroll::compute_delta(event.event.position.y, event.bounds)
