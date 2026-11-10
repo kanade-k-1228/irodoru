@@ -23,11 +23,15 @@ fn environment(threads: usize) -> Result<(Environment, usize)> {
     if let Some(env) = shared.as_ref() {
         return Ok(env.clone());
     }
+    #[cfg(target_os = "windows")]
+    let builder = crate::windows_runtime::builder()?;
+    #[cfg(not(target_os = "windows"))]
+    let builder = ort::init();
     let pool = GlobalThreadPoolOptions::default()
         .with_intra_threads(threads)?
         .with_inter_threads(1)?
         .with_spin_control(false)?;
-    let env = ort::init()
+    let env = builder
         .with_name("irodori")
         .with_global_thread_pool(pool)
         .build()?;
@@ -51,11 +55,100 @@ impl OrtRuntime {
         })
     }
     pub fn load(&self, path: &Path, spinning: bool) -> Result<OrtGraph> {
+        self.load_session(path, spinning, None, None)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn devices(&self) -> Result<Vec<super::device::DeviceInfo>> {
+        use super::device::{DeviceInfo, DevicePreference};
+        use ort::memory::DeviceType;
+        crate::windows_runtime::register_providers(&self.env)?;
+        self.env
+            .devices()
+            .enumerate()
+            .filter_map(|(index, d)| {
+                let kind = match d.hardware_device().ty() {
+                    DeviceType::GPU => DevicePreference::Gpu,
+                    DeviceType::NPU => DevicePreference::Npu,
+                    _ => return None,
+                };
+                Some((|| -> Result<DeviceInfo> {
+                    Ok(DeviceInfo {
+                        kind,
+                        index,
+                        engine: "windows-ml".into(),
+                        name: d.ep()?.to_owned(),
+                        description: format!(
+                            "Windows ML {} ({})",
+                            d.ep()?,
+                            d.hardware_device().vendor()?
+                        ),
+                    })
+                })())
+            })
+            .collect()
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn load_device(&self, path: &Path, spinning: bool, index: usize) -> Result<OrtGraph> {
+        self.load_session(path, spinning, Some(index), None)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn load_coreml(
+        &self,
+        path: &Path,
+        spinning: bool,
+        preference: super::device::DevicePreference,
+    ) -> Result<OrtGraph> {
+        self.load_session(path, spinning, None, Some(preference))
+    }
+
+    fn load_session(
+        &self,
+        path: &Path,
+        spinning: bool,
+        _device: Option<usize>,
+        _coreml: Option<super::device::DevicePreference>,
+    ) -> Result<OrtGraph> {
         let _build = SESSION_BUILD
             .lock()
             .map_err(|_| anyhow::anyhow!("ONNX session lock poisoned"))?;
         let build = || -> ort::Result<Session> {
             let mut builder = Session::builder(&self.env)?;
+            #[cfg(target_os = "windows")]
+            {
+                // CPU fallback must not automatically pick a registered accelerator.
+                builder =
+                    builder.with_auto_device(ort::session::builder::AutoDevicePolicy::PreferCPU)?;
+                if let Some(index) = _device {
+                    let device = self.env.devices().nth(index).ok_or_else(|| {
+                        ort::Error::new("Windows ML device is no longer available")
+                    })?;
+                    builder = builder
+                        .with_devices([device], None)?
+                        .with_parallel_execution(false)?
+                        .with_memory_pattern(false)?;
+                }
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(preference) = _coreml {
+                use super::device::DevicePreference;
+                use ort::ep::{
+                    CoreML,
+                    coreml::{ComputeUnits, ModelFormat},
+                };
+                let units = match preference {
+                    DevicePreference::Gpu => ComputeUnits::CPUAndGPU,
+                    DevicePreference::Npu => ComputeUnits::CPUAndNeuralEngine,
+                    _ => ComputeUnits::All,
+                };
+                builder = builder.with_execution_providers([CoreML::default()
+                    .with_model_format(ModelFormat::MLProgram)
+                    .with_compute_units(units)
+                    .build()
+                    .error_on_failure()])?;
+            }
             if spinning || self.threads != self.pool_threads {
                 builder = builder
                     .with_independent_thread_pool()?
@@ -70,7 +163,7 @@ impl OrtRuntime {
         };
         build()
             .map(OrtGraph)
-            .with_context(|| format!("loading CPU graph {}", path.display()))
+            .with_context(|| format!("loading ONNX graph {}", path.display()))
     }
 }
 

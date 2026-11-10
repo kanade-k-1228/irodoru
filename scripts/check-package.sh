@@ -33,6 +33,11 @@ case "$target" in
     archive=$(find "$bundle" -name '*.zip' -type f -print -quit)
     7z x "$archive" "-o$work/package" >/dev/null
     check_package "$work/package"
+    test -s "$work/package/irodoru.exe"
+    if [[ -n $(find "$work/package" -type f -iname '*.dll' -print -quit) ]]; then
+      echo "::error::Windows package contains runtime DLLs" >&2
+      exit 1
+    fi
     ;;
   aarch64-apple-darwin)
     archive=$(find "$bundle" -name '*.dmg' -type f -print -quit)

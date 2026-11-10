@@ -240,6 +240,15 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: bash scripts/check-package.sh "$TARGET"
+      # The embedded CPU runtime must work alone, and the shared Windows ML runtime once installed.
+      - name: Verify Windows runtimes
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $exe = 'target/x86_64-pc-windows-msvc/release/native/irodoru.exe'
+          ./scripts/check-windows-runtime.ps1 -Executable $exe -EmbeddedCpu
+          ./scripts/install-windows-ml.ps1
+          ./scripts/check-windows-runtime.ps1 -Executable $exe
       - uses: actions/upload-artifact@v7
         with:
           name: irodoru-${{ matrix.target }}

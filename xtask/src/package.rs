@@ -11,6 +11,25 @@ fn platform() -> &'static str {
         "x86_64-unknown-linux-gnu"
     }
 }
+
+fn bundle_library(name: &str, windows: bool, mac: bool) -> Result<bool> {
+    if windows {
+        // ort-sys copies DirectML.dll next to the build output, but the ZIP ships
+        // only the executable: it resolves the copy Windows provides in System32.
+        if name.eq_ignore_ascii_case("DirectML.dll") {
+            return Ok(false);
+        }
+        anyhow::ensure!(
+            !name.to_ascii_lowercase().ends_with(".dll"),
+            "Unexpected Windows runtime DLL {name}; review its dependency before packaging"
+        );
+        Ok(false)
+    } else if mac {
+        Ok(name.ends_with(".dylib"))
+    } else {
+        Ok(name.ends_with(".so") || name.contains(".so."))
+    }
+}
 fn configuration(
     root: &Path,
     stage: &Path,
@@ -115,13 +134,7 @@ pub fn cli(args: &[String]) -> Result<()> {
     for entry in fs::read_dir(&release)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if if windows {
-            name.ends_with(".dll")
-        } else if mac {
-            name.ends_with(".dylib")
-        } else {
-            name.ends_with(".so") || name.contains(".so.")
-        } {
+        if bundle_library(&name, windows, mac)? {
             fs::copy(entry.path(), stage.join(&name))?;
             libraries.push(name);
         }

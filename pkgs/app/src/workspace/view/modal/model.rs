@@ -87,6 +87,11 @@ impl Studio {
             .inference
             .as_ref()
             .and_then(|service| service.model_name());
+        let providers = self
+            .inference
+            .as_ref()
+            .map(|service| service.providers())
+            .unwrap_or_default();
         let source = model_name.clone().unwrap_or_else(|| "既定のモデル".into());
         let error = self.model_error.clone().or_else(|| match &status {
             InferenceStatus::Error { error } => Some(error.clone()),
@@ -98,6 +103,14 @@ impl Studio {
                 .child("モデル：anime")
                 .child(div().text_color(if failed { p.warning } else { p.muted })
                     .child(status_label(&status))))
+            .child(div().flex().flex_col().gap_1()
+                .child("推論プロバイダー")
+                .when(providers.is_empty(), |el| el.child(div().text_color(p.muted).child("モデル読み込み後に表示されます")))
+                .children(providers.into_iter().map(|provider| {
+                    div().text_xs().child(format!("{}：{}{}", provider.graph, provider.provider,
+                        if provider.fallback { "（CPUフォールバック）" } else { "" }))
+                }))
+                .child(div().text_xs().text_color(p.muted).child("グラフごとの選択先です。GPU/NPUを選択していても、一部の演算はCPUで実行される場合があります。")))
             .when_some(progress(&status), |el, (done, total)| {
                 el.child(div().text_xs().text_color(p.muted).child(if total > 0 {
                     format!("{:.1} / {:.1} MiB", done as f64 / 1_048_576.0, total as f64 / 1_048_576.0)

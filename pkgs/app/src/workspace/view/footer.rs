@@ -92,16 +92,26 @@ impl Studio {
         let p = self.palette();
         let status = self.model_status();
         let failed = matches!(status, InferenceStatus::Error { .. });
-        self.footer_button(
-            "model-settings",
-            "model",
-            super::modal::status_label(&status),
-        )
-        .track_focus(&self.model_trigger_focus)
-        .text_color(if failed { p.warning } else { p.muted })
-        .tooltip("モデル設定")
-        .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
-        .into_any_element()
+        let providers = self
+            .inference
+            .as_ref()
+            .map(|service| service.providers())
+            .unwrap_or_default();
+        let mut names: Vec<_> = providers.iter().map(|p| p.provider.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        let status_label = super::modal::status_label(&status);
+        let label = if names.is_empty() {
+            status_label
+        } else {
+            format!("{status_label} · {}", names.join(" + "))
+        };
+        self.footer_button("model-settings", "model", label)
+            .track_focus(&self.model_trigger_focus)
+            .text_color(if failed { p.warning } else { p.muted })
+            .tooltip("モデル設定")
+            .on_click(cx.listener(|this, _, window, cx| this.show_model_settings(window, cx)))
+            .into_any_element()
     }
 
     /// An icon with its label, separated from the item on its left.

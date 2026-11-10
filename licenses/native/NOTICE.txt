@@ -19,7 +19,11 @@ license terms, not the application's MIT license or the DirectML sample-code
 MIT license. Section 1(a) permits redistribution in applications built with
 machine learning tools/frameworks for use on Windows/Xbox. Its LICENSE.txt
 and ThirdPartyNotices.txt are copied from the official 1.15.4 NuGet package.
-Those terms apply to the DirectML component only, which is shipped on Windows.
+Those terms apply to the DirectML component only. Windows packages link the
+ort-sys ONNX Runtime above but no longer ship DirectML.dll: the executable uses
+the copy provided by Windows. The separately installed Windows ML runtime and
+its execution providers remain subject to their own Microsoft/vendor terms and
+are not redistributed in the application ZIP.
 
 OpenVINO (optional GPU container)
 The container preserves license and notice files from the exact installed

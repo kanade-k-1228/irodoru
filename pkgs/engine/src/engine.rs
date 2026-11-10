@@ -17,9 +17,13 @@ pub struct Engine {
     codec: Codec,
     model: TTSModel,
     voices: Voices,
+    providers: crate::ProviderTracker,
 }
 
 impl Engine {
+    pub fn provider_tracker(&self) -> crate::ProviderTracker {
+        self.providers.clone()
+    }
     pub fn load(config: &EngineConfig) -> Result<Self> {
         let EngineConfig {
             model_dir,
@@ -45,6 +49,7 @@ impl Engine {
             codec,
             model,
             voices: Voices::new(),
+            providers: runtime.provider_tracker(),
         })
     }
 

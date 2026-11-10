@@ -56,7 +56,11 @@ pub(crate) struct Studio {
     chara_list_wheel: SmoothScroll,
     chara_form_wheel: SmoothScroll,
     icons: std::cell::RefCell<std::collections::HashMap<String, CachedIcon>>,
-    model_seen: Option<(crate::domain::InferenceStatus, Option<String>)>,
+    model_seen: Option<(
+        crate::domain::InferenceStatus,
+        Option<String>,
+        Vec<irodoru_engine::ProviderStatus>,
+    )>,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,

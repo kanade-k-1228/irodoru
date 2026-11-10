@@ -31,6 +31,31 @@ struct Cli {
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    {
+        let mut args = std::env::args_os().skip(1);
+        if args.next().is_some_and(|arg| arg == "--verify-windows-ml") {
+            let Some(report) = args.next() else {
+                std::process::exit(2);
+            };
+            let (gpu, embedded) = match args.next() {
+                None => (false, false),
+                Some(arg) if arg == "--gpu" => (true, false),
+                Some(arg) if arg == "--embedded-cpu" => (false, true),
+                _ => std::process::exit(2),
+            };
+            if args.next().is_some() {
+                std::process::exit(2);
+            }
+            let result = irodoru_engine::windows_runtime::verify(gpu, embedded);
+            let text = match &result {
+                Ok(report) => report.clone(),
+                Err(error) => format!("{error:#}\n"),
+            };
+            let written = std::fs::write(report, text).is_ok();
+            std::process::exit(if result.is_ok() && written { 0 } else { 1 });
+        }
+    }
     let cli = Cli::parse();
     let paths =
         incoming::argument_paths(cli.projects, &std::env::current_dir().unwrap_or_default());

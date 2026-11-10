@@ -50,7 +50,7 @@ impl Studio {
         let model = self
             .inference
             .as_ref()
-            .map(|service| (service.status(), service.model_name()));
+            .map(|service| (service.status(), service.model_name(), service.providers()));
         let mut changed = self.settings.theme != theme || self.model_seen != model;
         self.settings.theme = theme;
         self.model_seen = model;
