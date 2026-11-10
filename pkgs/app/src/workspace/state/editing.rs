@@ -243,7 +243,7 @@ impl WorkspaceState {
         let Some(next) = editor::remove(&mut self.snapshot.editor, &id) else {
             return false;
         };
-        self.selected = Some(next);
+        self.selected = next;
 
         true
     }

@@ -144,11 +144,14 @@ pub(super) fn icon(name: &str) -> Icon {
 }
 
 pub(super) fn tool(id: impl Into<ElementId>, name: &str, label: &'static str) -> Button {
+    icon_button(id, name).tooltip(label)
+}
+
+pub(super) fn icon_button(id: impl Into<ElementId>, name: &str) -> Button {
     Button::new(id)
         .cursor_pointer()
         .ghost()
         .icon(icon(name))
-        .tooltip(label)
         .w(px(28.))
         .h(px(28.))
         .rounded(px(8.))

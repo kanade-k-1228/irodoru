@@ -1,7 +1,7 @@
 //! Line list composition; lines and insertion gaps are sibling elements.
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use crate::workspace::view::appearance::{button, tool};
+use crate::workspace::view::appearance::{button, icon_button, tool};
 use gpui_kit::component::Disableable;
 use gpui_kit::component::scroll::{AutoScroll, Scrollbar, ScrollbarMode};
 use gpui_kit::prelude::FluentBuilder;
@@ -56,6 +56,13 @@ impl Studio {
             .when(self.state.running.is_some(), |el| {
                 el.child(self.generation_stop(cx))
             })
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .p_1()
+                    .mr(px(24.))
+                    .child(self.line_append(cx)),
+            )
             .into_any_element()
     }
 
@@ -67,32 +74,28 @@ impl Studio {
             .overflow_y_scroll()
             .track_scroll(&self.line_scroll)
             .on_scroll(self.line_wheel.listener(cx.entity_id()))
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DraggedLine>, _, cx| {
-                let delta = if event.drag(cx).studio == cx.entity_id() && !this.state.busy {
-                    AutoScroll::compute_delta(event.event.position.y, event.bounds)
-                } else { None };
-                this.line_drag_scroll.set(delta, cx, |delta, this, cx| {
-                    if !cx.has_active_drag() || this.state.busy {
-                        this.line_drag_scroll.stop();
-                        return;
-                    }
-                    let offset = this.line_scroll.offset();
-                    this.line_scroll.set_offset(point(offset.x, (offset.y - delta).clamp(-this.line_scroll.max_offset().y, px(0.))));
-                    cx.notify();
-                });
-            }))
+            .on_drag_move(
+                cx.listener(|this, event: &DragMoveEvent<DraggedLine>, _, cx| {
+                    let delta = if event.drag(cx).studio == cx.entity_id() && !this.state.busy {
+                        AutoScroll::compute_delta(event.event.position.y, event.bounds)
+                    } else {
+                        None
+                    };
+                    this.line_drag_scroll.set(delta, cx, |delta, this, cx| {
+                        if !cx.has_active_drag() || this.state.busy {
+                            this.line_drag_scroll.stop();
+                            return;
+                        }
+                        let offset = this.line_scroll.offset();
+                        this.line_scroll.set_offset(point(
+                            offset.x,
+                            (offset.y - delta).clamp(-this.line_scroll.max_offset().y, px(0.)),
+                        ));
+                        cx.notify();
+                    });
+                }),
+            )
             .p_1()
-            .when(self.state.snapshot.editor.lines.is_empty(), |el| {
-                let message = if self.state.status.id.is_none() {
-                    "左下のファイルからプロジェクトを作成するか、開いて台本を書き始めましょう。"
-                } else if self.state.snapshot.charas.is_empty() {
-                    "まずは左下の＋からキャラを追加してください。追加後、台本の＋からセリフを書き始められます。"
-                } else {
-                    "台本がまだありません。下の＋からセリフを追加してください。"
-                };
-                el.child(div().ml(px(40.)).mr(px(4.)).py_4().text_sm().line_height(px(24.))
-                    .text_color(self.palette().muted).child(message))
-            })
             .when(!self.state.snapshot.editor.lines.is_empty(), |el| {
                 el.child(self.line_insert(0, cx))
             })
@@ -103,11 +106,8 @@ impl Studio {
                     .lines
                     .iter()
                     .enumerate()
-                    .flat_map(|(i, line)| {
-                        [self.line(i, line, cx), self.line_insert(i + 1, cx)]
-                    }),
+                    .flat_map(|(i, line)| [self.line(i, line, cx), self.line_insert(i + 1, cx)]),
             )
-            .child(self.line_append(cx))
             .into_any_element()
     }
 
@@ -119,10 +119,11 @@ impl Studio {
         let chara = self.state.active_chara();
         div()
             .flex()
+            .flex_shrink_0()
             .items_start()
             .gap_2()
             .px_1()
-            .mt(px(32.))
+            .mt_2()
             .mb_4()
             .child(self.avatar(chara, 28.).mt(px(6.)))
             .child(
@@ -131,7 +132,7 @@ impl Studio {
                     .flex_1()
                     .min_w_0()
                     .child(
-                        tool("append-line", "plus", "末尾にセリフを追加")
+                        icon_button("append-line", "plus")
                             .w_full()
                             .h(px(40.))
                             .rounded(px(8.))
@@ -185,8 +186,8 @@ impl Studio {
                 div()
                     .id(("insert-target", slot))
                     .absolute()
-                    .left(px(40.))
-                    .right(px(4.))
+                    .left_0()
+                    .right_0()
                     .top(px(-4.))
                     .h(px(16.))
                     .flex()
@@ -265,6 +266,16 @@ impl Studio {
                                 .inset(px(6.))
                             })
                     }),
+            )
+            .child(
+                canvas(
+                    |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+                    |_, hitbox, window, _| {
+                        window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
+                    },
+                )
+                .absolute()
+                .size_full(),
             )
             .into_any_element()
     }

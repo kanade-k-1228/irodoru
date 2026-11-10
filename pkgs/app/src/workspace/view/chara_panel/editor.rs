@@ -113,12 +113,12 @@ impl Studio {
                             .bg(p.control)
                             .disabled(disabled),
                     )
-                    .child(self.chara_identity_actions(chara, cx)),
+                    .child(self.chara_identity_actions(cx)),
             )
             .into_any_element()
     }
 
-    fn chara_identity_actions(&self, chara: &Chara, cx: &mut Context<Self>) -> AnyElement {
+    fn chara_identity_actions(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette();
         let disabled = self.state.busy || self.state.chara_locked;
         div()
@@ -148,48 +148,6 @@ impl Studio {
                             .into_any_element()
                     }),
             )
-            .child(
-                tool(
-                    "lock-chara",
-                    if self.state.chara_locked {
-                        "lock"
-                    } else {
-                        "unlock"
-                    },
-                    if self.state.chara_locked {
-                        "ロック解除"
-                    } else {
-                        "パラメータをロック"
-                    },
-                )
-                .when(self.state.chara_locked, |el| {
-                    el.bg(p.soft).text_color(self.accent())
-                })
-                .size(px(32.))
-                .disabled(self.state.busy)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.state.chara_locked = !this.state.chara_locked;
-                    this.sync_fields(window, cx);
-                    cx.notify();
-                })),
-            )
-            .map(|el| {
-                let id = chara.id.clone();
-                let name = chara.name.clone();
-                el.child(
-                    tool("delete-chara", "trash", "キャラを削除")
-                        .size(px(32.))
-                        .bg(rgb(0xb52e42))
-                        .text_color(rgb(0xffffff))
-                        .disabled(disabled || self.state.chara_locked)
-                        .when(disabled || self.state.chara_locked, |el| {
-                            el.cursor_default()
-                        })
-                        .on_click(cx.listener(move |this, _, w, cx| {
-                            this.delete_chara(id.clone(), name.clone(), w, cx)
-                        })),
-                )
-            })
             .child(
                 tool("export-chara", "download", "キャラクターファイルを書き出す")
                     .size(px(32.))

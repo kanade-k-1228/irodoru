@@ -50,13 +50,17 @@ pub fn move_line(lines: &mut Vec<Line>, id: &str, after: Option<&str>) -> Option
     lines.insert(target, line);
     Some(target)
 }
-pub fn remove(editor: &mut EditorState, id: &str) -> Option<String> {
-    if editor.lines.len() <= 1 {
-        return None;
-    }
+/// Returns the next selection after removal, or `None` when the ID was not found.
+/// A successful removal of the final line returns `Some(None)`.
+pub fn remove(editor: &mut EditorState, id: &str) -> Option<Option<String>> {
     let index = editor.lines.iter().position(|r| r.id == id)?;
     editor.lines.remove(index);
-    Some(editor.lines[index.min(editor.lines.len() - 1)].id.clone())
+    Some(
+        editor
+            .lines
+            .get(index.min(editor.lines.len().saturating_sub(1)))
+            .map(|line| line.id.clone()),
+    )
 }
 pub fn speech(text: String, settings: &GenerationSettings) -> Result<SynthesisInput> {
     let seed = if settings.seed.trim().is_empty() {

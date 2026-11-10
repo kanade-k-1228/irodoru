@@ -69,7 +69,6 @@ impl Studio {
                     .text_color(p.muted)
                     .child(format!("バージョン {}", env!("CARGO_PKG_VERSION"))),
             )
-            .child("キャラクタの声で台本を読み上げる音声合成アプリ")
             .into_any_element()
     }
 

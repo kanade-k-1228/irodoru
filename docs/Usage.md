@@ -40,10 +40,10 @@ Use **キャラクターファイルを書き出す** in the character editor to
 - The **+** button at the end of the script is always visible and adds an empty line at the end.
 - Click a character name to select it, then use the **+** at the end of the script to add a line for that character. Click a line to edit its dialogue directly in that line.
 - Hover over a gap before, between, or after lines to reveal an add-only **+** button.
-- Use the icon buttons inside the right edge of a dialogue field to add above with **＋**, duplicate that row immediately below, or delete it. Each button acts on its own row. Duplicates retain the dialogue, character, and generation settings without sharing generated audio. The last line cannot be deleted.
+- Use the icon buttons inside the right edge of a dialogue field to add above with **＋**, duplicate that row immediately below, or delete it. Each button acts on its own row. Duplicates retain the dialogue, character, and generation settings without sharing generated audio. The last line can also be deleted; use the bottom **+** row to start a new line.
 - Drag a line’s character icon to move the line. A horizontal line marks the destination; dragging near the top or bottom scrolls the script.
 - The play button inside the left edge of each dialogue field plays or pauses that row’s generated audio. It is disabled until audio exists. Only the right-side action buttons are separated from the dialogue by a vertical line.
-- Press `Enter` to add the next line or `Shift+Enter` for a line break. During Japanese input, `Enter` confirms the IME composition.
+- Click the fixed **+** row at the bottom of the script editor to add the next line or press `Shift+Enter` for a line break. `Enter` does not add a line. During Japanese input, `Enter` confirms the IME composition.
 
 ## Generate and export audio
 
@@ -79,6 +79,6 @@ To use local models, choose a folder or enter its path and click **Apply**. The 
 
 Each new take stores its resolved generation conditions inside the WAV file’s metadata, without a separate YAML file, including the seed, steps, speed, CFG, model, text, caption, and reference identity. Selecting a take restores its dialogue, additional prompt, and editable generation parameters. Exported WAVs keep these conditions when imported again.
 
-Use the export button immediately left of the footer gear to export one WAV per dialogue. Choose a naming rule (number, number + character, number + dialogue, or number + character + dialogue), then select an output folder. Names use the selected take’s recorded character and dialogue; unsupported filename characters are replaced and long names are shortened. A new `irodoru-export` folder (with a numeric suffix if needed) contains `001.wav`, `002.wav`, and so on in script order, using each line’s selected take. If any line has no selected audio, export reports its line number before writing.
+Use the export button immediately left of the footer gear to export one WAV per dialogue. Choose a naming rule in the export dialog (number, number + character, number + dialogue, or number + character + dialogue), click **エクスポート**, then select an output folder. Names use the selected take’s recorded character and dialogue; unsupported filename characters are replaced and long names are shortened. A new `irodoru-export` folder (with a numeric suffix if needed) contains `001.wav`, `002.wav`, and so on in script order, using each line’s selected take. If any line has no selected audio, export reports its line number before writing.
 
 Only the current project format (version 0 with single-file WAV voices) is supported. Older project formats are not migrated.

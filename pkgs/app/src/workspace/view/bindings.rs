@@ -104,23 +104,18 @@ impl Studio {
                     cx.notify();
                 }
                 if let InputEvent::PressEnter {
-                    secondary,
+                    secondary: true,
                     shift: false,
                 } = event
                     && !this.sync
                     && !this.state.busy
+                    && this.can_generate()
+                    && !input.read(cx).value().trim().is_empty()
                     && input.update(cx, |state, cx| {
                         state.marked_text_range(window, cx).is_none()
                     })
                 {
-                    if *secondary {
-                        if this.can_generate() && !input.read(cx).value().trim().is_empty() {
-                            this.generate(false, window, cx);
-                        }
-                    } else {
-                        this.add(false, window, cx);
-                        input.update(cx, |state, cx| state.focus(window, cx));
-                    }
+                    this.generate(false, window, cx);
                 }
             },
         ));
@@ -244,6 +239,8 @@ impl Studio {
             model_picker_open: false,
             model_error: None,
             model_trigger_focus: cx.focus_handle(),
+            export_trigger_focus: cx.focus_handle(),
+            export_naming: crate::project::ExportNaming::Number,
         };
         if let Some(path) = path {
             studio.send(Command::Open {

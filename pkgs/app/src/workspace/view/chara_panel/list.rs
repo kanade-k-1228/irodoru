@@ -1,7 +1,7 @@
 use crate::domain::Chara;
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use crate::workspace::view::appearance::tool;
+use crate::workspace::view::appearance::icon_button;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -27,22 +27,6 @@ impl Studio {
                     .track_scroll(self.chara_list_wheel.handle())
                     .on_scroll(self.chara_list_wheel.listener(cx.entity_id()))
                     .p_1()
-                    .when(self.state.snapshot.charas.is_empty(), |el| {
-                        let message = if self.state.status.id.is_none() {
-                            "左下のファイルからプロジェクトを作成するか、開いてください。"
-                        } else {
-                            "キャラがまだいません。下の＋から、名前や声の設定を追加してください。"
-                        };
-                        el.child(
-                            div()
-                                .px_1()
-                                .py_3()
-                                .text_xs()
-                                .line_height(px(20.))
-                                .text_color(p.muted)
-                                .child(message),
-                        )
-                    })
                     .children(
                         self.state
                             .snapshot
@@ -105,19 +89,51 @@ impl Studio {
             .border_t_1()
             .border_color(p.line)
             .child(
-                tool("add-chara", "plus", "キャラを追加")
+                icon_button("add-chara", "plus")
                     .size(px(32.))
                     .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, _, cx| this.create_chara(cx))),
             )
             .child(
-                tool("duplicate-chara", "copy", "キャラを複製")
+                icon_button("duplicate-chara", "copy")
                     .size(px(32.))
                     .disabled_with_cursor(disabled || no_active)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(command) = this.state.duplicate_chara() {
                             this.send(command);
                             cx.notify();
+                        }
+                    })),
+            )
+            .child(
+                icon_button(
+                    "lock-chara",
+                    if self.state.chara_locked {
+                        "lock"
+                    } else {
+                        "unlock"
+                    },
+                )
+                .size(px(32.))
+                .when(self.state.chara_locked, |el| {
+                    el.bg(p.soft).text_color(self.accent())
+                })
+                .disabled_with_cursor(disabled || no_active)
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.state.chara_locked = !this.state.chara_locked;
+                    this.sync_fields(window, cx);
+                    cx.notify();
+                })),
+            )
+            .child(
+                icon_button("delete-chara", "trash")
+                    .size(px(32.))
+                    .bg(rgb(0xb52e42))
+                    .text_color(rgb(0xffffff))
+                    .disabled_with_cursor(disabled || no_active || self.state.chara_locked)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(chara) = &active {
+                            this.delete_chara(chara.id.clone(), chara.name.clone(), window, cx);
                         }
                     })),
             )

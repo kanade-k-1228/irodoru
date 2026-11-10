@@ -74,6 +74,8 @@ pub(crate) struct Studio {
     model_picker_open: bool,
     model_error: Option<String>,
     model_trigger_focus: FocusHandle,
+    export_trigger_focus: FocusHandle,
+    export_naming: crate::project::ExportNaming,
 }
 
 mod bindings;

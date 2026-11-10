@@ -24,9 +24,6 @@ impl Studio {
                 .into_iter()
                 .map(|(action, key, icon, label)| {
                     let id = line.id.clone();
-                    let disabled = disabled
-                        || (matches!(action, LineAction::Delete)
-                            && self.state.snapshot.editor.lines.len() <= 1);
                     tool(("line-action", i * 4 + key), icon, label)
                         .size(px(40.))
                         .rounded_none()
