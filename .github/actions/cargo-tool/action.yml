@@ -1,0 +1,41 @@
+name: Cached Cargo tool
+description: Build a pinned Cargo tool once and save it before dependent steps run.
+inputs:
+  name:
+    description: Cargo package and executable name.
+    required: true
+  version:
+    description: Exact package version.
+    required: true
+  features:
+    description: Additional Cargo features.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v6
+      id: tool
+      with:
+        path: ${{ runner.temp }}/irodoru-tools/${{ inputs.name }}
+        key: cargo-tool-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.name }}-${{ inputs.version }}-${{ inputs.features }}
+    - if: steps.tool.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        TOOL_NAME: ${{ inputs.name }}
+        TOOL_VERSION: ${{ inputs.version }}
+        TOOL_FEATURES: ${{ inputs.features }}
+      run: |
+        args=(--locked --version "$TOOL_VERSION" --root "$RUNNER_TEMP/irodoru-tools/$TOOL_NAME")
+        if [[ -n "$TOOL_FEATURES" ]]; then
+          args+=(--features "$TOOL_FEATURES")
+        fi
+        cargo install "$TOOL_NAME" "${args[@]}"
+    - if: steps.tool.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/irodoru-tools/${{ inputs.name }}
+        key: ${{ steps.tool.outputs.cache-primary-key }}
+    - shell: bash
+      env:
+        TOOL_NAME: ${{ inputs.name }}
+      run: echo "$RUNNER_TEMP/irodoru-tools/$TOOL_NAME/bin" >> "$GITHUB_PATH"

@@ -1,0 +1,27 @@
+name: Cached desktop package
+description: Reuse completed packages only when all build inputs match exactly.
+inputs:
+  target:
+    description: Rust target triple.
+    required: true
+outputs:
+  cache-hit:
+    description: Whether the complete package was restored.
+    value: ${{ steps.package.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: compiler
+      shell: bash
+      run: |
+        echo "hash=$(rustc -Vv | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+    # No restore-keys: an older executable must never stand in for changed source.
+    # Run after the release-version update and model-manifest download.
+    - uses: actions/cache@v6
+      id: package
+      with:
+        path: |
+          target/${{ inputs.target }}/release/native
+          target/${{ inputs.target }}/release/bundle
+        key: desktop-v1-${{ inputs.target }}-${{ steps.compiler.outputs.image }}-${{ steps.compiler.outputs.hash }}-${{ hashFiles('Cargo.*', '.cargo/**', 'pkgs/**', '!pkgs/app/resources/models/**', 'xtask/**', 'scripts/**', 'licenses/**', 'LICENSE', 'about.toml', '.github/actions/**', '.github/workflows/app.yml') }}

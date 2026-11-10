@@ -1,0 +1,25 @@
+name: Reusable Rust compilation
+description: Restore Cargo dependencies and cache compilation results, including on PRs.
+inputs:
+  key:
+    description: Separate incompatible job and target configurations.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: mozilla-actions/sccache-action@v0.0.11
+      with:
+        version: v0.16.0
+    - shell: bash
+      run: |
+        echo 'SCCACHE_GHA_ENABLED=true' >> "$GITHUB_ENV"
+        echo 'RUSTC_WRAPPER=sccache' >> "$GITHUB_ENV"
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: . -> target
+        key: ${{ inputs.key }}
+        cache-on-failure: true
+        # sccache stores compiler outputs by content; avoid duplicating target trees.
+        cache-targets: false
+        # Tool binaries have their own immutable versioned cache.
+        cache-bin: false

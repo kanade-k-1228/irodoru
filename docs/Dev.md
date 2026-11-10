@@ -148,3 +148,33 @@ when importing replacement models. Mac CI checks the native code and package con
 and actual accelerator use still require validation on a Mac.
 
 Reference: [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).
+
+## CI build caches
+
+The app workflow saves caches on pull requests as well as `main`. New commits
+wait for the active run to finish and save its caches instead of cancelling an
+expensive build; GitHub retains only the newest pending run in the group:
+
+- Rust uses sccache's GitHub Actions backend to reuse compilation results by
+  content, with incremental compilation disabled. Cargo registry downloads are
+  cached separately; full target trees are not duplicated in that cache.
+- The prepared model bundle is saved immediately after export. Only model
+  licenses, exporter dependencies and bundle preparation code invalidate it;
+  changing a native-library notice does not export the models again.
+- Windows' embedded CPU ONNX Runtime archive is keyed by its pinned build script
+  and saved before application checks, so a later test failure does not discard
+  the expensive native build.
+- `cargo-about` and `cargo-packager` are cached by exact version, features, OS and
+  architecture, immediately after installation.
+- Completed desktop packages are reused only on an exact match of source,
+  manifests, resources (including the downloaded model distribution manifest),
+  licenses, build scripts, workflow configuration, Rust compiler and runner image.
+  Release versions are applied before computing the key. A hit skips release
+  compilation and packaging; tests, package inspection and Windows runtime
+  probes still run. README-only edits do not invalidate packages.
+
+Changed inputs rebuild the affected layer. GitHub's cache scope still applies:
+PR caches can be reused by that PR, while `main` cannot read a PR's private cache.
+Cache eviction, a new runner image or compiler, and a first run on a new branch
+can therefore require a fresh build. Check the restore steps and sccache's final
+statistics when investigating a slow run.
