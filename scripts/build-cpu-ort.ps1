@@ -21,13 +21,16 @@ $generator = switch (([Version]$version).Major) {
     18 { 'Visual Studio 18 2026' }
     default { throw "Unsupported Visual Studio version: $version" }
 }
+# The static ORT interface is not built itself. Make its excluded RE2 dependency
+# part of ALL so Visual Studio generates/builds the dependency in its own directory.
+$cmakeFile = Join-Path $source 'cmake/CMakeLists.txt'
+$dependencyTarget = 'add_custom_target(irodoru_cpu_dependencies ALL DEPENDS re2)'
+if (-not ([IO.File]::ReadAllText($cmakeFile).Contains($dependencyTarget))) {
+    [IO.File]::AppendAllText($cmakeFile, "`n$dependencyTarget`n")
+}
 # No DirectML, shared libraries, reduced operator set, or dynamic CRT.
 & "$source/build.bat" --cmake_generator $generator --config Release --parallel 2 --skip_tests --build_dir "$Output/build" --enable_msvc_static_runtime --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_USE_MIMALLOC=OFF onnxruntime_USE_FULL_PROTOBUF=OFF
 if ($LASTEXITCODE -ne 0) { throw 'CPU ORT build failed' }
-# RE2 is excluded from ALL by upstream FetchContent. In a static-only build
-# there is no final ORT shared-library link to pull this target into the build.
-cmake --build "$Output/build/Release" --config Release --target re2 --parallel 2
-if ($LASTEXITCODE -ne 0) { throw 'ORT RE2 dependency build failed' }
 $lib = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/lib.exe' | Select-Object -First 1
 if (-not $lib) { throw 'MSVC lib.exe is required' }
 # Flatten the built static libraries including transitive dependencies. Tests
