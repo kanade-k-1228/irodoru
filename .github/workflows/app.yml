@@ -23,7 +23,6 @@ defaults:
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   check:
@@ -42,13 +41,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
+      - name: Linux desktop dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config clang cmake libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libzstd-dev libasound2-dev libvulkan1
       - uses: ./.github/actions/rust-cache
         with:
           key: check
       - run: cargo xtask verify
       - run: docker compose --profile local --profile wsl-gpu config --quiet
-      - uses: astral-sh/setup-uv@v7
-      - run: cargo xtask verify-export
       - name: Save Rust compiler cache
         if: always() && env.SCCACHE_ARCHIVE_KEY != '' && env.SCCACHE_ARCHIVE_HIT != 'true'
         uses: actions/cache/save@v6

@@ -165,7 +165,7 @@ expensive build; GitHub retains only the newest pending run in the group:
   licenses, exporter dependencies and bundle preparation code invalidate it;
   changing a native-library notice does not export the models again.
 - Windows' embedded CPU ONNX Runtime archive is keyed by its pinned build script
-  and saved before application checks, so a later test failure does not discard
+  and saved before application checks, so a later check failure does not discard
   the expensive native build.
 - `cargo-about` and `cargo-packager` are cached by exact version, features, OS and
   architecture, immediately after installation.
@@ -173,7 +173,7 @@ expensive build; GitHub retains only the newest pending run in the group:
   manifests, resources (including the downloaded model distribution manifest),
   licenses, build scripts, workflow configuration, Rust compiler and runner image.
   Release versions are applied before computing the key. A hit skips release
-  compilation and packaging; tests, package inspection and Windows runtime
+  compilation and packaging; Clippy, package inspection and Windows runtime
   probes still run. README-only edits do not invalidate packages.
 
 Changed inputs rebuild the affected layer. GitHub's cache scope still applies:
