@@ -32,25 +32,20 @@ impl Studio {
     }
     pub(super) fn autosave_chara(&mut self) {
         if let Some(command) = self.state.save_chara() {
-            self.state.status.state = crate::project::SaveState::Saving;
             self.state.error = None;
             self.send(command);
         }
     }
     pub(super) fn autosave(&mut self) {
         if self.state.status.id.is_some() {
-            self.state.status.state = crate::project::SaveState::Saving;
             self.send(Command::SaveEditor(self.state.snapshot.editor.clone()));
         }
     }
     pub(super) fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.model_dialog_open {
+        if self.modal == Some(super::app_dialog::Modal::Model) {
             window.refresh();
         }
         self.settings.theme = crate::preferences::theme::current(cx);
-        if let Some(error) = crate::preferences::theme::take_error(cx) {
-            self.state.error = Some(error);
-        }
         let events = self
             .service
             .as_ref()

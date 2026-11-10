@@ -1,7 +1,7 @@
 //! Pure editing transitions; the view decides when to synchronize controls and save.
 use super::{Field, WorkspaceState};
 use crate::domain::Take;
-use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT};
+use crate::domain::{CharaInput, DEFAULT_CHARA_COLOR, DEFAULT_SAMPLE_TEXT, GenerationSettings};
 use crate::workspace::{editor, protocol::Command};
 use anyhow::Result;
 
@@ -155,7 +155,7 @@ impl WorkspaceState {
                 let after = index
                     .checked_sub(1)
                     .map(|i| self.snapshot.editor.lines[i].id.clone());
-                self.insert_at(after.as_deref(), false)
+                self.insert_at(after.as_deref())
             }
             LineAction::Duplicate => self.add_line(true),
             LineAction::Delete => self.remove_line(),
@@ -182,32 +182,22 @@ impl WorkspaceState {
         self.select(id)
     }
 
-    pub fn insert_at(&mut self, after: Option<&str>, duplicate: bool) -> bool {
+    pub fn insert_at(&mut self, after: Option<&str>) -> bool {
         if !self.can_edit_lines()
             || after.is_some_and(|id| !self.snapshot.editor.lines.iter().any(|line| line.id == id))
         {
             return false;
         }
-        let source = if duplicate {
-            let Some(id) = self
-                .selected
-                .as_deref()
-                .filter(|id| self.snapshot.editor.lines.iter().any(|line| line.id == *id))
-            else {
-                return false;
-            };
-            Some(id)
-        } else {
-            after.or_else(|| {
+        let source = after
+            .or_else(|| {
                 self.snapshot
                     .editor
                     .lines
                     .first()
                     .map(|line| line.id.as_str())
             })
-        }
-        .map(str::to_owned);
-        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), duplicate);
+            .map(str::to_owned);
+        let id = editor::insert(&mut self.snapshot.editor, source.as_deref(), false);
         editor::move_line(&mut self.snapshot.editor.lines, &id, after);
         self.select(id)
     }
@@ -287,12 +277,7 @@ impl WorkspaceState {
         let Some(settings) = self.generation_settings_mut() else {
             return false;
         };
-        match field {
-            GenerationField::Speed => settings.set_speed(value.into()),
-            GenerationField::TextGuidance => settings.cfg_text = value,
-            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
-            GenerationField::CaptionGuidance => settings.cfg_caption = value,
-        }
+        set_generation(settings, field, value);
         true
     }
 
@@ -327,9 +312,6 @@ impl WorkspaceState {
         {
             chara.color = color;
         }
-    }
-    pub fn delete_chara(&mut self, id: String) -> Command {
-        Command::DeleteChara(id)
     }
     pub fn duplicate_chara(&self) -> Option<Command> {
         if self.busy || self.status.id.is_none() {
@@ -392,12 +374,7 @@ impl WorkspaceState {
             return;
         }
         let settings = &mut self.preview_settings;
-        match field {
-            GenerationField::Speed => settings.set_speed(value.into()),
-            GenerationField::TextGuidance => settings.cfg_text = value,
-            GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
-            GenerationField::CaptionGuidance => settings.cfg_caption = value,
-        }
+        set_generation(settings, field, value);
     }
     pub fn randomize_selected_line(&mut self, seed: u32) -> Result<bool> {
         if !self.can_edit_lines() {
@@ -422,7 +399,7 @@ impl WorkspaceState {
         editor::randomize_line(&mut self.snapshot.editor, id, previous, seed)?;
         Ok(true)
     }
-    pub fn generate(&self, all: bool) -> Result<Option<Command>> {
+    pub fn generate(&self) -> Result<Option<Command>> {
         if !self.can_edit_lines() {
             return Ok(None);
         }
@@ -431,10 +408,19 @@ impl WorkspaceState {
             .editor
             .lines
             .iter()
-            .filter(|line| all || Some(&line.id) == self.selected.as_ref())
+            .filter(|line| Some(&line.id) == self.selected.as_ref())
             .cloned()
             .collect::<Vec<_>>();
         let requests = editor::requests(&lines, &self.snapshot.charas)?;
         Ok((!requests.is_empty()).then_some(Command::Generate(requests)))
+    }
+}
+
+fn set_generation(settings: &mut GenerationSettings, field: GenerationField, value: f32) {
+    match field {
+        GenerationField::Speed => settings.set_speed(value.into()),
+        GenerationField::TextGuidance => settings.cfg_text = value,
+        GenerationField::SpeakerGuidance => settings.cfg_speaker = value,
+        GenerationField::CaptionGuidance => settings.cfg_caption = value,
     }
 }

@@ -41,8 +41,7 @@ pub fn url_paths(urls: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
 pub struct Inbox(PathBuf);
 impl Inbox {
     pub fn new() -> Result<Self> {
-        let dirs = directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
-            .context("設定フォルダが見つかりません")?;
+        let dirs = crate::files::project_dirs().context("設定フォルダが見つかりません")?;
         Self::at(dirs.config_dir().join("open-requests"))
     }
 

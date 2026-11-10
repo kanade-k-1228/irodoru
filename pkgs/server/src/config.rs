@@ -78,7 +78,6 @@ impl ServeArgs {
             threads: self.threads,
             device: self.device.device,
             openvino_library: self.device.openvino_library.clone(),
-            cache: Default::default(),
         }
     }
 }

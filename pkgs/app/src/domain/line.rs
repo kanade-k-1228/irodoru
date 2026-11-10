@@ -31,23 +31,18 @@ impl Default for GenerationSettings {
         }
     }
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct Line {
     pub takes: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "voice_id")]
     pub take_id: Option<String>,
     pub id: String,
     pub text: String,
     pub chara_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<GenerationSettings>,
 }
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct EditorState {
     pub lines: Vec<Line>,
-    #[serde(skip)]
     pub active_chara: String,
 }

@@ -11,7 +11,7 @@ pub use backend::{
     Runtime,
     device::{DeviceInfo, DevicePreference},
 };
-pub use config::{CacheConfig, EngineConfig};
+pub use config::EngineConfig;
 pub use engine::Engine;
 pub use error::AppError;
 pub use model::{Audio, SynthOutput, SynthParams};

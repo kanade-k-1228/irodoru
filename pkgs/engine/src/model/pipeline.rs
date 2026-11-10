@@ -1,5 +1,5 @@
 use crate::backend::{Graph, Input, Runtime};
-use crate::{CacheConfig, cache::ConditionCache};
+use crate::cache::ConditionCache;
 use anyhow::{Context, Result, bail, ensure};
 use ndarray::{Array, ArrayD, Axis, IxDyn, Slice};
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use super::{
     audio::Audio,
     codec::Codec,
     condition::{Condition, valid_mask},
-    diagnostics::{DebugDump, Stopwatch},
+    diagnostics::Stopwatch,
     sampling::{Sampler, noise},
     text::{TextTokenizer, normalize_text},
 };
@@ -89,13 +89,6 @@ pub struct TTSModel {
 }
 
 impl TTSModel {
-    pub(crate) fn configure_cache(&mut self, config: &CacheConfig) {
-        self.caption_cache = ConditionCache::new(config.caption_bytes_per_model, 1024);
-    }
-    pub(crate) fn clear_cache(&mut self) {
-        self.caption_cache.clear();
-    }
-
     pub fn load(dir: &Path, runtime: &Runtime) -> Result<Self> {
         let manifest: Manifest = serde_json::from_str(
             &std::fs::read_to_string(dir.join("manifest.json")).context("manifest.json")?,
@@ -112,10 +105,7 @@ impl TTSModel {
             duration: graph("duration")?,
             sampler: Sampler::load(dir, runtime, manifest.flow == "meanflow")?,
             manifest,
-            caption_cache: ConditionCache::new(
-                CacheConfig::default().caption_bytes_per_model,
-                1024,
-            ),
+            caption_cache: ConditionCache::new(32 * 1024 * 1024, 1024),
         })
     }
 
@@ -178,11 +168,7 @@ impl TTSModel {
         clock.lap("context_kv");
 
         ensure!(!is_cancelled(), "synthesis cancelled");
-        let dump = DebugDump::from_env();
         let mut x = noise(latent_steps, self.manifest.latent_dim, seed)?;
-        if let Some(dump) = &dump {
-            dump.f32("noise.f32", &x)?;
-        }
         let schedule = self.sampler.schedule(num_steps, p.sway_coeff)?;
         for w in schedule.windows(2) {
             ensure!(!is_cancelled(), "synthesis cancelled");
@@ -193,23 +179,8 @@ impl TTSModel {
         clock.lap("sample");
 
         ensure!(!is_cancelled(), "synthesis cancelled");
-        if let Some(dump) = &dump {
-            dump.f32("latent.f32", &x)?;
-            let ids = self.tokenizer.encode(&text, self.manifest.max_text_len)?;
-            dump.json(
-                "meta.json",
-                &serde_json::json!({
-                    "text": text, "ids": ids, "latent_steps": latent_steps,
-                    "num_steps": num_steps, "seed": seed,
-                }),
-            )?;
-        }
-        ensure!(!is_cancelled(), "synthesis cancelled");
         let mut audio = codec.decode(&x)?;
         ensure!(!is_cancelled(), "synthesis cancelled");
-        if let Some(dump) = &dump {
-            dump.f32("audio.f32", &audio.samples)?;
-        }
         let mut keep = target_samples;
         if p.trim_tail {
             let tail = flattening_point(&x)? * codec.hop;

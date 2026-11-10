@@ -105,10 +105,8 @@ impl Worker {
             }
             let line_id = prepared.line_id().to_owned();
             self.events.send(Event::LineStarted(line_id.clone()))?;
-            let result = generation::synthesize(prepared, &mut infer).and_then(|(take, wav)| {
-                self.project
-                    .change(|s| Ok(s.library.save_take(&take, &wav)?))
-            });
+            let result = generation::synthesize(prepared, &mut infer)
+                .and_then(|(take, wav)| self.project.change(|s| s.library.save_take(&take, &wav)));
             if let Err(e) = result {
                 self.events
                     .send(Event::LineFailed(line_id, format!("{e:#}")))?;
@@ -145,7 +143,7 @@ impl Worker {
                 self.snapshot()?;
             }
             Command::SaveEditor(editor) => {
-                let result = self.project.change(|s| Ok(s.library.save_editor(&editor)?));
+                let result = self.project.change(|s| s.library.save_editor(&editor));
                 self.editor_error = result.as_ref().err().map(|e| format!("{e:#}"));
                 result?;
             }
@@ -159,7 +157,7 @@ impl Worker {
                 if let Some(id) = id {
                     let result = self
                         .project
-                        .change(|s| Ok(s.library.update_chara(id.clone(), input)?));
+                        .change(|s| s.library.update_chara(id.clone(), input));
                     match result {
                         Ok(_) => {
                             self.chara_errors.remove(&id);
@@ -170,24 +168,22 @@ impl Worker {
                         }
                     }
                 } else {
-                    let chara = self
-                        .project
-                        .change(|s| Ok(s.library.create_chara(input)?))?;
+                    let chara = self.project.change(|s| s.library.create_chara(input))?;
                     self.events.send(Event::CharaCreated(chara.id))?;
                     self.snapshot()?;
                 }
             }
             Command::DeleteChara(id) => {
-                self.project.change(|s| Ok(s.library.delete_chara(&id)?))?;
+                self.project.change(|s| s.library.delete_chara(&id))?;
                 self.snapshot()?;
             }
             Command::SelectTake { line_id, take_id } => {
                 self.project
-                    .change(|s| Ok(s.library.select_take(&line_id, take_id.as_deref())?))?;
+                    .change(|s| s.library.select_take(&line_id, take_id.as_deref()))?;
                 self.snapshot()?;
             }
             Command::DeleteTake(id) => {
-                self.project.change(|s| Ok(s.library.delete_take(&id)?))?;
+                self.project.change(|s| s.library.delete_take(&id))?;
                 self.snapshot()?;
             }
             Command::ImportVoices { chara_id, paths } => {
@@ -204,15 +200,13 @@ impl Worker {
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                let mut chara = self.project.read(|s| Ok(s.library.chara(&chara_id)?))?;
+                let mut chara = self.project.read(|s| s.library.chara(&chara_id))?;
                 for (name, wav) in audio {
-                    let id = self
-                        .project
-                        .change(|s| Ok(s.library.save_voice(&name, &wav)?))?;
+                    let id = self.project.change(|s| s.library.save_voice(&name, &wav))?;
                     chara.voice_ids.push(id);
                 }
                 self.project
-                    .change(|s| Ok(s.library.update_chara(chara_id, chara.into())?))?;
+                    .change(|s| s.library.update_chara(chara_id, chara.into()))?;
                 self.snapshot()?;
             }
             Command::ImportIcon { chara_id, path } => {
@@ -220,7 +214,7 @@ impl Worker {
                 self.project.change(|s| {
                     let mut chara = s.library.chara(&chara_id)?;
                     chara.icon = Some(icon);
-                    Ok(s.library.update_chara(chara_id, chara.into())?)
+                    s.library.update_chara(chara_id, chara.into())
                 })?;
                 self.snapshot()?;
             }
@@ -240,13 +234,8 @@ impl Worker {
                 })?;
                 let (take, wav) =
                     generation::synthesize(prepared, |job| self.inference.synthesize(job))?;
-                self.project.change(|s| {
-                    s.previews.save_take(&take, &wav)?;
-                    s.library
-                        .save_chara_preview(&chara_id, &s.previews, &take.id)?;
-                    s.previews.delete_take(&take.id)?;
-                    Ok(())
-                })?;
+                self.project
+                    .change(|s| s.library.save_chara_preview(&chara_id, take, &wav))?;
                 self.snapshot()?;
             }
             Command::Audio(source) => {

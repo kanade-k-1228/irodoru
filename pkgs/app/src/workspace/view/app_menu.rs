@@ -3,7 +3,6 @@ use super::appearance::{icon, tool};
 use super::dialogs::ProjectDialog;
 use super::{Studio, WindowRequest, actions, appearance};
 use crate::workspace::protocol::Command;
-use gpui_kit::component::{Theme as ComponentTheme, ThemeMode};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -158,7 +157,7 @@ impl Studio {
     }
 
     pub(super) fn open_project_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.dialog_open {
+        if self.modal.is_some() {
             return;
         }
         self.menu_open = true;
@@ -221,7 +220,7 @@ impl Studio {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.dialog_open || self.action_disabled(action) {
+        if self.modal.is_some() || self.action_disabled(action) {
             return;
         }
         if self.menu_open {
@@ -297,18 +296,9 @@ impl Studio {
 
     pub(super) fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings.theme = crate::preferences::theme::toggle(cx);
-        ComponentTheme::change(
-            if self.settings.theme.is_light() {
-                ThemeMode::Light
-            } else {
-                ThemeMode::Dark
-            },
-            Some(window),
-            cx,
-        );
-        appearance::apply(self.settings.theme.is_light(), cx);
-        if let Err(error) = crate::preferences::theme::save(cx, self.settings.theme) {
-            self.state.error = Some(error.to_string());
+        appearance::apply(self.settings.theme.is_light(), window, cx);
+        if let Err(error) = crate::preferences::theme::save(self.settings.theme) {
+            self.state.error = Some(format!("{error:#}"));
         }
         cx.notify();
     }

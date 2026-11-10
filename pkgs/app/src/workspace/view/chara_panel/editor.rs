@@ -2,6 +2,7 @@
 use crate::domain::AudioSource;
 use crate::domain::Chara;
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::{button, icon, tool};
 use gpui_kit::component::Disableable;
 use gpui_kit::component::Sizable;
@@ -68,8 +69,7 @@ impl Studio {
                         v.label()
                     ))
                     .when(selected, |el| el.bg(p.soft).border_color(self.accent()))
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.state.toggle_chara_voice(Some(voice.clone()));
                         this.autosave_chara();
@@ -90,8 +90,7 @@ impl Studio {
             .when(chara.icon.as_ref().is_some_and(|i| !i.is_empty()), |el| {
                 el.child(
                     tool("clear-icon", "close", "画像を削除")
-                        .disabled(disabled)
-                        .when(disabled, |el| el.cursor_default())
+                        .disabled_with_cursor(disabled)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.state.set_chara_icon(String::new());
                             this.autosave_chara();
@@ -215,8 +214,7 @@ impl Studio {
                 crate::workspace::view::components::chara_icon(chara.icon.as_deref()),
                 |el, image| el.child(img(image).size(px(60.)).rounded_full()),
             )
-            .disabled(disabled)
-            .when(disabled, |el| el.cursor_default())
+            .disabled_with_cursor(disabled)
             .tooltip("画像を選択")
             .on_click(cx.listener(|this, _, w, cx| this.import(true, w, cx)))
             .into_any_element()
@@ -248,14 +246,12 @@ impl Studio {
             .text_color(p.muted)
             .child(
                 tool("import-voice", "folder", "音声を取り込む")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, w, cx| this.import(false, w, cx))),
             )
             .child(
                 tool("clear-voice", "close", "参照解除")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.state.toggle_chara_voice(None);
                         this.autosave_chara();
@@ -286,8 +282,7 @@ impl Studio {
                     .primary()
                     .bg(self.accent())
                     .icon(icon("wand"))
-                    .disabled(disabled || !self.can_generate())
-                    .when(disabled || !self.can_generate(), |el| el.cursor_default())
+                    .disabled_with_cursor(disabled || !self.can_generate())
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.preview();
                         cx.notify();
@@ -328,11 +323,11 @@ impl Studio {
                     .ghost()
                     .w_full()
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.preview_advanced = !this.preview_advanced;
+                        this.preview_form.expanded = !this.preview_form.expanded;
                         cx.notify();
                     })),
             )
-            .when(self.preview_advanced, |el| {
+            .when(self.preview_form.expanded, |el| {
                 el.child(self.speed_controls(true))
                     .child(self.advanced_controls(true, cx))
             })
@@ -347,8 +342,7 @@ impl Studio {
             .gap_2()
             .child(
                 tool("saved-preview", "play", "保存済みサンプルを聴く")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.start_audio(AudioSource::CharaPreview(id.clone()));
                         cx.notify();
@@ -356,8 +350,7 @@ impl Studio {
             )
             .child(
                 tool("export-saved-preview", "download", "サンプル保存")
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.export(AudioSource::CharaPreview(export.clone()), w, cx)
                     })),

@@ -24,13 +24,7 @@ impl Studio {
             self.edited(window, cx);
         }
     }
-    pub(super) fn generate(
-        &mut self,
-        all: bool,
-        random: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn generate(&mut self, random: bool, window: &mut Window, cx: &mut Context<Self>) {
         if random {
             match self.state.randomize_selected_line(rand::random()) {
                 Ok(true) => {
@@ -44,7 +38,7 @@ impl Studio {
                 }
             }
         }
-        match self.state.generate(all) {
+        match self.state.generate() {
             Ok(Some(command)) => {
                 self.autosave();
                 self.send(command);
@@ -62,8 +56,7 @@ impl Studio {
     pub(super) fn preview(&mut self) {
         match self.state.preview() {
             Ok(Some(command)) => {
-                self.playback = None;
-                self.audio_id = None;
+                self.stop_audio();
                 self.send(command);
             }
             Ok(None) => {}

@@ -10,6 +10,29 @@ use crate::workspace::protocol::Command;
 use gpui_kit::*;
 
 impl Studio {
+    /// Shows a native dialog while the workspace is busy, then sends the command chosen
+    /// for its answer. Cancelling, or answering with no command, ends the busy state.
+    fn ask<T: 'static>(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        dialog: impl Future<Output = Option<T>> + 'static,
+        answer: impl FnOnce(&mut Self, T) -> Option<Command> + 'static,
+    ) {
+        self.state.busy = true;
+        cx.spawn_in(window, async move |this, cx| {
+            let picked = dialog.await;
+            let _ = this.update_in(cx, |this, _, cx| {
+                match picked.and_then(|value| answer(this, value)) {
+                    Some(command) => this.send(command),
+                    None => this.state.busy = false,
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub(super) fn choose_project(
         &mut self,
         action: ProjectDialog,
@@ -20,42 +43,30 @@ impl Studio {
             return;
         }
         let create = !matches!(action, ProjectDialog::Open);
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
+        let dialog = async move {
             let dialog =
                 rfd::AsyncFileDialog::new().add_filter("irodoru プロジェクト", &["iro", "IRO"]);
-            let file = if create {
+            if create {
                 dialog.set_file_name("project.iro").save_file().await
             } else {
                 dialog.pick_file().await
-            };
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(file) = file {
-                    if let Err(error) = crate::project::validate_path(file.path()) {
-                        this.state.busy = false;
-                        this.state.error = Some(error.to_string());
-                        cx.notify();
-                        return;
-                    }
-                    this.autosave();
-                    this.playback = None;
-                    this.audio_id = None;
-                    this.state.line_errors.clear();
-                    this.send(if matches!(action, ProjectDialog::FromCharas) {
-                        Command::NewFromCharas(file.path().to_owned())
-                    } else {
-                        Command::Open {
-                            path: file.path().to_owned(),
-                            create,
-                        }
-                    });
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+            }
+        };
+        self.ask(window, cx, dialog, move |this, file| {
+            let path = file.path().to_owned();
+            if let Err(error) = crate::project::validate_path(&path) {
+                this.state.error = Some(error.to_string());
+                return None;
+            }
+            this.autosave();
+            this.stop_audio();
+            this.state.line_errors.clear();
+            Some(if matches!(action, ProjectDialog::FromCharas) {
+                Command::NewFromCharas(path)
+            } else {
+                Command::Open { path, create }
+            })
+        });
     }
     pub(super) fn import(&mut self, icon: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.busy || self.state.chara_locked {
@@ -64,8 +75,7 @@ impl Studio {
         let Some(chara_id) = self.state.active_chara().map(|chara| chara.id.clone()) else {
             return;
         };
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
+        let dialog = async move {
             let dialog = rfd::AsyncFileDialog::new().add_filter(
                 if icon { "画像" } else { "参照音声" },
                 if icon {
@@ -74,30 +84,24 @@ impl Studio {
                     crate::audio::AUDIO_EXTENSIONS
                 },
             );
-            let files = if icon {
+            if icon {
                 dialog.pick_file().await.map(|f| vec![f])
             } else {
                 dialog.pick_files().await
-            };
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(files) = files {
-                    let paths: Vec<_> = files.into_iter().map(|f| f.path().to_owned()).collect();
-                    if icon {
-                        if let Some(path) = paths.into_iter().next() {
-                            this.send(Command::ImportIcon { chara_id, path });
-                        } else {
-                            this.state.busy = false;
-                        }
-                    } else {
-                        this.send(Command::ImportVoices { chara_id, paths });
-                    }
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+            }
+        };
+        self.ask(window, cx, dialog, move |_, files| {
+            let mut paths = files.into_iter().map(|f| f.path().to_owned());
+            if icon {
+                let path = paths.next()?;
+                Some(Command::ImportIcon { chara_id, path })
+            } else {
+                Some(Command::ImportVoices {
+                    chara_id,
+                    paths: paths.collect(),
+                })
+            }
+        });
     }
     pub(super) fn chara_file(&mut self, export: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.state.busy || self.state.status.id.is_none() {
@@ -111,31 +115,22 @@ impl Studio {
         } else {
             None
         };
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
+        let dialog = async move {
             let dialog =
                 rfd::AsyncFileDialog::new().add_filter("irodoru キャラクター", &["irochar"]);
-            let file = if export {
+            if export {
                 dialog.set_file_name("chara.irochar").save_file().await
             } else {
                 dialog.pick_file().await
-            };
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(file) = file {
-                    this.send(match input {
-                        Some(input) => Command::ExportChara {
-                            input,
-                            path: file.path().to_owned(),
-                        },
-                        None => Command::ImportChara(file.path().to_owned()),
-                    });
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+            }
+        };
+        self.ask(window, cx, dialog, move |_, file| {
+            let path = file.path().to_owned();
+            Some(match input {
+                Some(input) => Command::ExportChara { input, path },
+                None => Command::ImportChara(path),
+            })
+        });
     }
 
     pub(super) fn export(
@@ -147,7 +142,6 @@ impl Studio {
         if self.state.busy {
             return;
         }
-        self.state.busy = true;
         let filename = self
             .state
             .snapshot
@@ -156,25 +150,19 @@ impl Studio {
             .find(|t| matches!(&source, AudioSource::Take(id) if &t.id == id))
             .and_then(|t| t.conditions.filename().ok())
             .unwrap_or_else(|| "sample.wav".into());
-        cx.spawn_in(window, async move |this, cx| {
-            let file = rfd::AsyncFileDialog::new()
+        let dialog = async move {
+            rfd::AsyncFileDialog::new()
                 .add_filter("WAV", &["wav"])
                 .set_file_name(filename)
                 .save_file()
-                .await;
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(file) = file {
-                    this.send(Command::Export {
-                        source,
-                        path: file.path().to_owned(),
-                    });
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+                .await
+        };
+        self.ask(window, cx, dialog, move |_, file| {
+            Some(Command::Export {
+                source,
+                path: file.path().to_owned(),
+            })
+        });
     }
     pub(super) fn export_lines(
         &mut self,
@@ -193,25 +181,18 @@ impl Studio {
             return;
         }
         self.autosave();
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
-            let folder = rfd::AsyncFileDialog::new()
+        let dialog = async move {
+            rfd::AsyncFileDialog::new()
                 .set_title("セリフごとのWAVの書き出し先")
                 .pick_folder()
-                .await;
-            let _ = this.update_in(cx, |this, _, cx| {
-                if let Some(folder) = folder {
-                    this.send(Command::ExportLines {
-                        parent: folder.path().to_owned(),
-                        naming,
-                    });
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+                .await
+        };
+        self.ask(window, cx, dialog, move |_, folder| {
+            Some(Command::ExportLines {
+                parent: folder.path().to_owned(),
+                naming,
+            })
+        });
         cx.notify();
     }
 
@@ -225,8 +206,7 @@ impl Studio {
         if self.state.busy || self.state.chara_locked {
             return;
         }
-        self.state.busy = true;
-        cx.spawn_in(window, async move |this, cx| {
+        let dialog = async move {
             let choice = rfd::AsyncMessageDialog::new()
                 .set_title("irodoru")
                 .set_description(format!(
@@ -235,16 +215,10 @@ impl Studio {
                 .set_buttons(rfd::MessageButtons::YesNo)
                 .show()
                 .await;
-            let _ = this.update_in(cx, |this, _, cx| {
-                if choice == rfd::MessageDialogResult::Yes {
-                    let command = this.state.delete_chara(id);
-                    this.send(command);
-                } else {
-                    this.state.busy = false;
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+            (choice == rfd::MessageDialogResult::Yes).then_some(())
+        };
+        self.ask(window, cx, dialog, move |_, ()| {
+            Some(Command::DeleteChara(id))
+        });
     }
 }

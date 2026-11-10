@@ -13,8 +13,7 @@ pub struct ModelSettings {
 
 impl ModelSettings {
     fn path() -> Result<PathBuf> {
-        let dirs = directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
-            .context("設定フォルダが見つかりません")?;
+        let dirs = crate::files::project_dirs().context("設定フォルダが見つかりません")?;
         Ok(dirs.config_dir().join("models.yaml"))
     }
 

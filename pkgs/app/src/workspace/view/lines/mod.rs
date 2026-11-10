@@ -1,5 +1,6 @@
 //! Line list composition; lines and insertion gaps are sibling elements.
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::{button, tool};
 use gpui_kit::component::Disableable;
 use gpui_kit::component::scroll::{AutoScroll, Scrollbar, ScrollbarMode};
@@ -30,7 +31,10 @@ impl Render for DraggedLine {
     }
 }
 
+mod actions;
+mod editor;
 mod line;
+mod takes;
 
 impl Studio {
     pub(in crate::workspace::view) fn lines(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -132,8 +136,7 @@ impl Studio {
                             .bg(p.control)
                             .border_2()
                             .border_color(p.line)
-                            .disabled(disabled)
-                            .when(disabled, |el| el.cursor_default())
+                            .disabled_with_cursor(disabled)
                             .on_click(cx.listener(|this, _, w, cx| {
                                 let chara = this.state.snapshot.editor.active_chara.clone();
                                 let inserted = if chara.is_empty() {
@@ -227,7 +230,7 @@ impl Studio {
                             .invisible()
                             .group_hover("lines-insert", |style| style.visible())
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                if this.state.insert_at(after.as_deref(), false) {
+                                if this.state.insert_at(after.as_deref()) {
                                     this.edited(window, cx);
                                     this.fields
                                         .text
@@ -276,8 +279,7 @@ impl Studio {
                         "停止"
                     },
                 )
-                .disabled(self.state.stopping)
-                .when(self.state.stopping, |el| el.cursor_default())
+                .disabled_with_cursor(self.state.stopping)
                 .on_click(cx.listener(|this, _, _, cx| {
                     if let Some(s) = &this.service {
                         s.stop();

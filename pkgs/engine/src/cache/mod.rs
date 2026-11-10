@@ -54,8 +54,4 @@ impl<K: PartialEq + CacheKey> ConditionCache<K> {
         self.entries.push_back((key, value));
         self.bytes += size;
     }
-    pub(crate) fn clear(&mut self) {
-        self.entries.clear();
-        self.bytes = 0;
-    }
 }

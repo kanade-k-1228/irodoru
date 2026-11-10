@@ -21,8 +21,8 @@ pub(crate) fn models_with_directory(
     if let Some(path) = resolve_local(directory, environment.as_deref(), development.as_deref())? {
         return Ok(path);
     }
-    let directories = directories::ProjectDirs::from("io.github", "kanade-k-1228", "irodoru")
-        .context("モデルの保存フォルダが見つかりません")?;
+    let directories =
+        crate::files::project_dirs().context("モデルの保存フォルダが見つかりません")?;
     super::model_resources::download(
         include_bytes!("../../resources/model-distribution.json"),
         &directories.data_local_dir().join("models"),

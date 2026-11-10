@@ -1,4 +1,4 @@
-//! Editing rules shared by the native views and tests.
+//! Pure editing rules on the script; the workspace state applies them.
 use crate::{
     domain::{Chara, new_id},
     domain::{EditorState, GenerationSettings, Line, SynthesisInput, TakeRequest},

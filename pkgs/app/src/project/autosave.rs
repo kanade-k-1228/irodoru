@@ -1,6 +1,7 @@
 use super::{
     ProjectStatus, SharedProject,
     archive::{snapshot, write_archive},
+    lock,
 };
 use anyhow::{Context, Result};
 use std::{
@@ -95,9 +96,7 @@ impl Drop for Saver {
 
 pub(super) fn save_current(project: &SharedProject, report: &Report) -> Result<()> {
     let snapshot = {
-        let guard = project
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
+        let guard = lock(project)?;
         let Some(session) = guard.as_ref() else {
             return Ok(());
         };
@@ -111,9 +110,7 @@ pub(super) fn save_current(project: &SharedProject, report: &Report) -> Result<(
         .as_ref()
         .map_err(|e| anyhow::anyhow!("{e:#}"))
         .and_then(write_archive);
-    let mut guard = project
-        .lock()
-        .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
+    let mut guard = lock(project)?;
     if let Some(session) = guard.as_mut() {
         if let Ok(snapshot) = &snapshot {
             if session.id != snapshot.id {

@@ -1,5 +1,5 @@
 //! Own the active session, archive reservation and autosave worker together.
-use super::{ProjectStatus, Saver, Session, SharedProject, ownership::WindowProject, status};
+use super::{ProjectStatus, Saver, Session, SharedProject, lock, ownership::WindowProject, status};
 use anyhow::{Context, Result};
 use std::{
     path::Path,
@@ -28,10 +28,7 @@ impl Project {
         super::validate_path(path)?;
         self.flush()?;
         let session = self.ownership.open(path, create)?;
-        *self
-            .session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))? = Some(session);
+        *lock(&self.session)? = Some(session);
         if create {
             self.saver.changed()?;
         }
@@ -52,23 +49,17 @@ impl Project {
                 .map(|c| c.id)
                 .collect::<Vec<_>>();
             source.library.copy_charas_to(&session.library, &ids)?;
-            Ok(session.library.save_editor(&Default::default())?)
+            session.library.save_editor(&Default::default())
         })?;
         super::archive::write_archive(&super::archive::snapshot(&session)?)?;
         session.saved = session.revision;
-        *self
-            .session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))? = Some(session);
+        *lock(&self.session)? = Some(session);
         self.ownership = ownership;
         Ok(())
     }
 
     pub fn read<T>(&self, read: impl FnOnce(&Session) -> Result<T>) -> Result<T> {
-        let guard = self
-            .session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
+        let guard = lock(&self.session)?;
         read(
             guard
                 .as_ref()
@@ -77,10 +68,7 @@ impl Project {
     }
 
     pub fn change<T>(&self, change: impl FnOnce(&Session) -> Result<T>) -> Result<T> {
-        let mut guard = self
-            .session
-            .lock()
-            .map_err(|_| anyhow::anyhow!("project lock poisoned"))?;
+        let mut guard = lock(&self.session)?;
         let session = guard
             .as_mut()
             .context("プロジェクトを作成または開いてください")?;

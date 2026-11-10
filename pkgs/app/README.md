@@ -12,7 +12,7 @@ The app is one Rust crate. `main.rs` parses arguments with clap and starts GPUI;
 - `synthesis`: Shared inference, generation, and verified model downloads and caching.
 - `audio`: Audio import, decoding, resampling, WAV validation, and playback.
 - `icons.rs`: Image import and conversion for chara icons.
-- `preferences`: OS-local YAML settings, an ordered writer, and theme settings. Loading through confy preserves existing settings; writes use atomic file replacement.
+- `preferences`: OS-local YAML settings for the theme and the model source. Writes use atomic file replacement.
 - `files.rs`: Private atomic file replacement helper.
 
 ## Workspace and UI

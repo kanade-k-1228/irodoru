@@ -1,7 +1,7 @@
 use crate::domain::Chara;
 use crate::workspace::view::Studio;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use crate::workspace::view::appearance::tool;
-use gpui_kit::component::Disableable;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -104,15 +104,13 @@ impl Studio {
             .child(
                 tool("add-chara", "plus", "キャラを追加")
                     .size(px(32.))
-                    .disabled(disabled)
-                    .when(disabled, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled)
                     .on_click(cx.listener(|this, _, _, cx| this.create_chara(cx))),
             )
             .child(
                 tool("duplicate-chara", "copy", "キャラを複製")
                     .size(px(32.))
-                    .disabled(disabled || no_active)
-                    .when(disabled || no_active, |el| el.cursor_default())
+                    .disabled_with_cursor(disabled || no_active)
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Some(command) = this.state.duplicate_chara() {
                             this.send(command);

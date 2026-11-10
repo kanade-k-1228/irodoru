@@ -1,18 +1,36 @@
 use super::Studio;
 use super::appearance::tool;
 use crate::domain::AudioSource;
-use gpui_kit::component::Disableable;
+use crate::workspace::protocol::Command;
+use crate::workspace::view::appearance::DisabledWithCursor;
 use gpui_kit::component::slider::Slider;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 impl Studio {
+    pub(super) fn play(&mut self, source: AudioSource) {
+        if self.audio_id.as_ref() == Some(&source)
+            && let Some(p) = &self.playback
+            && p.position() < p.duration
+        {
+            p.toggle();
+            return;
+        }
+        self.start_audio(source);
+    }
+    pub(super) fn start_audio(&mut self, source: AudioSource) {
+        self.playback = None;
+        self.audio_id = Some(source.clone());
+        self.send(Command::Audio(source));
+    }
+    pub(super) fn stop_audio(&mut self) {
+        self.playback = None;
+        self.audio_id = None;
+    }
     pub(super) fn audio_player_controls(
         &self,
         key: (&'static str, usize),
         source: AudioSource,
         duration: f64,
-        with_download: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette();
@@ -20,7 +38,6 @@ impl Studio {
         let player = self.playback.as_ref().filter(|_| active);
         let position = player.map(|p| p.position()).unwrap_or(0.);
         let playing = player.is_some_and(|p| p.playing());
-        let export = source.clone();
         div()
             .flex()
             .flex_1()
@@ -35,8 +52,7 @@ impl Studio {
                     if playing { "pause" } else { "play" },
                     "再生 / 一時停止",
                 )
-                .disabled(self.state.busy)
-                .when(self.state.busy, |el| el.cursor_default())
+                .disabled_with_cursor(self.state.busy)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.play(source.clone());
                     cx.notify();
@@ -64,16 +80,6 @@ impl Studio {
                     .into_any_element()
             })
             .child(div().w(px(36.)).child(time(duration)))
-            .when(with_download, |el| {
-                el.child(
-                    tool((key.0, key.1 * 2 + 1), "download", "WAVを保存")
-                        .disabled(self.state.busy)
-                        .when(self.state.busy, |el| el.cursor_default())
-                        .on_click(
-                            cx.listener(move |this, _, w, cx| this.export(export.clone(), w, cx)),
-                        ),
-                )
-            })
             .into_any_element()
     }
 }

@@ -1,15 +1,12 @@
-//! Application-wide theme and ordered settings writer, shared by workspace windows.
-use super::Theme;
+//! Application-wide theme, shared by workspace windows.
+use super::{Settings, Theme};
+use anyhow::Context;
 use gpui_kit::{App, Global};
-struct AppTheme(pub Theme);
-struct ThemeWriter(pub super::SettingsWriter);
-impl Global for ThemeWriter {}
+struct AppTheme(Theme);
 impl Global for AppTheme {}
 
-pub fn initialize(cx: &mut App) -> anyhow::Result<()> {
-    cx.set_global(ThemeWriter(super::SettingsWriter::start()?));
-    cx.set_global(AppTheme(super::Settings::load().theme));
-    Ok(())
+pub fn initialize(cx: &mut App) {
+    cx.set_global(AppTheme(Settings::load().theme));
 }
 pub(crate) fn light(cx: &App) -> bool {
     current(cx).is_light()
@@ -25,9 +22,8 @@ pub(crate) fn toggle(cx: &mut App) -> Theme {
     cx.global_mut::<AppTheme>().0 = theme;
     theme
 }
-pub(crate) fn save(cx: &App, theme: Theme) -> anyhow::Result<()> {
-    cx.global::<ThemeWriter>().0.save(theme)
-}
-pub(crate) fn take_error(cx: &App) -> Option<String> {
-    cx.global::<ThemeWriter>().0.errors.try_iter().last()
+pub(crate) fn save(theme: Theme) -> anyhow::Result<()> {
+    Settings { theme }
+        .save()
+        .context("テーマを保存できませんでした")
 }

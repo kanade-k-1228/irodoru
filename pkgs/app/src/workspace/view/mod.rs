@@ -11,22 +11,22 @@ struct Fields {
     text: Entity<TextareaState>,
     description: Entity<TextareaState>,
     prompt: Entity<InputState>,
-    seed: Entity<InputState>,
-    preview_seed: Entity<InputState>,
-    preview_steps: Entity<InputState>,
-    steps: Entity<InputState>,
     name: Entity<InputState>,
     sample: Entity<TextareaState>,
     color: Entity<ColorPickerState>,
 }
-struct GenerationSliders {
+/// Inputs for one set of generation settings: the selected line's or the chara preview's.
+struct GenerationForm {
+    seed: Entity<InputState>,
+    steps: Entity<InputState>,
     speed: Entity<SliderState>,
     text: Entity<SliderState>,
     speaker: Entity<SliderState>,
     caption: Entity<SliderState>,
+    expanded: bool,
 }
-impl GenerationSliders {
-    fn iter(
+impl GenerationForm {
+    fn sliders(
         &self,
     ) -> [(
         crate::workspace::state::GenerationField,
@@ -46,12 +46,10 @@ pub(crate) struct Studio {
     service: Option<Service>,
     inference: Option<std::sync::Arc<crate::synthesis::Inference>>,
     fields: Fields,
-    sliders: GenerationSliders,
-    preview_sliders: GenerationSliders,
+    line_form: GenerationForm,
+    preview_form: GenerationForm,
     seek: Entity<SliderState>,
     subscriptions: Vec<Subscription>,
-    advanced: bool,
-    preview_advanced: bool,
     line_scroll: ScrollHandle,
     line_drag_scroll: gpui_kit::component::scroll::AutoScroll,
     settings: Settings,
@@ -64,8 +62,7 @@ pub(crate) struct Studio {
     menu_open: bool,
     file_trigger_focus: FocusHandle,
     menu_index: usize,
-    dialog_open: bool,
-    model_dialog_open: bool,
+    modal: Option<app_dialog::Modal>,
     model_picker_open: bool,
     model_error: Option<String>,
     model_trigger_focus: FocusHandle,
@@ -75,7 +72,6 @@ mod bindings;
 mod controller;
 mod dialogs;
 mod editing;
-mod playback;
 
 mod appearance;
 
@@ -93,6 +89,13 @@ pub(crate) enum WindowRequest {
 }
 impl EventEmitter<WindowRequest> for Studio {}
 impl Studio {
+    fn form(&self, preview: bool) -> &GenerationForm {
+        if preview {
+            &self.preview_form
+        } else {
+            &self.line_form
+        }
+    }
     pub(crate) fn report_error(&mut self, error: String, cx: &mut Context<Self>) {
         self.state.error = Some(error);
         cx.notify();
