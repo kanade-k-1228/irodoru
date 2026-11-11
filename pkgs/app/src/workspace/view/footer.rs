@@ -88,20 +88,7 @@ impl Studio {
             | InferenceStatus::Extracting { .. }
             | InferenceStatus::Loading => ("model", p.pending, true),
         };
-        let providers = self
-            .inference
-            .as_ref()
-            .map(|service| service.providers())
-            .unwrap_or_default();
-        let mut names: Vec<_> = providers.iter().map(|p| p.provider.as_str()).collect();
-        names.sort_unstable();
-        names.dedup();
-        let status_label = super::modal::status_label(&status);
-        let label = if names.is_empty() {
-            status_label
-        } else {
-            format!("{status_label} · {}", names.join(" + "))
-        };
+        let label = super::modal::status_label(&status);
         self.footer_button("model-settings", icon_name, label)
             .track_focus(&self.model_trigger_focus)
             .text_color(color)
