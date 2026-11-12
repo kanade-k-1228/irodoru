@@ -1,68 +1,60 @@
-# Docker guide
+# Dockerで使う
 
-[README](../README.md) · [User guide](Usage.md) · [Development](Dev.md)
+[概要](../README.md) · [使い方](Usage.md) · [開発ガイド](Dev.md)
 
-The Docker image runs an HTTP speech server with bundled models. Install Docker and use a version tag from [Releases](https://github.com/kanade-k-1228/irodoru/releases). These examples use `0.0.1`.
+Docker版は、モデルを同梱したHTTP音声合成サーバーです。Dockerをインストールし、[リリース](https://github.com/kanade-k-1228/irodoru/releases)のバージョンタグを指定してください。以下は `0.0.6` の例です。
 
-## Run and generate audio
+## 起動して音声を生成する
 
 ```bash
-docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/kanade-k-1228/irodoru:0.0.1
+docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/kanade-k-1228/irodoru:0.0.6
 ```
 
-Wait for the models to load, then send a request from another terminal:
+モデルの読み込みを待ち、別のターミナルからリクエストを送ります。
 
 ```bash
 curl http://127.0.0.1:8080/ \
   -H 'content-type: application/json' \
-  -d '{"text":"Hello","caption":"A calm voice","seed":1}' \
+  -d '{"text":"こんにちは。今日はいい天気ですね。","caption":"落ち着いた声","seed":1}' \
   -o out.wav
 ```
 
-- Output is a 48 kHz mono WAV. See [OpenAPI](../pkgs/server/openapi.json) for request parameters.
-- The server has no authentication. The example binds it to localhost.
-- Press `Ctrl+C` in the server terminal to stop it.
-- To select the CPU and thread count, append `serve --device cpu --threads 4` after the image name.
+- 出力は48 kHz・モノラルのWAVです。指定できるパラメーターは [OpenAPI](../pkgs/server/openapi.json) を参照してください。
+- サーバーに認証機能はありません。この例ではローカルホストだけに公開します。
+- サーバー側のターミナルで `Ctrl+C` を押すと停止します。
+- CPUとスレッド数を指定する場合は、イメージ名の後に `serve --device cpu --threads 4` を追加します。
 
-## Use another model
+## 別のモデルを使う
 
-With the repository, Python, and uv installed, export a model and mount it read-only. This example uses the small model:
+このリポジトリ、Python、uvを用意し、モデルを変換して読み取り専用でマウントします。以下はsmallモデルの例です。
 
 ```bash
 uv run --project pkgs/engine/script python pkgs/engine/script/export_onnx.py --out models --models small
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v "$PWD/models/small:/models/model:ro" \
   -v "$PWD/models/codec:/models/codec:ro" \
-  ghcr.io/kanade-k-1228/irodoru:0.0.1
+  ghcr.io/kanade-k-1228/irodoru:0.0.6
 ```
 
-## Build locally
+## ローカルでビルドする
 
-Run from the repository root. The first build also downloads and converts models.
+リポジトリのルートで実行します。初回はモデルのダウンロードと変換も行います。
 
 ```bash
 docker compose up --build -d
 docker compose logs -f backend
-# Stop the server
+# サーバーを停止
 docker compose down
 ```
 
-- To use existing `models/anime/` and `models/codec/`, run `docker compose --profile local up --build -d local`. Stop it with `docker compose --profile local down`.
-- For an Intel GPU on WSL2, use the `wsl-gpu` profile and service. This requires a Windows GPU driver and `/dev/dxg`.
-- Run one service at a time: they share the same port.
+- 手元の `models/anime/` と `models/codec/` を使う場合は、`docker compose --profile local up --build -d local` を実行します。停止は `docker compose --profile local down` です。
+- WSL2でIntel GPUを使う場合は、`wsl-gpu` プロファイルと同名サービスを指定します。Windows側のGPUドライバーと `/dev/dxg` が必要です。
+- 各サービスは同じポートを使うため、同時には起動しないでください。
 
-## Cancel a request
+## リクエストをキャンセルする
 
-Abort the HTTP request or close its connection to cancel synthesis; no separate
-cancel endpoint is needed. For example, pass an `AbortController` signal to
-`fetch` and call `controller.abort()` when a newer navigation instruction arrives.
+HTTPリクエストを中断するか接続を閉じると、音声生成をキャンセルできます。専用のキャンセルAPIは不要です。たとえば `fetch` に `AbortController` のシグナルを渡し、不要になった時点で `controller.abort()` を呼び出します。
 
-Once the server detects the disconnect, a request waiting for the engine is
-discarded. Running synthesis stops at the next cancellation checkpoint, including
-each sampling step and before audio decoding. An in-progress model operation
-must finish first; it is not forcibly interrupted. Other requests can then use
-the engine normally.
+サーバーが切断を検知すると、推論待ちのリクエストは破棄されます。実行中の生成は、次のサンプリングステップや音声デコード前などのキャンセル確認箇所で停止します。実行中のモデル演算自体は中断せず、その完了を待ちます。その後、別のリクエストがエンジンを利用できます。
 
-If you use a reverse proxy, it must propagate client disconnects to the upstream
-server. Cancellation begins when the server observes the disconnect, not when
-the client locally stops waiting for the response.
+リバースプロキシを使う場合は、クライアントの切断が上流サーバーへ伝わる設定にしてください。キャンセルが始まるのは、クライアントが応答を待つのをやめた時点ではなく、サーバーが切断を検知した時点です。

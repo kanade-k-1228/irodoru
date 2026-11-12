@@ -1,93 +1,120 @@
-# Desktop application architecture
+# デスクトップアプリの内部構成
 
-The app is one Rust crate. `main.rs` parses arguments with clap and starts GPUI; the `desktop` module owns window composition, native dialogs, and playback. Core editing, state, storage, and synthesis live in modules that do not depend on GPUI.
+[概要](../../README.md) · [開発ガイド](../../docs/Dev.md) · [使い方](../../docs/Usage.md)
 
-## Modules
+アプリは1つのRustクレートです。`main.rs` がclapで引数を読み、GPUIを起動します。`desktop` が起動処理とウィンドウを管理し、画面とネイティブダイアログは `workspace/view`、音声の再生は `audio` が担当します。編集の状態・保存・音声合成はGPUIに依存しないモジュールに分けています。
 
-- `desktop`: Startup, shared inference construction, windows, menus, and platform quit handling.
-- `domain`: Shared serializable values, IDs, and errors; no GUI or filesystem access.
-- `workspace`: One project window's state, commands, background worker, and UI.
-- `project`: Project sessions, ZIP archives, autosave, ownership, and file-open handling.
-- `library`: Filesystem storage for project YAML, charas, audio, and assets.
-- `synthesis`: Shared inference, generation, and verified model downloads and caching.
-- `audio`: Audio import, decoding, resampling, WAV validation, and playback.
-- `icons.rs`: Image import and conversion for chara icons.
-- `preferences`: OS-local YAML settings for the theme and the model source. Writes use atomic file replacement.
-- `files.rs`: Private atomic file replacement helper.
+## モジュール
 
-## Workspace and UI
+| モジュール | 役割 |
+| --- | --- |
+| `desktop` | 起動、共有推論サービスの作成、ウィンドウ、メニュー、OSごとの終了処理。 |
+| `domain` | 共通のシリアライズ可能な値、ID、エラー。GUIとファイル操作には依存しません。 |
+| `workspace` | プロジェクトウィンドウごとの状態、コマンド、バックグラウンド処理、UI。 |
+| `project` | プロジェクトのセッション、ZIP、自動保存、所有権、ファイルを開く処理。 |
+| `library` | プロジェクトのYAML、キャラクター、音声、画像の保存。 |
+| `synthesis` | 共有する推論処理、音声生成、検証付きモデルダウンロードとキャッシュ。 |
+| `audio` | 音声の取り込み、デコード、リサンプリング、WAVの検証、再生。 |
+| `icons.rs` | キャラクターアイコンの取り込みと変換。 |
+| `preferences` | OSごとの保存場所に置くテーマ・モデル設定のYAML。ファイルをアトミックに置き換えます。 |
+| `files.rs` | ファイルのアトミックな置き換えを行う非公開の補助処理。 |
 
-- `editor.rs`: Line operations and generation input validation.
-- `state.rs` and `state/`: Headless state, editing transitions, and event handling.
-- `protocol.rs`: Owned `Command`, `Event`, and `Snapshot` values.
-- `service.rs`: UI command handle, notification drain, and stop requests.
-- `worker.rs`: Ordered background work and project/engine coordination.
-- `view/`: GPUI entities, bindings, dialogs, editing adapters, layout, and playback controls.
+## ワークスペースとUI
 
-Each window owns one `Entity<Studio>` and its `WorkspaceState`. Inputs retain their entities, subscriptions, and focus handles. State owns line and chara edits, settings targets, and generation command construction. It consumes worker events and returns `Effect` values without importing GPUI, rodio, rfd, or a repository. Views retain input entities, IME, focus, and scrolling behavior while forwarding edits to state.
+| ファイル・ディレクトリ | 役割 |
+| --- | --- |
+| `editor.rs` | セリフの操作と生成入力の検証。 |
+| `state.rs`・`state/` | GUIに依存しない状態、編集時の遷移、イベントの処理。 |
+| `protocol.rs` | 所有権を持つ `Command`・`Event`・`Snapshot`。 |
+| `service.rs` | UIからのコマンド受付、通知の取り出し、停止要求。 |
+| `worker.rs` | 順序を保ったバックグラウンド処理と、プロジェクト・エンジンの連携。 |
+| `view/` | GPUIのエンティティ、イベント接続、ダイアログ、編集用の接続処理、レイアウト、再生操作。 |
+
+各ウィンドウは1つの `Entity<Studio>` と `WorkspaceState` を持ちます。入力欄のエンティティ、購読、フォーカスは保持して再利用します。状態側がセリフ・キャラクターの編集、設定対象、生成コマンドの組み立てを担当します。ワーカーのイベントを受け取って `Effect` を返しますが、GPUI、rodio、rfd、保存先には依存しません。ビューは入力・IME・フォーカス・スクロールを維持しながら編集内容を状態へ渡します。
 
 ```text
-GPUI listener → state/editor → Command → Service → Worker → project/library/synthesis
-                                    ← Event ←───────────┘
-                   state.apply(Event) → Effect → GPUI/device adapter
+GPUIの入力 → state/editor → Command → Service → Worker → project/library/synthesis
+                                   ← Event ←───────────┘
+                 state.apply(Event) → Effect → GPUI・デバイスへの反映
 ```
 
-- Build named, stateless view sections in the existing `Studio` context. Keep list iteration separate from item rendering, with lines and insertion gaps as siblings.
-- View modules follow the screen: `layout` composes `lines`, `chara_panel`, and `footer`; `lines/line` owns line actions, the inline editor, and takes; `chara_panel` owns the list and editor. `modal` owns the shared dialog frame, with one module per modal (`menu`, `settings`, `model`). Shared controls remain at the view root. Line details use an explicit `expanded_line` target controlled by the rightmost chevron; selecting text does not open details.
-- Keep containers needed for layout, scrolling, or hit testing. Put editing adapters in `editing.rs` and preserve input entities, element IDs, and focus handles.
-- Run storage and inference on workers with owned command data. Only the UI thread drains notifications and updates GPUI entities; its weak-entity timer stops when the window closes.
-- Selected chara settings are always editable and autosaved without a separate edit mode. The editor stays 208 px high while the script area absorbs window resizing. It has a vertical icon/action toolbar on the left, color/name and voice prompt in the center, and a scrollable reference list on the right. Try voices by generating dialogue takes. Passive chara saves do not refresh input snapshots; failed writes retain local values and block project switching until retried.
-- Use `Command::is_passive` to keep editing available without emitting `Done`. The view and worker share this policy; callers do not supply a separate busy flag.
-- The worker resolves charas and reference audio into owned `GenerationInput` values. Generation prepares the complete batch before inference and returns a take plus a plain WAV for the worker to save. The repository alone embeds the app metadata in the WAV. It has no dependency on project or library storage. Takes execute in order, stopping after the current take finishes; failures preserve prior audio.
-- `AudioSource` identifies a generated take or reference recording. Line, take, and reference playback buttons share one view component. `view/audio_item` renders the complete row (selection, playback, export, and removal) for both takes and references; the callers supply only audio data. Take selection remains exclusive. Reference rows omit the selection control: every uploaded reference belongs to the current character and is used automatically. Removing a reference removes it from that character’s list without affecting other characters. Reference durations are read from WAV headers on the worker without loading PCM into the UI. Playback and export both read it through `Session::audio`.
+### 画面の分割と共通部品
 
-## Projects and shared services
+- 既存の `Studio` を使い、状態を持たない画面の部品を名前付きの関数に分けます。一覧の走査と1項目の描画を分離し、セリフとドラッグ時の挿入先を同じ階層に置きます。セリフの追加操作は台本末尾にまとめます。
+- `layout` が `lines`・`chara_panel`・`footer` を配置します。`lines/line` は行の操作、文章編集、テイクを担当し、`chara_panel` はキャラクター一覧と編集欄を担当します。`modal` は共通の枠と、`menu`・`settings`・`model`・`export` の各画面を持ちます。共通操作部品はビューのルートに置きます。
+- セリフ詳細の表示対象は `expanded_line` が管理し、行の一番右の開閉ボタンで変更します。文章の選択だけでは詳細を開きません。
+- レイアウト、スクロール、当たり判定に必要なコンテナは残します。編集の接続処理は `editing.rs` に置き、入力エンティティ、要素ID、フォーカスを維持します。
+- キャラクター編集欄は高さ208 pxの固定パネルです。左にアイコンと操作、中央に色・名前・声の特徴、右にスクロールできる参照音声一覧を置きます。ウィンドウの高さ変更は台本領域で吸収します。声の確認にはセリフのテイク生成を使います。
+- `AudioSource` は生成テイクか参照音声を表します。行・テイク・参照音声の再生ボタンは共通部品を使います。`view/audio_item` はテイクと参照音声の行全体を描画し、選択、再生、保存、削除を共通化します。テイクは1つを選択できますが、参照音声には選択操作を出さず、登録されたすべての録音を使います。
+- 参照音声を外すと、そのキャラクターの一覧とコピーだけを削除します。別のキャラクターには影響しません。長さはワーカーがWAVのヘッダーから読み、UIにPCMを読み込みません。再生と書き出しはどちらも `Session::audio` を使います。
+- モデルの状態を示すアイコン・色・スピナーはフッターとモデル設定で共有します。フッターは状態だけを表示し、モデル設定は `manifest.json` の `checkpoint` を `ユーザー名/リポジトリ名` として表示します。ZIPのファイル名はモデルの識別名と分けて保持します。詳細の開閉は左、モデル変更とリセットは右に配置します。
 
-- `project::Project` owns the session, archive reservation, and saver. The workspace worker uses `read`, `change`, `open`, and `flush`; it does not manage locks or notify the saver directly.
-- Project entry points accept only `.iro` (case-insensitive), and reject other extensions before switching or flushing the current project. A `.iro` project is a ZIP containing `project.yaml`, `charas/`, and `voices/`, with relative asset paths. Preserve IDs, atomic writes, autosave timing, and recovery behavior.
-- Autosave uses immutable snapshots and one debounced writer. Replace the archive only after the new ZIP is written successfully. Flush pending saves before switching or dropping a project, and report explicit flush failures before closing its window.
-- Native file-open events and forwarded launches create independent windows. A per-user instance lock and bounded atomic request inbox preserve launches until the owning process can handle them. A project path can belong to only one window.
-- New-window requests are GPUI events handled by `desktop`. Project state is local to each window; theme settings and inference are shared.
-- `desktop` constructs one `synthesis::Inference` and passes its handle to each window and workspace service. Inference owns the engine lifecycle, progress, retry, and synthesis queue. Model resolution and settings persistence are callbacks supplied at startup. Local model ZIPs are validated and extracted into app-owned storage on the inference worker. The worker drops the old `Engine`, loads its replacement, and only then saves the installed directory and ZIP display name. Failed imports retain the previous saved source and remove staged files; retry reloads that source. The original ZIP is no longer needed after import. No engine instance is shared behind a lock. ONNX Runtime’s process-wide environment survives replacements; model sessions are rebuilt, and session construction is serialized for custom-op registration.
-- Model sources are resolved in order: saved selection, `IRODORU_MODELS`, development resources, then verified cache/download. The app and xtask share the schema 2 manifest and validation in `irodoru-model-bundle`; transport and cache installation stay in the app. Release builds download a GHCR ZIP only when needed; models remain outside the app package.
-- `project` and `library` use domain values and audio validation without depending on workspace views or the inference engine. The workspace worker publishes completed takes through the repository.
+### 状態の更新とバックグラウンド処理
 
-## Application icons
+- 保存と推論は所有権を持つコマンドをワーカーへ渡して実行します。通知を取り出してGPUIのエンティティを更新するのはUIスレッドだけです。弱参照を使うタイマーはウィンドウが閉じると止まります。
+- キャラクターは専用の編集モードを設けず、変更を自動保存します。通常の自動保存では入力欄を再作成しません。保存に失敗したらローカルの入力値を残し、再試行が成功するまでプロジェクトの切り替えを止めます。
+- 編集を続けられるコマンドは `Command::is_passive` で判定し、`Done` を発行しません。ビューとワーカーで同じ方針を使い、呼び出し元から別の処理中フラグは渡しません。
+- ワーカーがキャラクターと参照音声を解決し、所有権を持つ `GenerationInput` を作ります。生成側は推論前にバッチ全体を準備し、テイクと通常のWAVを返します。アプリ固有のメタデータをWAVに埋め込むのは保存層だけです。生成処理はプロジェクトやライブラリの保存には依存しません。
+- テイクは順に生成します。停止要求を受けたら実行中のテイクが終わってから止まり、失敗しても既存の音声を残します。
 
-Keep assets in `icons/` in sync when changing the logo.
+## プロジェクトと共有サービス
 
-- **Windows:** `build.rs` and `windows/app.rc` embed `icon.ico` as resource ID 1 for GPUI window and taskbar icons, including portable ZIP builds.
-- **Linux:** X11 windows embed `128x128.png`; Wayland uses the `irodoru` app ID to match the packaged desktop entry.
-- **Packages:** `packager.json` supplies PNG/ICNS icons for Linux packages and the macOS app bundle.
+- `project::Project` がセッション、アーカイブの使用権、保存処理を所有します。ワーカーは `read`・`change`・`open`・`flush` を使い、ロックや保存通知を直接管理しません。
+- プロジェクトは大文字小文字を問わず `.iro` だけを受け付けます。それ以外の拡張子は現在のプロジェクトの切り替えや保存より先に拒否します。`.iro` は `project.yaml`・`charas/`・`voices/` を含むZIPで、画像などは相対パスで保持します。ID、アトミックな書き込み、自動保存のタイミング、復旧方法を維持します。
+- 自動保存は変更されないスナップショットと1つの書き込み処理を使い、短時間の連続編集をまとめます。新しいZIPの書き込みが成功してから置き換えます。プロジェクトの切り替えや破棄の前に保留中の保存を完了し、ウィンドウを閉じる前の明示的な保存失敗は利用者へ伝えます。
+- OSのファイルを開く操作と別プロセスから転送された起動要求は、独立したウィンドウを作ります。ユーザー単位のインスタンスロックと、件数制限付きのアトミックな要求キューにより、処理できるまで要求を保持します。同じプロジェクトのパスを複数のウィンドウで同時に所有できません。
+- 新規ウィンドウの要求はGPUIイベントとして `desktop` が受け取ります。プロジェクトの状態はウィンドウごとに持ち、テーマと推論は共有します。
+- `desktop` は1つの `synthesis::Inference` を作り、各ウィンドウとサービスへ渡します。推論側がエンジンの準備・進捗・再試行・生成キューを管理し、モデルの解決と設定保存は起動時に渡した処理で行います。
+- モデルZIPは推論ワーカーが検証し、アプリの保存領域へ展開します。古い `Engine` を破棄して新しいものを読み込み、成功してから配置先とZIPの表示名を保存します。失敗時は以前の保存済み設定を残し、準備途中のファイルを削除します。再試行はその保存済み設定を読み直します。取り込み後は元のZIPを保持する必要はありません。
+- エンジン自体をロックで共有しません。ONNX Runtimeのプロセス共通環境はモデル交換後も残し、セッションを再構築します。独自演算子の登録が競合しないよう、セッションの作成を直列化します。モデルの識別名とプロバイダー情報は、エンジンの読み込み・破棄に合わせて更新します。
+- モデルの解決順序は、保存済み設定、`IRODORU_MODELS`、開発用リソース、検証済みキャッシュまたはダウンロードです。アプリとxtaskは `irodoru-model-bundle` のスキーマ2のマニフェストと検証を共有し、通信とキャッシュ配置はアプリが担当します。配布版は必要なときだけGHCRのZIPを取得し、モデルをアプリのパッケージ外に保存します。
+- `project` と `library` は共通の値と音声検証を使い、ワークスペースのビューや推論エンジンには依存しません。完成したテイクはワーカーが保存層を通して登録します。
 
-## Extend and verify
+## アプリアイコン
 
-- Put contracts in `domain` only when they cross module boundaries. Keep workspace-specific state and commands in `workspace`.
-- Add input rules to `editor` or state transitions, then connect them through a small view adapter.
-- Add I/O commands to `protocol` and implement them in the worker/repository. Return events instead of accessing GPUI contexts.
-- Keep ZIP extraction, ownership, and playback implementations private. Use module exports instead of importing private sibling code or adding a general-purpose `utils` module.
-- Add a separate crate only for independent reuse, ownership, or build needs. Keep any future database adapter behind the repository boundary.
+ロゴを変更するときは `icons/` の各形式をそろえて更新します。
+
+- **Windows:** `build.rs` と `windows/app.rc` が `icon.ico` をリソースID 1に埋め込みます。ZIP版でもGPUIのウィンドウとタスクバーで使います。
+- **Linux:** X11のウィンドウは `128x128.png` を埋め込みます。WaylandはアプリID `irodoru` でパッケージのデスクトップエントリーと対応させます。
+- **パッケージ:** `packager.json` がLinuxとmacOS向けにPNG・ICNSを指定します。
+
+## 拡張と検証の方針
+
+- 複数のモジュールをまたぐ型だけを `domain` に置きます。ワークスペース専用の状態とコマンドは `workspace` に置きます。
+- 入力規則は `editor` または状態遷移に追加し、小さなビューの接続処理から呼びます。
+- 入出力のコマンドは `protocol` に追加してワーカーと保存層で実装し、GPUIのコンテキストを直接扱わずイベントを返します。
+- ZIP展開、所有権、再生の実装は非公開にします。隣のモジュールの内部へ依存したり汎用の `utils` を増やしたりせず、公開する型と関数を明確にします。
+- 独立した再利用、所有権、ビルド上の必要がある場合にだけクレートを分けます。将来データベースを追加する場合も保存層の境界の内側に置きます。
 
 ```bash
 cargo xtask verify
+cargo test --locked -p irodoru
 cargo xtask dev
 ```
 
-- Run `cargo test -p irodoru` for playback, line disclosure, and character deletion regression tests. Manually check multiple windows, shortcut focus, save-on-close, IME input, dragging, and audio devices on each platform.
+音声のシーク、セリフ詳細の開閉、キャラクター削除などは回帰テストで確認します。複数ウィンドウ、ショートカットのフォーカス、終了時の保存、IME入力、ドラッグ、音声デバイスは各OSで手動確認します。
 
-Follow the [GPUI Kit coding guides](https://gpui-kit.com/docs/coding-guides/) and [task model](https://gpui-kit.com/docs/task/) for module boundaries, state ownership, and background work.
+モジュールの境界、状態の所有権、バックグラウンド処理は、[GPUI Kitのコーディングガイド](https://gpui-kit.com/docs/coding-guides/)と[タスクモデル](https://gpui-kit.com/docs/task/)を参照してください。
 
-## Project format v0 (development)
+## プロジェクト形式v0（開発中）
 
-- `project.yaml`: version (`0`) and `lines` (an `IndexMap` keyed by line ID, in display order). Each map value contains dialogue, `chara_id`, additional prompt, optional generation settings, `takes` (voice IDs in display order), and selected `voice_id`. New takes are prepended; selection must belong to that line’s `takes`. Missing settings use the application defaults. The active chara is held only in UI memory. Line IDs are stored only as map keys; there is no separate order list or line file.
-- `charas/<id>/chara.yaml`: chara settings and a `voice_ids` array. The optional icon is stored next to the YAML.
-- `charas/<id>/voices/<voice_id>.wav`: independent reference audio copies owned by that chara. `voice_ids` resolves within this directory.
-- `voices/<id>.wav`: a shared voice table with no metadata sidecars. The standard RIFF `LIST/INFO/ICMT` comment contains JSON under `irodoru_voice`, including the ID and generation conditions. `kind: imported` stores the original recording name; `kind: generated` stores the take's generation snapshot. Resolved parameters live only in `conditions`; text, model, seed, and steps are not duplicated, and default export filenames are derived from those conditions. `line_id`, chara information, and input voice IDs in a generated snapshot record its origin; they do not determine line membership or own the audio's lifetime and may refer to a source project after transfer.
+| パス | 内容 |
+| --- | --- |
+| `project.yaml` | バージョン `0` と、行IDをキーに表示順で保持する `lines`（`IndexMap`）。各行は文章、`chara_id`、追加プロンプト、任意の生成設定、音声IDの一覧 `takes`、選択中の `voice_id` を持ちます。新しいテイクは先頭へ追加し、選択はその行の `takes` に限ります。設定がない場合は既定値を使います。選択中のキャラクターはUIのメモリにだけ保持します。行IDはマップのキーだけに保存し、別の順序一覧や行ファイルは持ちません。 |
+| `charas/<id>/chara.yaml` | キャラクター設定と `voice_ids`。任意のアイコンは同じディレクトリに保存します。 |
+| `charas/<id>/voices/<voice_id>.wav` | キャラクターが所有する独立した参照音声のコピー。`voice_ids` はこの場所から解決します。 |
+| `voices/<id>.wav` | 共通の音声一覧。別のメタデータファイルは作らず、RIFFの `LIST/INFO/ICMT` に `irodoru_voice` というJSONを埋め込みます。 |
 
-Reference lists contain the current character’s recordings in upload order; imports append every uploaded recording. Generated takes are not offered for reuse as references; already assigned generated references remain usable and removable. Deleting a line does not delete its voices. Deleting a generated take leaves chara-owned reference copies intact. Removing a chara reference or deleting a chara removes only its own copies. Generation reads every character reference, apportions the model's maximum reference duration across clips, and combines normalized samples before speaker encoding. Single-reference generation retains its previous behavior.
+音声メタデータの `kind: imported` は元の録音名を、`kind: generated` はテイク生成時の情報を保存します。解決済みのパラメーターは `conditions` にまとめ、文章・モデル・シード・ステップ数を重複保存しません。書き出し時の既定ファイル名もこの条件から作ります。
 
-Only the current archive layout is accepted; there is no migration or legacy field-name handling. Existing `preview.wav` assets are preserved when saving older projects, but character preview generation and playback are no longer available. Each editor write atomically replaces `project.yaml`, including all lines in their display order. Snapshots capture the project under the existing session lock.
+生成時の `line_id`、キャラクター、入力音声IDは由来を記録するための情報です。行への所属や音声の寿命を決めるものではなく、転送後に元プロジェクトを参照する場合もあります。
 
-Chara bundles (`.irochar`) use the same ZIP schema with one chara, its icon and referenced voices inside the chara directory, and an empty line list. Import assigns fresh IDs to avoid replacing existing records. Creating a project from charas copies each chara with its own referenced audio, and reserves the destination independently so failure leaves the source session open.
+参照音声はアップロード順に追加し、キャラクターに登録された録音をすべて使います。生成テイクを新たな参照音声として選ぶ操作はありませんが、割り当て済みのものは利用・削除できます。行を削除しても音声は削除しません。生成テイクの削除はキャラクターが持つコピーに影響せず、参照音声やキャラクターの削除はそのキャラクターのコピーだけを削除します。
 
-WAV exports retain the embedded voice record; importing them preserves generation conditions and assigns a new voice ID. Metadata reads seek past PCM chunks, and metadata updates preserve the original PCM and unrelated RIFF tags.
+生成時はモデルの参照時間の上限を各録音へ分配し、正規化したサンプルを結合して話者をエンコードします。参照音声が1つの場合は同じ処理方針を保ちます。
+
+対応するのは現在のアーカイブ構造だけで、自動変換や旧フィールド名の読み替えはありません。過去のプロジェクトにある `preview.wav` は再保存時に残しますが、キャラクター専用のサンプル生成・再生機能はありません。編集時は全行と表示順を含む `project.yaml` をアトミックに置き換え、スナップショットは既存のセッションロック内で取得します。
+
+キャラクターファイル（`.irochar`）も同じZIP構造を使い、1人分の設定・アイコン・参照音声と空の行一覧を含みます。読み込み時は既存データを上書きしないよう新しいIDを割り当てます。キャラクターを引き継いだ新規プロジェクトは、各キャラクターとその参照音声をコピーします。保存先を独立して確保するため、失敗時も元のセッションは開いたままです。
+
+WAVの書き出しは埋め込まれた音声情報を保持します。再取り込み時は生成条件を保ち、音声IDだけを新しくします。メタデータを読むときはPCMを読み飛ばし、更新時も元のPCMと無関係なRIFFタグを維持します。

@@ -1,46 +1,49 @@
-# Development guide
+# 開発ガイド
 
-[README](../README.md) · [User guide](Usage.md) · [Docker](Docker.md)
+[概要](../README.md) · [使い方](Usage.md) · [Docker](Docker.md)
 
-## Setup
+## 開発環境
 
-- Install stable Rust, Python 3.10 or later, uv, and GPUI Kit's native dependencies. Node.js is not required.
-- For Linux packages, see the [CI configuration](../.github/workflows/app.yml). Running the app requires Vulkan, Wayland or X11, and `xdg-desktop-portal` with a desktop-specific backend.
+- 安定版のRust、Python 3.10以降、uv、GPUI Kitが必要とするネイティブライブラリをインストールします。Node.jsは不要です。
+- Linuxの必要パッケージは[CI設定](../.github/workflows/app.yml)を参照してください。アプリの実行にはVulkan、WaylandまたはX11、`xdg-desktop-portal` とデスクトップ環境に対応するバックエンドが必要です。
 
-Run from the repository root:
-
-```bash
-cargo xtask models export    # Export the anime model and codec
-cargo xtask models prepare   # Prepare development models
-cargo xtask dev              # Start the desktop app
-```
-
-Development builds compile dependencies with optimizations so the UI stays responsive; the first build takes longer.
-
-If you already have models, replace the first two commands with `cargo xtask models prepare --source /path/to/models`. Alternatively, set `IRODORU_MODELS` to a directory containing `anime/` and `codec/`. The checked-in distribution manifest has placeholder values, so local development requires prepared models.
-
-## Repository layout
-
-- `pkgs/app`: Rust/GPUI desktop app. See [application architecture](../pkgs/app/README.md) for module boundaries and state flow.
-- `pkgs/engine`: Shared speech engine using ONNX Runtime, with optional OpenVINO support. Consumers use the public types at the crate root; graph, codec, model, and cache internals stay private.
-- `pkgs/model-bundle`: Distribution manifest types, required files, and path/size/hash validation shared by the app and xtask. It has no filesystem, network, GUI, or inference dependencies.
-- `pkgs/engine/script`: Python model export and validation.
-- `pkgs/server`: Axum HTTP API using the same engine as the app.
-- `xtask`: Development, verification, packaging, and model distribution commands.
-- `scripts` and `.github/workflows`: Packaging helpers and CI.
-
-Use `cargo xtask models ...` locally; CI uses a release build of xtask. Model preparation, validation, ZIP creation, and GHCR publishing run in Rust. ONNX export calls Python with PyTorch.
-
-## Verify
+リポジトリのルートで実行します。
 
 ```bash
-cargo xtask verify          # fmt, Clippy, OpenAPI diff
-cargo xtask generate        # Regenerate OpenAPI
+cargo xtask models export    # 音声モデルとコーデックをエクスポート
+cargo xtask models prepare   # 開発用モデルを配置
+cargo xtask dev              # デスクトップアプリを起動
 ```
 
-There are no automated tests. See CI for checks on packaged apps. Check Japanese input, dragging, and audio devices manually on each OS.
+開発ビルドでも依存ライブラリを最適化するため、初回のビルドには時間がかかります。
 
-## Package and release
+モデルを用意済みなら、最初の2つのコマンドを `cargo xtask models prepare --source /path/to/models` に置き換えられます。`anime/` と `codec/` を含むディレクトリを環境変数 `IRODORU_MODELS` に指定することもできます。リポジトリ内の配布マニフェストは仮の値なので、ローカル開発ではモデルの準備が必要です。
+
+## リポジトリの構成
+
+| 場所 | 役割 |
+| --- | --- |
+| `pkgs/app` | RustとGPUIによるデスクトップアプリ。[内部構成](../pkgs/app/README.md)にモジュールと状態の流れを記載しています。 |
+| `pkgs/engine` | ONNX Runtimeを使う共通の音声合成エンジン。OpenVINOにも任意で対応します。公開型はクレートのルートに集約し、グラフ・コーデック・モデル・キャッシュの内部実装は非公開です。 |
+| `pkgs/model-bundle` | アプリとxtaskで共有する配布マニフェスト、必須ファイル、パス・サイズ・ハッシュの検証。ファイルシステム、通信、GUI、推論には依存しません。 |
+| `pkgs/engine/script` | Pythonによるモデルのエクスポートと検証。 |
+| `pkgs/server` | アプリと同じエンジンを使うAxumのHTTP API。 |
+| `xtask` | 開発、検証、パッケージ作成、モデル配布のコマンド。 |
+| `scripts`・`.github/workflows` | パッケージ作成の補助スクリプトとCI。 |
+
+ローカルでは `cargo xtask models ...` を使い、CIではリリースビルドしたxtaskを使います。モデルの準備・検証・ZIP作成・GHCRへの公開はRustで行い、ONNXへのエクスポートはPyTorchを使うPythonを呼び出します。
+
+## 検証
+
+```bash
+cargo xtask verify          # フォーマット、Clippy、OpenAPIの差分を検証
+cargo test --locked -p irodoru  # アプリの回帰テスト
+cargo xtask generate        # OpenAPIを再生成
+```
+
+アプリには音声のシーク、セリフ詳細の開閉、使用中キャラクターの削除防止などの回帰テストがあります。配布パッケージの検査はCI設定を参照してください。複数ウィンドウ、自動保存、日本語入力、ドラッグ操作、音声デバイスは各OSで手動確認します。
+
+## パッケージの作成とリリース
 
 ```bash
 cargo install cargo-packager --version 0.11.8 --locked
@@ -49,95 +52,100 @@ cargo fetch --locked
 cargo xtask package
 ```
 
-- Linux also requires `patchelf`; Windows requires 7-Zip.
-- Windows packages contain the executable and license materials, without runtime DLLs. They use Windows ML when available and the CPU ONNX Runtime statically linked into the executable otherwise.
-- Add `--no-bundle` to create an app directory without an installer. App packages do not include models.
-- Use `cargo xtask models distribute` to create model ZIPs and distribution manifests.
+- Linuxでは `patchelf`、Windowsでは7-Zipも必要です。
+- Windowsパッケージには実行ファイルとライセンス資料を含め、ランタイムDLLは含めません。Windows MLが利用可能ならそれを使い、それ以外は実行ファイルに静的リンクしたCPU用ONNX Runtimeを使います。
+- `--no-bundle` を付けるとインストーラーを作らず、アプリのディレクトリだけを生成します。アプリのパッケージにはモデルを同梱しません。
+- モデルZIPと配布マニフェストは `cargo xtask models distribute` で作成します。
 
-Packaging uses `cargo-about` to inspect locked dependencies and include a shared `licenses/` bundle covering supported targets and build dependencies. Some listed components are absent on a particular OS. Generate it separately with `cargo xtask licenses --destination /path/to/output`; run `cargo fetch --locked` first, since generation is offline. MPL sources are included as `.crate` archives (gzip-compressed tar).
+### ライセンス資料
 
-Desktop CI generates this bundle once on Linux and shares it across all OS builds with `cargo xtask package --licenses-dir "$RUNNER_TEMP/licenses"`. A single `actions/cache` step restores and saves it in the runner temporary directory, separate from the Rust build cache. The key covers `Cargo.lock`, workspace manifests, `about.toml`, license texts, and `xtask/src/licenses.rs`; workflow changes and unrelated xtask code do not invalidate it. Manifests and license inputs are included because they can change the notices without changing the lockfile. Release version changes happen before computing the key. Caches use GitHub's branch scoping, with main caches also available to PRs. When reusing a bundle locally, regenerate it after these inputs change. Without `--licenses-dir`, packaging generates fresh notices as before.
+パッケージ作成時は `cargo-about` で固定済みの依存関係を調べ、対応する全ターゲットとビルド依存関係を含む共通の `licenses/` を作成します。特定のOSには含まれない部品も記載されます。単独で生成する場合は、先に `cargo fetch --locked` を実行してから `cargo xtask licenses --destination /path/to/output` を使います。資料の生成中は通信しません。MPL対象のソースは `.crate` アーカイブ（gzip圧縮したtar）として同梱します。
 
-Notices are in `licenses/` in Windows ZIPs, `Contents/Resources/licenses/` in macOS apps, `usr/lib/irodoru/licenses/` in Linux packages, and `/app/licenses/` in Docker. `THIRD-PARTY-NOTICES.txt` contains license texts; `THIRD-PARTY-SOURCES.txt` identifies versions and source availability. The generator only replaces empty directories or previously generated bundles.
+デスクトップCIはLinuxで一度だけ資料を生成し、各OSのビルドへ渡します。パッケージ側では `cargo xtask package --licenses-dir "$RUNNER_TEMP/licenses"` で再利用します。キャッシュはRustのビルドキャッシュと分け、ランナーの一時ディレクトリに保存します。
 
-When updating dependencies, review `about.toml` and the generated notices. If a crate lacks original copyright notices, investigate the upstream source and add a version-specific entry to `licenses/clarifications.json`. Native ONNX Runtime and DirectML are reviewed separately; updating `ort-sys` requires reviewing `licenses/native/`. The optional OpenVINO GPU image preserves notices from the installed wheels.
+キャッシュキーには `Cargo.lock`、ワークスペースのマニフェスト、`about.toml`、ライセンス本文、`xtask/src/licenses.rs` を含めます。リリースのバージョン更新後にキーを計算します。無関係なxtaskコードやワークフローの変更だけでは無効化しません。GitHubのブランチ単位のキャッシュを使い、PRからはmainのキャッシュも利用できます。ローカルで資料を再利用するときも、これらの入力を変更したら生成し直してください。`--licenses-dir` を省略すると毎回生成します。
 
-Models are downloaded from reviewed revisions in `licenses/model/revisions.json`. Review model cards and ancestor licenses before updating these pins, then update notices and re-export. Each exported model and codec includes `LICENSES.txt` and `provenance.json`, which packaging and downloads require. Re-export old model directories that lack these files before distribution.
+| 配布形式 | ライセンス資料の場所 |
+| --- | --- |
+| Windows ZIP | `licenses/` |
+| macOSアプリ | `Contents/Resources/licenses/` |
+| Linuxパッケージ | `usr/lib/irodoru/licenses/` |
+| Docker | `/app/licenses/` |
 
-Release flow:
+`THIRD-PARTY-NOTICES.txt` にライセンス本文、`THIRD-PARTY-SOURCES.txt` にバージョンとソースの入手方法を記載します。生成先として置き換えられるのは、空のディレクトリか以前生成した資料だけです。
 
-1. Push a tag such as `1.2.3`. The release workflow runs the app and Docker workflows in parallel.
-2. The app workflow publishes models to GHCR and builds apps with the distribution manifest. The Docker workflow builds and publishes its image independently.
-3. After both succeed, the final `release` job publishes a GitHub Release with OS packages. Docker usage is documented in [Docker.md](Docker.md). Use the SHA-256 digest shown by GitHub for each asset to verify downloads; separate checksum files are not generated.
+依存関係を更新したら `about.toml` と生成した資料を確認します。クレートに元の著作権表記がない場合は上流を調査し、`licenses/clarifications.json` にバージョンを限定して補います。ネイティブのONNX RuntimeとDirectMLは別に確認し、`ort-sys` の更新時には `licenses/native/` も見直します。任意のOpenVINO GPUイメージでは、インストールしたwheelのライセンス資料を保持します。
 
-App assets use `irodoru_<version>_<os>_<arch>.<extension>`, for example `irodoru_0.0.4_windows_x64.zip`, `irodoru_0.0.4_macos_arm64.dmg`, and `irodoru_0.0.4_linux_x64.deb` or `.AppImage`. The version comes from the release tag, including prerelease suffixes. Split downloads append `.part001`, `.part002`, etc. Prepare these names with `cargo xtask release app TAG TARGET DEST`.
+モデルは `licenses/model/revisions.json` に記録した確認済みのリビジョンから取得します。更新時はモデルカードと派生元のライセンスを確認し、資料を更新して再エクスポートしてください。各モデルとコーデックには `LICENSES.txt` と `provenance.json` が必要です。これらを持たない古いモデルは、配布前に再エクスポートします。第三者のライセンス本文は原文を保持します。
 
-Release notes are generated by GitHub using `.github/release.yml`. Tags such as `1.2.3-beta.1` create prereleases. Releases stay in draft during upload; rerun CI after a failure. Regular main and PR builds do not create releases.
+### リリースの流れ
 
-GHCR packages:
+1. `1.2.3` などのタグをプッシュします。アプリとDockerのワークフローが並列で動きます。
+2. アプリのワークフローはモデルをGHCRへ公開し、その配布マニフェストを使って各OSのアプリを作ります。Dockerのワークフローは独立してイメージを公開します。
+3. 両方が成功すると、最後の `release` ジョブが各OSのパッケージを添付したGitHub Releaseを公開します。
 
-- `irodoru`: Docker images under version tags and CI caches under `cache-amd64` and `cache-arm64`. Only main CI updates caches.
-- `irodoru-models`: Model ZIPs for desktop apps. If the first public-access check fails, make this package public and rerun CI. Keep models referenced by released apps.
-- `irodoru-ci-cache`: Unused legacy cache. It can be removed after main CI creates the replacement caches.
+Dockerの操作は[Dockerの使い方](Docker.md)を参照してください。ダウンロードしたファイルはGitHubが表示するSHA-256で検証できます。独立したチェックサムファイルは生成しません。
 
-To check package contents (required licenses and absence of model weights):
+アプリのファイル名は `irodoru_<version>_<os>_<arch>.<extension>` です。例えば `irodoru_0.0.6_windows_x64.zip`、`irodoru_0.0.6_macos_arm64.dmg`、`irodoru_0.0.6_linux_x64.deb`、`irodoru_0.0.6_linux_x64.AppImage` になります。バージョンにはタグのプレリリース接尾辞も含めます。分割ファイルには `.part001`、`.part002` などを付けます。命名処理は `cargo xtask release app TAG TARGET DEST` で実行できます。
+
+リリースノートは `.github/release.yml` に従いGitHubが生成します。`1.2.3-beta.1` のようなタグはプレリリースになります。アップロード中は下書きのまま保持し、失敗した場合はCIを再実行します。通常のmain・PRビルドではリリースしません。
+
+GHCRのパッケージは次のとおりです。
+
+- `irodoru`: バージョンタグのDockerイメージと、`cache-amd64`・`cache-arm64` のCIキャッシュ。キャッシュを更新するのはmainのCIだけです。
+- `irodoru-models`: デスクトップ用のモデルZIP。公開アクセスの初回確認で失敗した場合はパッケージを公開に変更し、CIを再実行します。リリース済みアプリが参照するモデルは保持してください。
+- `irodoru-ci-cache`: 旧キャッシュ。mainのCIで置き換え先のキャッシュが作成された後は削除できます。
+
+パッケージに必要なライセンスがあり、モデルの重みが混入していないことを検査します。
 
 ```bash
 bash scripts/check-package.sh TARGET
 ```
 
-Replace `TARGET` with the Rust target. This check does not load models or run synthesis. Run `cargo xtask help` for other commands.
+`TARGET` はRustのターゲット名に置き換えてください。この検査ではモデルの読み込みや音声合成は行いません。その他のコマンドは `cargo xtask help` で確認できます。
 
-## Windows ML runtime
+<a id="windows-ml-runtime"></a>
 
-Windows builds require Windows 11 24H2 or later. CPU inference needs no separate runtime installation. GPU/NPU acceleration uses the x64 Windows App SDK Runtime **2.6.5 or later, major version 2**. Install the official runtime, or run the reviewed installer script from PowerShell (also used by CI):
+## Windows MLランタイム
+
+Windows版にはWindows 11 24H2以降が必要です。CPU推論はランタイムの追加インストールなしで動きます。GPU/NPUを使うには、x64の **Windows App SDK Runtime 2.xの2.6.5以降**が必要です。公式ランタイムをインストールするか、PowerShellで確認済みのインストールスクリプトを実行します。CIも同じスクリプトを使います。
 
 ```powershell
 ./scripts/install-windows-ml.ps1
 ```
 
-The script downloads the pinned official NuGet package, verifies its SHA-256, and installs its signed framework and companion MSIX packages for the current user. It does not add these binaries to the app ZIP.
+スクリプトは固定した公式NuGetパッケージを取得し、SHA-256を確認してから、署名済みのフレームワークと付属MSIXを現在のユーザーにインストールします。これらのバイナリはアプリのZIPには追加しません。
 
-At startup the engine selects one ORT API for the entire process. If the shared package cannot be loaded or does not support API 27, it keeps the CPU runtime that `ort` links statically from its prebuilt archive (the same one used before Windows ML support, so no native build step is needed). It never mixes handles from two runtimes. With Windows ML available, even CPU fallback sessions use that selected shared runtime.
+起動時にプロセス全体で1つのORT APIを選びます。共有パッケージを読み込めない場合、またはAPI 27に対応していない場合は、`ort` の事前ビルド済みアーカイブから静的リンクしたCPUランタイムを使います。別途ネイティブビルドは必要ありません。2種類のランタイムのハンドルは混在させません。Windows MLを選んだ場合は、CPUへ切り替えたセッションも同じ共有ランタイムを使います。
 
-The engine adds `Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe` to the process package dependency graph using the Windows dynamic-dependency APIs. It loads ONNX Runtime and the Windows ML catalog from that resolved package's absolute directory. Rust `ort` uses API version 27, matching the reviewed Microsoft.Windows.AI.MachineLearning 2.4.89 headers, rather than requiring the shared runtime to expose API 31.
+Windowsの動的依存関係APIで `Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe` をプロセスのパッケージ依存関係に追加します。解決したパッケージの絶対パスからONNX RuntimeとWindows MLカタログを読み込みます。Rustの `ort` は、確認済みのMicrosoft.Windows.AI.MachineLearning 2.4.89のヘッダーに対応するAPI 27を使い、API 31は要求しません。
 
-Windows ML prepares certified execution providers and their dependencies; the engine registers their library paths in its own ORT environment. Windows defaults to automatic GPU/NPU selection. Original ONNX graphs and the custom Snake operator remain in use, with CPU graph fallback for automatic mode. Explicit CPU selection suppresses automatic EP selection. Explicit GPU/NPU requests fail if no matching device is available or no session can be created; individual unsupported operators may still run on CPU. Non-Windows backend behavior remains unchanged. The catalog can download providers on first use; deployment in an offline environment requires preparing them beforehand.
+Windows MLが認定済みの実行プロバイダーと依存関係を準備し、エンジンがそのライブラリパスを自身のORT環境へ登録します。標準ではGPU/NPUを自動選択します。元のONNXグラフと独自のSnake演算子を使い、自動選択ではグラフごとのCPUへの切り替えを許可します。CPUを明示した場合は自動選択しません。GPU/NPUを明示して対応デバイスがない場合やセッションを作れない場合はエラーにしますが、未対応の個別演算がCPUで実行される場合はあります。初回はカタログからプロバイダーをダウンロードすることがあるため、オフラインで使う前に準備してください。
 
-Validate the staged executable:
+配布予定の実行ファイルを検査します。
 
 ```powershell
 ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe
-# On a machine with a compatible hardware GPU (may download an EP):
+# 対応GPUがある環境で実行。必要に応じて実行プロバイダーをダウンロードします。
 ./scripts/check-windows-runtime.ps1 -Executable target/x86_64-pc-windows-msvc/release/native/irodoru.exe -Gpu
 ```
 
-The check launches a temporary copy of only the executable, so it cannot rely on app-local DLLs (the linked runtime imports DirectML.dll, which Windows provides in System32). The application reports the framework package or embedded CPU runtime used. `-EmbeddedCpu` forces the embedded path in a fresh diagnostic process even if Windows ML is installed. CI checks that path before installing Windows ML, then checks the shared runtime, with a tiny CPU Add inference in each; GPU mode additionally executes a tiny Add graph with CPU fallback disabled. Hardware GPU/NPU execution, full speech synthesis and offline reuse must still be tested on Windows; a successful loader check is not evidence of those checks.
+検査は実行ファイルだけを一時ディレクトリへコピーして起動し、アプリと同じ場所のDLLに依存しないことを確認します。静的リンクしたランタイムが参照する `DirectML.dll` は、WindowsのSystem32にあるものを使います。アプリは使用したフレームワークパッケージか内蔵CPUランタイムを報告します。
 
-References: [Windows ML deployment](https://learn.microsoft.com/windows/ai/new-windows-ml/distributing-your-app), [provider registration](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers), [reviewed runtime package](https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Runtime/2.6.5).
+`-EmbeddedCpu` を付けると、Windows MLがあっても新しい診断プロセスで内蔵CPUランタイムを使います。CIはWindows MLのインストール前に内蔵側を、インストール後に共有側を検査し、それぞれ小さなAddグラフをCPUで実行します。GPU検査ではCPUへの切り替えを無効にしてAddを実行します。実機のGPU/NPU、音声合成全体、オフラインでの再利用はWindowsで別に確認してください。読み込み検査の成功だけでは、これらの動作を確認したことにはなりません。
 
-The footer lists active providers. Model settings show each loaded graph’s selected provider and CPU fallback state. This is session selection, not per-operator profiling; an accelerator session may execute unsupported operators on CPU. Execution failures update the live status when the graph switches to CPU.
+参考: [Windows MLの配布](https://learn.microsoft.com/windows/ai/new-windows-ml/distributing-your-app)、[実行プロバイダーの登録](https://learn.microsoft.com/windows/ai/new-windows-ml/register-execution-providers)、[確認済みランタイム](https://www.nuget.org/packages/Microsoft.WindowsAppSDK.Runtime/2.6.5)。
 
-## macOS Core ML
+フッターはエンジンの状態だけを表示します。各グラフの実行プロバイダーとCPUへの切り替え状況は、モデル設定の「詳細」で確認します。この情報はセッションの選択先であり、演算ごとの計測ではありません。アクセラレーターを選んだセッションでも、未対応の演算はCPUで動く場合があります。実行時の失敗でCPUへ切り替わると、表示も更新されます。
 
-macOS builds enable the `ort/coreml` feature and use the reviewed ORT 1.31.0
-Apple Silicon archive with Core ML support. The OS supplies the Core ML framework;
-users need no additional runtime. The existing macOS 15 minimum is unchanged.
+## macOSのCore ML
 
-The app defaults to automatic selection. Sessions register Core ML with MLProgram
-format and all compute units enabled. Original ONNX graphs and the Snake custom
-operator remain supported through CPU partitioning. Provider registration errors
-are propagated to the engine so automatic mode can rebuild a CPU-only session;
-execution failures use the same graph fallback and live provider tracker as Windows.
-Explicit CPU selection never registers Core ML. GPU/NPU options select
-CPUAndGPU/CPUAndNeuralEngine policies, not guaranteed hardware placement. The
-entries in device discovery describe these policies. Explicit OpenVINO overrides
-remain available.
+macOSビルドは `ort/coreml` を有効にし、Core ML対応の確認済みORT 1.31.0 Apple Siliconアーカイブを使います。Core MLはOSが提供するため、追加ランタイムは不要です。対応OSはmacOS 15以降です。
 
-The UI reports `Core ML（自動選択）` or the selected compute policy. Core ML chooses
-the actual hardware per operation, so this label does not prove GPU or Neural
-Engine execution. Compiled model caching is not enabled to avoid stale weights
-when importing replacement models. Mac CI checks the native code and package contents. Full speech quality, latency
-and actual accelerator use still require validation on a Mac.
+標準は自動選択です。MLProgram形式とすべての計算ユニットを有効にしてCore MLを登録します。元のONNXグラフとSnake演算子は、未対応部分をCPUで処理して利用します。プロバイダーの登録エラーはエンジンへ伝え、自動選択ならCPUだけのセッションを再構築します。実行時の失敗もWindowsと同じ仕組みでグラフをCPUへ切り替え、プロバイダー表示を更新します。
 
-Reference: [Core ML execution provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html).
+CPUを明示した場合はCore MLを登録しません。GPU/NPUの指定は、それぞれ `CPUAndGPU`・`CPUAndNeuralEngine` の方針を選びます。特定ハードウェアでの実行を保証するものではなく、デバイス一覧にもその方針を表示します。OpenVINOの明示的な指定も引き続き利用できます。
+
+モデルの詳細には `Core ML（自動選択）` または選択した計算方針を表示します。実際の演算先はCore MLが決めるため、この表示だけではGPUやNeural Engineで動いたことを確認できません。モデル交換時に古い重みを使わないよう、コンパイル済みモデルのキャッシュは有効にしていません。macOSのCIはネイティブコードとパッケージを検査します。音質、待ち時間、実際のアクセラレーター使用状況はMacで確認してください。
+
+参考: [Core ML実行プロバイダー](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)。

@@ -1,4 +1,11 @@
-`add.onnx` is a 98-byte, project-authored ONNX fixture (MIT): IR version 8,
-default-domain opset 13, one Add node with float32 inputs A and B and output Y,
-all with shape [3]. It has no weights or external data. The Windows ML package probe runs
-A=[1,2,3], B=[4,5,6] and requires Y=[5,7,9] with CPU fallback disabled.
+# Windows MLの検査用モデル
+
+`add.onnx` は、このプロジェクトで作成した98バイトのONNXモデルです。MITライセンスで提供します。
+
+- IRバージョンは8、標準ドメインのopsetは13です。
+- Addノードを1つだけ持ち、入力 `A`・`B` と出力 `Y` はいずれも形状 `[3]` のfloat32です。
+- 重みや外部データはありません。
+
+Windows MLのGPU検査ではCPUへの切り替えを無効にし、`A=[1,2,3]` と `B=[4,5,6]` を入力して `Y=[5,7,9]` になることを確認します。
+
+検査の実行方法は[開発ガイド](../../../../docs/Dev.md#windows-ml-runtime)を参照してください。

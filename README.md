@@ -1,38 +1,41 @@
 # irodoru
 
-A text-to-speech app for reading scripts in character voices, powered by [Irodori-TTS](https://github.com/Aratako/Irodori-TTS). It works offline after the required models and execution providers are installed.
+[Irodori-TTS](https://github.com/Aratako/Irodori-TTS) を使い、キャラクターの声で台本を読み上げる音声合成アプリです。必要なモデルと実行プロバイダーを準備すれば、オフラインで使えます。
 
-## Install
+![台本、テイク、キャラクター編集を表示したメイン画面](docs/imgs/main.png)
 
-Download the package for your OS from [Releases](https://github.com/kanade-k-1228/irodoru/releases):
+## インストール
 
-- **Windows 11 24H2 or later, x64:** Extract the ZIP and run `irodoru.exe`.
-- **macOS 15 or later, Apple Silicon:** Open the DMG and copy the app to Applications.
-- **Linux x64:** Install the deb, or make the AppImage executable and run it.
+[リリース](https://github.com/kanade-k-1228/irodoru/releases)から、お使いのOS向けのパッケージをダウンロードしてください。
 
-The first launch downloads about 3.44 GB of models. Allow enough disk space and an internet connection. For split packages, download all parts and follow the included assembly instructions.
+- **Windows 11 24H2以降・x64:** ZIPを展開し、`irodoru.exe` を起動します。
+- **macOS 15以降・Apple Silicon:** DMGを開き、アプリを「アプリケーション」にコピーします。
+- **Linux・x64:** debをインストールするか、AppImageに実行権限を付けて起動します。
 
-## System requirements
+初回起動時に約3.44 GBのモデルをダウンロードします。空き容量とインターネット接続を確保してください。分割パッケージの場合は、すべてのパートを取得し、同梱の手順で結合します。
 
-- **Windows:** Windows 11 24H2 (build 26100) or later, x64. No additional runtime installation is needed for CPU inference: CPU ONNX Runtime is statically linked into the executable. For GPU/NPU acceleration, install **Windows App SDK Runtime 2.6.5 or later in the 2.x family** and compatible drivers. Windows ML manages hardware-specific providers and may download them on first use. If Windows ML is unavailable, the app automatically uses the embedded CPU runtime; accelerator failures in automatic mode also fall back to CPU. No runtime DLLs are bundled. The footer and model settings show the selected providers per graph, including CPU fallback. See [Windows ML setup](docs/Dev.md#windows-ml-runtime).
-- **macOS:** macOS 15 or later on Apple Silicon. Uses the built-in Core ML framework for automatic CPU/GPU/Neural Engine selection; no additional runtime installation is needed. Unsupported operations run on CPU, and automatic mode falls back to ONNX Runtime CPU if Core ML session creation or execution fails. The provider display shows Core ML selection, not the hardware used by each operation.
-- **Linux:** x64, using the deb or AppImage package.
+## 動作環境
 
-## Quick start
+- **Windows:** Windows 11 24H2（ビルド26100）以降のx64環境が必要です。CPU用ONNX Runtimeは実行ファイルに静的リンクされているため、CPUでの利用に追加ランタイムは不要です。GPU/NPUを使う場合は、**Windows App SDK Runtime 2.xの2.6.5以降**と対応ドライバーをインストールします。Windows MLが実行プロバイダーを管理し、初回にダウンロードする場合があります。Windows MLを使えない場合や、自動選択したアクセラレーターで処理できない場合はCPUに切り替わります。アプリにはランタイムDLLを同梱しません。[Windows MLの設定](docs/Dev.md#windows-ml-runtime)も参照してください。
+- **macOS:** macOS 15以降のApple Silicon環境が必要です。OS標準のCore MLがCPU・GPU・Neural Engineを自動選択します。追加ランタイムは不要です。未対応の演算はCPUで実行され、自動選択時にCore MLの読み込みや実行が失敗した場合もCPUへ切り替わります。
+- **Linux:** x64向けのdebまたはAppImageを使います。デスクトップアプリの推論は標準でCPUを使用します。
 
-1. Click the project label at the bottom left to open **File** and create a `.iro` project.
-2. Click **+** in the character list, enter a name and voice prompt, and save.
-3. Select a character, click **+** at the end of the script, enter dialogue, and generate audio.
-4. Play the result or use the player's download icon to export a WAV file.
+画面下部にはエンジンの状態が表示されます。各処理の実行プロバイダーは、モデル設定の「詳細」で確認できます。この表示はセッションの選択先であり、個々の演算が使ったハードウェアを示すものではありません。
 
-Script edits and saved character settings are saved automatically.
+## はじめかた
 
-- [User guide](docs/Usage.md)
-- [Docker guide](docs/Docker.md)
-- [Development guide](docs/Dev.md)
+1. 左下のファイルアイコンをクリックし、「新規プロジェクト…」から `.iro` ファイルを作成します。
+2. キャラクター一覧の **＋** を押し、名前と声の特徴を入力します。変更は自動保存されます。
+3. キャラクターを選び、台本末尾の **＋** からセリフを追加します。
+4. セリフ右端の開閉ボタンで詳細を開き、「生成」を押します。
+5. テイクの再生ボタンで確認し、ダウンロードアイコンからWAVを保存します。複数のセリフは右下の「出力」でまとめて書き出せます。
 
-## License
+- [使い方](docs/Usage.md)
+- [Dockerで使う](docs/Docker.md)
+- [開発ガイド](docs/Dev.md)
 
-The application is [MIT](LICENSE). Dependencies, models, and bundled runtimes have their own terms. Release packages include license texts, copyright notices, and MPL source archives and download links in `licenses/`. The separately installed Windows ML runtime and its execution providers are covered by their own Microsoft/vendor terms.
+## ライセンス
 
-The app uses [Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime), which inherits the base model's [usage restrictions](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions). Do not impersonate someone without consent or generate deceptive audio. Each model and codec includes `LICENSES.txt`; see the [source and license review](licenses/model/NOTICE.txt).
+アプリ本体は[MITライセンス](LICENSE)です。依存ライブラリ、モデル、ランタイムにはそれぞれの利用条件があります。配布パッケージの `licenses/` には、ライセンス本文、著作権表示、MPL対象のソースアーカイブや入手先を含めています。別途インストールするWindows MLと実行プロバイダーには、Microsoftや各提供元の条件が適用されます。
+
+使用モデルは [phasefield-audio/Irodori-TTS-v4.1-Anime](https://huggingface.co/phasefield-audio/Irodori-TTS-v4.1-Anime) です。基盤モデルの[利用制限](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small#ethical-restrictions)を引き継ぎます。同意のないなりすましや、人を欺く音声の生成には使わないでください。各モデルとコーデックに `LICENSES.txt` を同梱しています。出典と確認内容は [licenses/model/NOTICE.txt](licenses/model/NOTICE.txt) を参照してください。
