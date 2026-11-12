@@ -21,6 +21,11 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Hugging Face repository recorded in the loaded model's manifest.
+    pub fn model_repository(&self) -> &str {
+        &self.model.manifest.checkpoint
+    }
+
     pub fn provider_tracker(&self) -> crate::ProviderTracker {
         self.providers.clone()
     }

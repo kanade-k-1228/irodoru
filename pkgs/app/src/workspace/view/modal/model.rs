@@ -3,7 +3,11 @@ use super::Modal;
 use crate::domain::InferenceStatus;
 use crate::workspace::view::Studio;
 use crate::workspace::view::appearance::DisabledWithCursor;
-use crate::workspace::view::appearance::{button, icon};
+use crate::workspace::view::appearance::{Palette, button, icon, tool};
+use gpui_kit::component::Sizable;
+use gpui_kit::component::button::ButtonVariants;
+use gpui_kit::component::spinner::Spinner;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
@@ -35,6 +39,21 @@ pub(in crate::workspace::view) fn status_label(status: &InferenceStatus) -> Stri
     }
 }
 
+pub(in crate::workspace::view) fn status_appearance(
+    status: &InferenceStatus,
+    p: Palette,
+) -> (&'static str, Hsla, bool) {
+    match status {
+        InferenceStatus::Ready => ("check", p.success, false),
+        InferenceStatus::Generating => ("audio", p.accent, true),
+        InferenceStatus::Error { .. } => ("alert", p.warning, false),
+        InferenceStatus::Downloading { .. } => ("download", p.accent, false),
+        InferenceStatus::Checking { .. }
+        | InferenceStatus::Extracting { .. }
+        | InferenceStatus::Loading => ("model", p.pending, true),
+    }
+}
+
 impl Studio {
     pub(in crate::workspace::view) fn model_status(&self) -> InferenceStatus {
         self.inference
@@ -54,9 +73,10 @@ impl Studio {
             return;
         }
         self.model_error = None;
+        self.model_details_open = false;
         self.open_modal(
             Modal::Model,
-            480.,
+            420.,
             || {
                 div()
                     .flex()
@@ -83,79 +103,208 @@ impl Studio {
                 status,
                 InferenceStatus::Ready | InferenceStatus::Error { .. }
             );
+        let model_source = self
+            .inference
+            .as_ref()
+            .and_then(|service| service.model_source());
         let model_name = self
             .inference
             .as_ref()
-            .and_then(|service| service.model_name());
+            .and_then(|service| service.model_repository())
+            .unwrap_or_else(|| {
+                model_source
+                    .clone()
+                    .unwrap_or_else(|| "既定のモデル".into())
+            });
+        let error = self.model_error.clone().or_else(|| match &status {
+            InferenceStatus::Error { error } => Some(error.clone()),
+            _ => None,
+        });
+        let (icon_name, color, spinning) = status_appearance(&status, p);
+        div()
+            .mt_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .text_sm()
+            .child(
+                div()
+                    .p_3()
+                    .rounded(px(8.))
+                    .bg(p.control)
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("model-name")
+                            .w_full()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(model_name.clone())
+                            .tooltip(move |window, cx| {
+                                Tooltip::new(model_name.clone()).build(window, cx)
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_color(color)
+                                    .child(if spinning {
+                                        Spinner::new().small().color(color).into_any_element()
+                                    } else {
+                                        icon(icon_name).into_any_element()
+                                    })
+                                    .child(status_label(&status)),
+                            )
+                            .when(failed, |el| {
+                                el.child(
+                                    tool("retry-models", "refresh", "再試行")
+                                        .accessibility_label("再試行")
+                                        .disabled_with_cursor(!editable)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.model_error = this
+                                                .inference
+                                                .as_ref()
+                                                .and_then(|service| service.retry().err())
+                                                .map(|error| format!("{error:#}"));
+                                            window.refresh();
+                                            cx.notify();
+                                        })),
+                                )
+                            }),
+                    )
+                    .when_some(progress(&status), |el, (done, total)| {
+                        el.when(total > 0, |el| {
+                            el.child(
+                                div()
+                                    .h(px(4.))
+                                    .rounded_full()
+                                    .bg(p.line)
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .w(relative((done as f32 / total as f32).min(1.)))
+                                            .bg(p.accent),
+                                    ),
+                            )
+                        })
+                    }),
+            )
+            .when(self.model_error.is_some(), |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .text_xs()
+                        .text_color(p.warning)
+                        .child(icon("alert"))
+                        .child("処理に失敗しました。詳細をご確認ください。"),
+                )
+            })
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        button("model-details", "詳細")
+                            .ghost()
+                            .text_color(p.muted)
+                            .icon(icon(if self.model_details_open {
+                                "chevron-up"
+                            } else {
+                                "chevron-down"
+                            }))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.model_details_open = !this.model_details_open;
+                                window.refresh();
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                button("import-model-archive", "モデル変更")
+                                    .icon(icon("folder"))
+                                    .tooltip("モデルZIPを取り込む")
+                                    .disabled_with_cursor(!editable)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.choose_model_archive(window, cx)
+                                    })),
+                            )
+                            .child(
+                                tool("reset-model-archive", "reset", "既定のモデルに戻す")
+                                    .accessibility_label("既定のモデルに戻す")
+                                    .disabled_with_cursor(!editable || model_source.is_none())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.configure_model_archive(None, cx)
+                                    })),
+                            ),
+                    ),
+            )
+            .when(self.model_details_open, |el| {
+                el.child(self.model_details(&status, error))
+            })
+            .when(!editable && self.inference.is_some(), |el| {
+                el.child(
+                    div()
+                        .text_xs()
+                        .text_color(p.muted)
+                        .child(if self.model_picker_open {
+                            "ZIPファイルを選択中…"
+                        } else {
+                            "処理が完了するとモデルを変更できます。"
+                        }),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn model_details(&self, status: &InferenceStatus, error: Option<String>) -> AnyElement {
+        let p = self.palette();
         let providers = self
             .inference
             .as_ref()
             .map(|service| service.providers())
             .unwrap_or_default();
-        let source = model_name.clone().unwrap_or_else(|| "既定のモデル".into());
-        let error = self.model_error.clone().or_else(|| match &status {
-            InferenceStatus::Error { error } => Some(error.clone()),
-            _ => None,
-        });
-        div()
-            .mt_4().flex().flex_col().gap_3().text_sm()
-            .child(div().flex().items_center().justify_between()
-                .child("モデル：anime")
-                .child(div().text_color(if failed { p.warning } else { p.muted })
-                    .child(status_label(&status))))
-            .child(div().flex().flex_col().gap_1()
-                .child("推論プロバイダー")
-                .when(providers.is_empty(), |el| el.child(div().text_color(p.muted).child("モデル読み込み後に表示されます")))
-                .children(providers.into_iter().map(|provider| {
-                    div().text_xs().child(format!("{}：{}{}", provider.graph, provider.provider,
-                        if provider.fallback { "（CPUフォールバック）" } else { "" }))
-                }))
-                .child(div().text_xs().text_color(p.muted).child("グラフごとの選択先です。GPU/NPUを選択していても、一部の演算はCPUで実行される場合があります。")))
-            .when_some(progress(&status), |el, (done, total)| {
-                el.child(div().text_xs().text_color(p.muted).child(if total > 0 {
+        div().id("model-details-content").max_h(px(224.)).overflow_y_scroll()
+            .border_t_1().border_color(p.line).pt_3()
+            .flex().flex_col().gap_3().text_xs().text_color(p.muted)
+            .when_some(error, |el, error| el.child(
+                div().p_3().rounded(px(8.)).bg(p.warning_soft).text_color(p.warning).child(error),
+            ))
+            .when(!providers.is_empty(), |el| el.child(
+                div().flex().flex_col().gap_1()
+                    .children(providers.into_iter().map(|provider| {
+                        div().child(format!("{}：{}{}", provider.graph, provider.provider,
+                            if provider.fallback { "（CPUフォールバック）" } else { "" }))
+                    }))
+                    .child("一部の演算はCPUで実行される場合があります。"),
+            ))
+            .when_some(progress(status), |el, (done, total)| {
+                el.child(div().child(if total > 0 {
                     format!("{:.1} / {:.1} MiB", done as f64 / 1_048_576.0, total as f64 / 1_048_576.0)
                 } else {
                     format!("{:.1} MiB", done as f64 / 1_048_576.0)
                 }))
-                .when(total > 0, |el| el.child(
-                    div().h(px(4.)).rounded_full().bg(p.control).overflow_hidden()
-                        .child(div().h_full().w(relative((done as f32 / total as f32).min(1.)))
-                            .bg(p.accent)),
-                ))
             })
-            .when_some(error, |el, error| el.child(
-                div().id("model-error-details").max_h(px(128.)).overflow_y_scroll()
-                    .p_3().rounded(px(8.)).bg(p.warning_soft).text_color(p.warning).child(error),
-            ))
-            .child(div().h(px(1.)).bg(p.line))
-            .child(div().text_color(p.muted).child("使用するモデル"))
-            .child(div().id("model-source").max_h(px(72.)).overflow_y_scroll().child(source))
-            .child(div().text_xs().text_color(p.muted)
-                .child("モデルZIPを取り込むと、すべてのウィンドウと次回起動時に使用します。取り込み後は元のZIPを移動・削除しても使えます。"))
-            .child(div().flex().flex_wrap().gap_2()
-                .child(button("import-model-archive", "ZIPファイルを選択して取り込む…")
-                    .icon(icon("folder")).disabled_with_cursor(!editable)
-                    .on_click(cx.listener(|this, _, window, cx| this.choose_model_archive(window, cx))))
-                .child(button("reset-model-archive", "既定に戻す")
-                    .disabled_with_cursor(!editable || model_name.is_none())
-                    .on_click(cx.listener(|this, _, _, cx| this.configure_model_archive(None, cx))))
-                .when(failed, |el| el.child(
-                    button("retry-models", "再試行")
-                        .disabled_with_cursor(!editable)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.model_error = this.inference.as_ref()
-                                .and_then(|service| service.retry().err())
-                                .map(|error| format!("{error:#}"));
-                            cx.notify();
-                        })),
-                )))
-            .when(!editable && self.inference.is_some(), |el| el.child(
-                div().text_xs().text_color(p.muted).child(if self.model_picker_open {
-                    "ZIPファイルを選択中…"
-                } else {
-                    "処理が完了するとモデルを変更できます。"
-                }),
-            ))
+            .child("変更はすべてのウィンドウと次回起動時に反映されます。取り込み後のZIPは削除できます。")
             .into_any_element()
     }
 

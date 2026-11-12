@@ -9,7 +9,7 @@ mod menu;
 mod model;
 mod settings;
 pub(super) use menu::MenuAction;
-pub(super) use model::status_label;
+pub(super) use model::{status_appearance, status_label};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Modal {

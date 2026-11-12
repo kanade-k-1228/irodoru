@@ -40,6 +40,14 @@ impl GenerationForm {
         ]
     }
 }
+#[derive(PartialEq)]
+struct ModelSnapshot {
+    status: crate::domain::InferenceStatus,
+    repository: Option<String>,
+    source: Option<String>,
+    providers: Vec<irodoru_engine::ProviderStatus>,
+}
+
 pub(crate) struct Studio {
     state: WorkspaceState,
     service: Option<Service>,
@@ -54,11 +62,7 @@ pub(crate) struct Studio {
     chara_list_wheel: SmoothScroll,
     chara_form_wheel: SmoothScroll,
     icons: std::cell::RefCell<std::collections::HashMap<String, CachedIcon>>,
-    model_seen: Option<(
-        crate::domain::InferenceStatus,
-        Option<String>,
-        Vec<irodoru_engine::ProviderStatus>,
-    )>,
+    model_seen: Option<ModelSnapshot>,
     settings: Settings,
     playback: Option<Playback>,
     audio_id: Option<crate::domain::AudioSource>,
@@ -71,6 +75,7 @@ pub(crate) struct Studio {
     modal: Option<modal::Modal>,
     model_picker_open: bool,
     model_error: Option<String>,
+    model_details_open: bool,
     model_trigger_focus: FocusHandle,
     export_trigger_focus: FocusHandle,
     export_naming: crate::project::ExportNaming,
