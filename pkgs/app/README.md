@@ -1,6 +1,6 @@
 # デスクトップアプリの内部構成
 
-[概要](../../README.md) · [開発ガイド](../../docs/Dev.md) · [使い方](../../docs/Usage.md)
+[概要](../../README.md) · [開発ガイド](../../docs/Development.md) · [使い方](../../docs/Usage.md)
 
 アプリは1つのRustクレートです。`main.rs` がclapで引数を読み、GPUIを起動します。`desktop` が起動処理とウィンドウを管理し、画面とネイティブダイアログは `workspace/view`、音声の再生は `audio` が担当します。編集の状態・保存・音声合成はGPUIに依存しないモジュールに分けています。
 
