@@ -8,4 +8,4 @@
 
 Windows MLのGPU検査ではCPUへの切り替えを無効にし、`A=[1,2,3]` と `B=[4,5,6]` を入力して `Y=[5,7,9]` になることを確認します。
 
-検査の実行方法は[開発ガイド](../../../../docs/Dev.md#windows-ml-runtime)を参照してください。
+検査には[Windowsランタイムの検査スクリプト](../../../../scripts/check-windows-runtime.ps1)を使います。

@@ -4,7 +4,7 @@
 
 ![](docs/imgs/main.png)
 
-[Docker Server Usage](docs/Docker.md) / [Development Guide](docs/Dev.md)
+[Docker Server Usage](docs/Docker.md) / [Development Guide](docs/Development.md)
 
 ## インストール
 
@@ -13,10 +13,10 @@
 <details>
 <summary><b>Windows:</b> zip を展開し `irodoru.exe` を起動します</summary>
 
-- OS: Windows 11 24H2 移行
+- OS: Windows 11 24H2 以降
 - CPU: x86_64
 
-Windows 11 24H2（ビルド26100）以降のx64環境が必要です。CPU用ONNX Runtimeは実行ファイルに静的リンクされているため、CPUでの利用に追加ランタイムは不要です。GPU/NPUを使う場合は、**Windows App SDK Runtime 2.xの2.6.5以降**と対応ドライバーをインストールします。Windows MLが実行プロバイダーを管理し、初回にダウンロードする場合があります。Windows MLを使えない場合や、自動選択したアクセラレーターで処理できない場合はCPUに切り替わります。アプリにはランタイムDLLを同梱しません。[Windows MLの設定](docs/Dev.md#windows-ml-runtime)も参照してください。
+Windows 11 24H2（ビルド26100）以降のx64環境が必要です。CPU用ONNX Runtimeは実行ファイルに静的リンクされているため、CPUでの利用に追加ランタイムは不要です。GPU/NPUを使う場合は、**Windows App SDK Runtime 2.xの2.6.5以降**と対応ドライバーをインストールします。Windows MLが実行プロバイダーを管理し、初回にダウンロードする場合があります。Windows MLを使えない場合や、自動選択したアクセラレーターで処理できない場合はCPUに切り替わります。アプリにはランタイムDLLを同梱しません。[Windows MLのインストールスクリプト](scripts/install-windows-ml.ps1)も利用できます。
 
 </details>
 

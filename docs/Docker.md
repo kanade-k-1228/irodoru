@@ -1,6 +1,4 @@
-# Dockerで使う
-
-[概要](../README.md) · [使い方](Usage.md) · [開発ガイド](Dev.md)
+# Docker Server Usage
 
 Docker版は、モデルを同梱したHTTP音声合成サーバーです。Dockerをインストールし、[リリース](https://github.com/kanade-k-1228/irodoru/releases)のバージョンタグを指定してください。以下は `0.0.6` の例です。
 
