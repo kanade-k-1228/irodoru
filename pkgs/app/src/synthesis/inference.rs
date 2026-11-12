@@ -13,7 +13,14 @@ enum Command {
 struct ModelState {
     status: InferenceStatus,
     settings: ModelSettings,
+    repository: Option<String>,
     providers: Option<irodoru_engine::ProviderTracker>,
+}
+impl ModelState {
+    fn set_engine(&mut self, engine: Option<&Engine>) {
+        self.repository = engine.map(|engine| engine.model_repository().to_owned());
+        self.providers = engine.map(Engine::provider_tracker);
+    }
 }
 
 pub struct Inference {
@@ -32,6 +39,7 @@ impl Inference {
         let state = Arc::new(Mutex::new(ModelState {
             status: InferenceStatus::Loading,
             settings,
+            repository: None,
             providers: None,
         }));
         let worker_state = state.clone();
@@ -44,14 +52,14 @@ impl Inference {
                     let config = config(directory.as_deref(), &progress)?;
                     progress(InferenceStatus::Loading);
                     let engine = Engine::load(&config)?;
-                    worker_state.lock().unwrap().providers = Some(engine.provider_tracker());
+                    worker_state.lock().unwrap().set_engine(Some(&engine));
                     Ok(engine)
                 };
                 let mut engine = None;
                 let mut initialize = true;
                 loop {
                     if initialize {
-                        worker_state.lock().unwrap().providers = None;
+                        worker_state.lock().unwrap().set_engine(None);
                         match restart_engine(&mut engine, load) {
                             Ok(()) => progress(InferenceStatus::Ready),
                             Err(error) => progress(InferenceStatus::Error {
@@ -63,7 +71,7 @@ impl Inference {
                         Ok(Command::Retry) => initialize = true,
                         Ok(Command::Configure(archive)) => {
                             initialize = false;
-                            worker_state.lock().unwrap().providers = None;
+                            worker_state.lock().unwrap().set_engine(None);
                             let mut configure = || -> Result<ModelSettings> {
                                 let imported = archive
                                     .as_deref()
@@ -94,13 +102,12 @@ impl Inference {
                             match configure() {
                                 Ok(settings) => {
                                     let mut state = worker_state.lock().unwrap();
-                                    state.providers = engine.as_ref().map(Engine::provider_tracker);
+                                    state.set_engine(engine.as_ref());
                                     state.settings = settings;
                                     state.status = InferenceStatus::Ready;
                                 }
                                 Err(error) => {
-                                    worker_state.lock().unwrap().providers =
-                                        engine.as_ref().map(Engine::provider_tracker);
+                                    worker_state.lock().unwrap().set_engine(engine.as_ref());
                                     progress(InferenceStatus::Error {
                                         error: format!("{error:#}"),
                                     });
@@ -135,7 +142,11 @@ impl Inference {
     pub fn status(&self) -> InferenceStatus {
         self.state.lock().unwrap().status.clone()
     }
-    pub fn model_name(&self) -> Option<String> {
+    pub fn model_repository(&self) -> Option<String> {
+        self.state.lock().unwrap().repository.clone()
+    }
+
+    pub fn model_source(&self) -> Option<String> {
         let state = self.state.lock().unwrap();
         state.settings.directory.as_ref().map(|_| {
             state

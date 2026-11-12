@@ -203,6 +203,7 @@ impl Studio {
             modal: None,
             model_picker_open: false,
             model_error: None,
+            model_details_open: false,
             model_trigger_focus: cx.focus_handle(),
             export_trigger_focus: cx.focus_handle(),
             export_naming: crate::project::ExportNaming::Number,

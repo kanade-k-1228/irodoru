@@ -1,4 +1,4 @@
-use super::Studio;
+use super::{ModelSnapshot, Studio};
 use crate::audio::Playback;
 use crate::workspace::protocol::Command;
 use crate::workspace::state::Effect;
@@ -47,10 +47,12 @@ impl Studio {
         }
         // Render only when something it reads has changed.
         let theme = crate::preferences::theme::current(cx);
-        let model = self
-            .inference
-            .as_ref()
-            .map(|service| (service.status(), service.model_name(), service.providers()));
+        let model = self.inference.as_ref().map(|service| ModelSnapshot {
+            status: service.status(),
+            repository: service.model_repository(),
+            source: service.model_source(),
+            providers: service.providers(),
+        });
         let mut changed = self.settings.theme != theme || self.model_seen != model;
         self.settings.theme = theme;
         self.model_seen = model;
