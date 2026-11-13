@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- 1. Export Irodori-TTS checkpoints to ONNX (architecture-independent) ----
-FROM --platform=$BUILDPLATFORM python:3.10-slim AS models
+FROM --platform=$BUILDPLATFORM python:3.15-slim AS models
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git build-essential libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
@@ -56,7 +56,7 @@ ENTRYPOINT ["/app/irodori-server"]
 CMD ["serve"]
 
 # ---- Optional Intel GPU/NPU runtime (CPU images do not depend on OpenVINO) ----
-FROM python:3.12-slim AS openvino
+FROM python:3.15-slim AS openvino
 RUN pip install --no-cache-dir --target /opt/ov 'openvino==2026.4.1' \
     && ln -s libopenvino_c.so.2641 /opt/ov/openvino/libs/libopenvino_c.so
 COPY scripts/collect-wheel-licenses.py /collect-wheel-licenses.py
