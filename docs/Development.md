@@ -2,7 +2,7 @@
 
 ## 準備
 
-Rust（stable）、uv、Python 3.10をインストールしてください。
+Rust（stable）、uv、Python 3.13をインストールしてください。
 
 Linuxでは、[CI設定](../.github/workflows/app.yml)の「Linux desktop dependencies」と同じパッケージが必要です。実行環境にはVulkan、WaylandまたはX11、`xdg-desktop-portal` とデスクトップ環境に対応するバックエンドを用意します。
 
